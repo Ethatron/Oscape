@@ -190,8 +190,11 @@ struct sset {
 // ----------------------------------------------------------------------------
 
 class OscapePrg; class OscapePrg *prg;
-class OscapePrg : public wxProgress
-{
+class OscapePrg : public wxProgress {
+private:
+  const char *lastpa;
+  const char *lastpb;
+
 public:
   void StartProgress(int rng) {
     Wait();
@@ -276,6 +279,11 @@ public:
     OSTask2->SetValue((value1      ) * (range2) + (value2 = sdne));
   }
 
+private:
+  bool paused, quit;
+  time_t tinit, tlast, tnow;
+
+public:
   virtual void PauseProgress(wxCommandEvent& event) {
     if (!paused) {
       Block();
@@ -296,25 +304,14 @@ public:
   }
 
   virtual void AbortProgress(wxCloseEvent& event) {
-    quit = true;
-    WaitForSingleObject(tve, INFINITE);
+    if (event.CanVeto())
+      event.Veto();
 
-    /* this would prevent EndModal() to work */
-//  Close();
-
-    event.Skip();
-    event.StopPropagation();
+    Abort();
   }
 
   virtual void AbortProgress(wxCommandEvent& event) {
-    quit = true;
-    WaitForSingleObject(tve, INFINITE);
-
-    /* this would prevent EndModal() to work */
-//  Close();
-
-    event.Skip();
-    event.StopPropagation();
+    Abort();
   }
 
   virtual void IdleProgress(wxIdleEvent& event) {
@@ -352,19 +349,22 @@ public:
   }
 
 private:
-  const char *lastpa;
-  const char *lastpb;
-  HANDLE evt, tve;
-  bool paused, quit;
-  time_t tinit, tlast, tnow;
+  HANDLE evt, end;
+  HANDLE async;
 
+  /* called from Progress-thread */
+  void Abort() {
+    quit = true;
+    SetEvent(evt);
+  }
+
+  /* called from Async-thread */
   void Wait() {
     WaitForSingleObject(evt, INFINITE);
-    if (quit) {
-      SetEvent(tve);
-//    ExitThread(0);
+
+    /* signal abortion (inside Async-thread) */
+    if (quit)
       throw runtime_error("ExitThread");
-    }
   }
 
   void Block() {
@@ -376,7 +376,61 @@ private:
   }
 
 public:
+  wxEventType evtLeave;
+  int idLeave;
+  int retCode;
+
+  class LeaveEvent: public wxCommandEvent {
+  public:
+    LeaveEvent(int id, const wxEventType& event_type) : wxCommandEvent(event_type, id) {}
+    LeaveEvent(const LeaveEvent& event) : wxCommandEvent(event) {}
+
+    wxEvent* Clone() const { return new LeaveEvent(*this); }
+  };
+
+  typedef void (wxEvtHandler::*LeaveEventFunction)(LeaveEvent &);
+
+  /* called from outside-thread */
+  int Enter(LPTHREAD_START_ROUTINE routine) {
+    if ((async = CreateThread(NULL, 0, routine, this, 0, NULL)) == INVALID_HANDLE_VALUE)
+      return 0;
+    SetThreadPriority(async, THREAD_PRIORITY_BELOW_NORMAL);
+
+    return ShowModal();
+  }
+
+  /* called from Async-thread */
+  void Leave(int rc) {
+    retCode = rc;
+
+    LeaveEvent event(idLeave, evtLeave);
+    wxPostEvent(this, event);
+
+    /* wait for the progress-dialog to recognize our message */
+    WaitForSingleObject(end, INFINITE);
+  }
+
+  /* called from Progress-thread */
+  void Leave(LeaveEvent &) {
+    /* signal that we recognize the message */
+    SetEvent(end);
+
+    WaitForSingleObject(async, INFINITE);
+    CloseHandle(async);
+
+    EndModal(retCode);
+  }
+
   OscapePrg::OscapePrg(wxWindow *parent) : wxProgress(parent) {
+    evtLeave = wxNewEventType();
+    idLeave = wxNewId();
+
+    /* Connect to event handler that will make us close */
+    Connect(wxID_ANY, evtLeave,
+      (wxObjectEventFunction)(wxEventFunction)(wxCommandEventFunction)wxStaticCastEvent(LeaveEventFunction, &OscapePrg::Leave),
+      NULL,
+      this);
+
     tinit = time(NULL);
     paused = false;
     quit = false;
@@ -387,21 +441,21 @@ public:
       TRUE,		  // manual reset
       TRUE,		  // initially set
       NULL		  // unnamed mutex
-    );
+      );
 
-    tve = CreateEvent(
+    end = CreateEvent(
       NULL,		  // default security attributes
       TRUE,		  // manual reset
       FALSE,		  // initially not set
       NULL		  // unnamed mutex
-    );
+      );
 
     SetSize(600, 265);
   }
 
   OscapePrg::~OscapePrg() {
     CloseHandle(evt);
-    CloseHandle(tve);
+    CloseHandle(end);
   }
 };
 
@@ -816,13 +870,8 @@ private:
     OSStatusBar->SetStatusText(wxT("Running extractor ..."), 0);
     wxBusyCursor wait;
     prog = new OscapePrg(this);
-    HANDLE th;
-    if ((th = CreateThread(NULL, 0, ::HeightfieldExtract, prog, 0, NULL)) == INVALID_HANDLE_VALUE)
-      return;
-    SetThreadPriority(th, THREAD_PRIORITY_BELOW_NORMAL);
-    int ret = prog->ShowModal();
+    int ret = prog->Enter(::HeightfieldExtract);
     delete prog;
-    CloseHandle(th);
     OSStatusBar->SetStatusText(wxT("Ready"), 0);
     prog = NULL;
     if (ret != 666)
@@ -1028,12 +1077,11 @@ public:
 	d.ShowModal();
       }
 
-      prog->EndModal(0);
+      prog->Leave(0);
       return;
     }
     
-    Sleep(500);
-    prog->EndModal(666);
+    prog->Leave(666);
   }
 
 private:
@@ -1748,13 +1796,8 @@ private:
     OSStatusBar->SetStatusText(wxT("Running generator ..."), 0);
     wxBusyCursor wait;
     prog = new OscapePrg(this);
-    HANDLE th;
-    if ((th = CreateThread(NULL, 0, ::HeightfieldGenerate, prog, 0, NULL)) == INVALID_HANDLE_VALUE)
-      return;
-    SetThreadPriority(th, THREAD_PRIORITY_BELOW_NORMAL);
-    int ret = prog->ShowModal();
+    int ret = prog->Enter(::HeightfieldGenerate);
     delete prog;
-    CloseHandle(th);
     OSStatusBar->SetStatusText(wxT("Ready"), 0);
     prog = NULL;
     if (ret != 666)
@@ -1848,7 +1891,7 @@ public:
 
   void HeightfieldGenerate() {
     if (!SanitizeGeneration()) {
-      prog->EndModal(666);
+      prog->Leave(666);
       return;
     }
 
@@ -2142,7 +2185,7 @@ public:
 	      d.ShowModal();
 	    }
 
-	    prog->EndModal(0);
+	    prog->Leave(0);
 	    return;
 	  }
 
@@ -2214,13 +2257,12 @@ public:
 	  d.ShowModal();
 	}
 
-	prog->EndModal(0);
+	prog->Leave(0);
 	return;
       }
     }
 
-    Sleep(500);
-    prog->EndModal(666);
+    prog->Leave(666);
   }
 private:
 
@@ -2700,13 +2742,8 @@ private:
     OSStatusBar->SetStatusText(wxT("Running installer ..."), 0);
     wxBusyCursor wait;
     prog = new OscapePrg(this);
-    HANDLE th;
-    if ((th = CreateThread(NULL, 0, ::HeightfieldInstall, prog, 0, NULL)) == INVALID_HANDLE_VALUE)
-      return;
-    SetThreadPriority(th, THREAD_PRIORITY_BELOW_NORMAL);
-    int ret = prog->ShowModal();
+    int ret = prog->Enter(::HeightfieldInstall);
     delete prog;
-    CloseHandle(th);
     OSStatusBar->SetStatusText(wxT("Ready"), 0);
     prog = NULL;
     if (ret != 666)
@@ -3143,7 +3180,7 @@ terminal_error: {
 	    d.ShowModal();
 	  }
 
-	  prog->EndModal(0);
+	  prog->Leave(0);
 	  return;
 	}
 
@@ -3156,8 +3193,7 @@ terminal_error: {
 	prog->InitProgress(tpc, 0, "Skipping:", 0.0, installdone += 8, 1);
     }
 
-    Sleep(500);
-    prog->EndModal(666);
+    prog->Leave(666);
   }
 
   void SetStatus(const char *status) {
