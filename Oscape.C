@@ -1050,18 +1050,25 @@ public:
 	    0x00000040 / *fIsLoadMasters* / | ((*push)->second.act ? */
 	    0x00000008 /*fIsInLoadOrder* / : 0)*/ |
 	    0x00000002 /* fIsFullLoad * /
-	    0x00000001 / * fIsMinLoad */ |
-	    0x00000200 /* fIsIndexLANDs */);
+	    0x00000001 / * fIsMinLoad * / |
+	    0x00000200 / * fIsIndexLANDs */);
 //	  break;
 	}
       }
     }
-
+    
     prog->StartProgress(3);
+
+    /* configure filtering */
+    col->SetFilterMode(true);
+    col->AddFilter(REV32(WRLD));
+    col->AddFilter(REV32(CELL));
+    col->AddFilter(REV32(LTEX));
+    col->AddFilter(REV32(LAND));
 
     try {
       prog->InitProgress("Initializing:", 0, "Reading plugins:", 0.0, 0, 1);
-      LoadCollection(col);
+      LoadCollection(col, ::SetTopic);
 
       prog->InitProgress("Extracting:", 0, "Parsing plugins:", 0.0, 1, 1);
       ExtractFromCollection(col);
@@ -1166,6 +1173,11 @@ private:
     OSHeightfieldFirst1->Show();
     OSHeightfieldFirst1->GetParent()->Layout();
     OSHeightfieldInfos->Clear();
+
+    formID =
+    tSize = cSize =
+    rWidth = rHeight =
+    tLeft = tRight = tTop = tBottom = NULL;
 
     if (ph.IsNull())
       return;
@@ -1655,7 +1667,15 @@ private:
   }
 
   void VerifyHeightfieldOut() {
-    wdspace = formID->GetValueAsVariant().GetInteger();
+    wxVariant v;
+
+    if (!formID)
+      return;
+    v = formID->GetValueAsVariant();
+    if (v.IsNull())
+      return;
+
+    wdspace = v.GetInteger();
 
     long l = 0; if (OSTarget->GetValue().ToLong(&l)) limit = l;
     double r = 0.0; if (OSTermination->GetValue().ToDouble(&r)) termination = r;
@@ -3269,6 +3289,8 @@ public:
 
     ph = OSBaseDirIn->GetPath();
     ChangeBaseDirIn(ph);
+
+    formID = NULL;
   }
 
   OscapeGUI::~OscapeGUI() {
@@ -3396,10 +3418,24 @@ void SetTopic(const char *topic) {
 
 void SetTopic(const char *topic, int a, int b) {
   if (prg) {
-    char btopic[256];
-    sprintf(btopic, topic, a, b);
+    char btopic[256]; sprintf(btopic, topic, a, b);
+
     prg->SetTopic(btopic);
   }
+}
+
+bool SetTopic(const unsigned long p, const unsigned long t, const char *topic) {
+  if (prg) {
+    char btopic[256]; sprintf(btopic, "Reading plugin \"%s\":", topic);
+    static unsigned long lastt = 0;
+
+    prg->SetTopic(btopic);
+    if (lastt != t)
+      prg->InitProgress(lastt = t);
+    prg->SetProgress(p);
+  }
+
+  return true;
 }
 
 void InitProgress(int rng, int srng) {

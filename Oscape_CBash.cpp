@@ -568,6 +568,11 @@ public:
   }
 };
 
+#define EXTRACT_GROUNDLAYER	1
+#define EXTRACT_BASELAYER	1
+#define EXTRACT_BLENDLAYER	1
+#define EXTRACT_OVERLAYER	1
+
 class ExtractCWorldOp : public RecordOp {
   unsigned long *tx;
 
@@ -592,9 +597,32 @@ public:
 	  long topy  = (cell->XCLC->posY + rofy);
 	  long leftc = (offsx + leftx) * 32;
 	  long topc  = (offsy + topy ) * 32;
+	  float bbuf[33][33][4] = {0};
 
 	  SetTopic("Extracting surfaces from cell {%d,%d}", leftx, topy);
 	  SetProgress(dells++);
+
+#define extract(c, pos)		(float)((c >> pos) & 0xFF)
+
+	  if (EXTRACT_GROUNDLAYER) {
+	    /* search for the texture and get the average color of it */
+	    unsigned long *tex = LookupTexture(0);
+	    /* don't apply missing textures (instead of applying black) */
+	    if (tex) {
+	      for (int y = 0; y <= 32; y++)
+	      for (int x = 0; x <= 32; x++) {
+		unsigned long ctext = *tex;
+#ifdef TEXTURE2x2
+		ctext = tex[((x & 1) << 0) | ((y & 1) << 1)];
+#endif
+
+		bbuf[y][x][0] = extract(ctext, 24);
+		bbuf[y][x][1] = extract(ctext, 16);
+		bbuf[y][x][2] = extract(ctext,  8);
+		bbuf[y][x][3] = extract(ctext,  0);
+	      }
+	    }
+	  }
 
 	  if (land->VTEX.IsLoaded()) {
 	    std::vector<FORMID>::iterator walk = land->VTEX.value.begin();
@@ -606,6 +634,7 @@ public:
 	    }
 	  }
 
+	  if (EXTRACT_BASELAYER)
 	  if (land->BTXT.IsLoaded()) {
 	    std::vector<Ob::LANDRecord::LANDGENTXT *>::iterator walk = land->BTXT.value.begin();
 	    while (walk != land->BTXT.value.end()) {
@@ -630,27 +659,30 @@ public:
 		}
 
 		/* copy over */
-		for (int lposy = 0; lposy < 16; lposy++)
-		for (int lposx = 0; lposx < 16; lposx++) {
-		  /* AFAIK cells are centered on their coordinates [-16,16] */
+		for (int lposy = 0; lposy <= 16; lposy++)
+		for (int lposx = 0; lposx <= 16; lposx++) {
 		  int y = offsy + lposy;
 		  int x = offsx + lposx;
 
-		  int realx = leftc + x + lofx;
-		  int realy = topc  + y + lofy;
-
-		  if ((realx >= 0) && (realx < sizex) &&
-		      (realy >= 0) && (realy < sizey)) {
-		    unsigned long realpos = rpos(realx, realy);
-
-		    long ctext = *tex;
-
+		  unsigned long ctext = *tex;
 #ifdef TEXTURE2x2
-		    ctext = tex[((realx & 1) << 0) | ((realy & 1) << 1)];
+		  ctext = tex[((x & 1) << 0) | ((y & 1) << 1)];
 #endif
+		  unsigned long alpha = extract(ctext, 0);
 
-		    tx[realpos] = ctext;
-		  }
+		  /* blending with alpha from texture looks bad,
+		   * in theory the alpha should be a max()-map anyway
+		   */
+#define blend(B, a, A, b, pos)	(						\
+		      ((1.0f - (B/* * A / 0xFF*/)) * ((a       )       )) +	\
+		      ((       (B/* * A / 0xFF*/)) * ((b >> pos) & 0xFF))	\
+		    )
+
+		  bbuf[y][x][0] = blend(1.0, bbuf[y][x][0], alpha, ctext, 24);
+		  bbuf[y][x][1] = blend(1.0, bbuf[y][x][1], alpha, ctext, 16);
+		  bbuf[y][x][2] = blend(1.0, bbuf[y][x][2], alpha, ctext,  8);
+		  bbuf[y][x][3] = blend(1.0, bbuf[y][x][3], alpha, ctext,  0);
+#undef	blend
 		}
 	      }
 
@@ -658,6 +690,8 @@ public:
 	    }
 	  }
 
+	  /* overlay one layer after the other */
+	  if (EXTRACT_BLENDLAYER)
 	  if (land->Layers.IsLoaded()) {
 	    for (int l = 0; l < 0x8; l++) {
 	      std::vector<Ob::LANDRecord::LANDLAYERS *>::iterator srch = land->Layers.value.begin();
@@ -688,7 +722,6 @@ public:
 		    std::vector<Ob::LANDRecord::LANDVTXT>::iterator over = (*srch)->VTXT.value.begin();
 		    while (over != (*srch)->VTXT.value.end()) {
 		      float opc = over->opacity;
-		      float ipc = 1.0f - opc;
 
 		      __assume(
 			(over->position >= 0) && 
@@ -701,35 +734,25 @@ public:
 		      int y = offsy + lposy;
 		      int x = offsx + lposx;
 
-		      /* AFAIK cells are centered on their coordinates [-16,16] */
-		      int realx = leftc + x + lofx;
-		      int realy = topc  + y + lofy;
-
-		      if ((realx >= 0) && (realx < sizex) &&
-			  (realy >= 0) && (realy < sizey)) {
-			unsigned long realpos = rpos(realx, realy);
-
-			long ctext = *tex;
-
+		      unsigned long ctext = *tex;
 #ifdef TEXTURE2x2
-			ctext = tex[((realx & 1) << 0) | ((realy & 1) << 1)];
+		      ctext = tex[((x & 1) << 0) | ((y & 1) << 1)];
 #endif
+		      unsigned long alpha = extract(ctext, 0);
+		      
+		      /* blending with alpha from texture looks bad,
+		       * in theory the alpha should be a max()-map anyway
+		       */
+#define blend(B, a, A, b, pos)	(						\
+			  ((1.0f - (B/* * A / 0xFF*/)) * ((a       )       )) +	\
+			  ((       (B/* * A / 0xFF*/)) * ((b >> pos) & 0xFF))	\
+			)
 
-#define blend(A, a, B, b, pos)	((unsigned long)floor(		\
-			    (A * ((a >> pos) & 0xFF)) +		\
-			    (B * ((b >> pos) & 0xFF))		\
-			  ) << pos)
-
-			long
-			color  = 0;
-			color |= blend(ipc, tx[realpos], opc, ctext, 24);
-			color |= blend(ipc, tx[realpos], opc, ctext, 16);
-			color |= blend(ipc, tx[realpos], opc, ctext,  8);
-			color |= blend(ipc, tx[realpos], opc, ctext,  0);
-#undef blend
-
-			tx[realpos] = color;
-		      }
+		      bbuf[y][x][0] = blend(opc, bbuf[y][x][0], alpha, ctext, 24);
+		      bbuf[y][x][1] = blend(opc, bbuf[y][x][1], alpha, ctext, 16);
+		      bbuf[y][x][2] = blend(opc, bbuf[y][x][2], alpha, ctext,  8);
+		      bbuf[y][x][3] = blend(opc, bbuf[y][x][3], alpha, ctext,  0);
+#undef	blend
 
 		      over++;
 		    }
@@ -741,36 +764,48 @@ public:
 	    }
 	  }
 
+	  /* multiply both colors in the cell */
+	  if (EXTRACT_OVERLAYER)
 	  if (land->VCLR.IsLoaded()) {
 	    for (int y = 0; y <= 32; y ++)
 	    for (int x = 0; x <= 32; x ++) {
-	      /* AFAIK cells are centered on their coordinates [-16,16] */
-	      int realx = leftc + x + lofx;
-	      int realy = topc  + y + lofy;
 
-	      if ((realx >= 0) && (realx < sizex) &&
-		  (realy >= 0) && (realy < sizey)) {
-		unsigned long realpos = rpos(realx, realy);
+#define multiply(a, b, pos)	((a * b) / 0xFF)
 
-#define multiply(a, b, pos)	(((((a >> pos) & 0xFF) * b) / 0xFF) << pos)
-
-		long
-		color  = 0;
-		color |= multiply(tx[realpos], land->VCLR->VCLR[y][x].red  , 24);
-		color |= multiply(tx[realpos], land->VCLR->VCLR[y][x].green, 16);
-		color |= multiply(tx[realpos], land->VCLR->VCLR[y][x].blue ,  8);
-		color |= multiply(tx[realpos], 0xFF                        ,  0);
+	      bbuf[y][x][0] = multiply(bbuf[y][x][0], land->VCLR->VCLR[y][x].red  , 24);
+	      bbuf[y][x][1] = multiply(bbuf[y][x][1], land->VCLR->VCLR[y][x].green, 16);
+	      bbuf[y][x][2] = multiply(bbuf[y][x][2], land->VCLR->VCLR[y][x].blue ,  8);
+	      bbuf[y][x][3] = multiply(bbuf[y][x][3], 0xFF                        ,  0);
 #undef	multiply
 
-//		color |= (0xFF - land->VCLR->VCLR[y][x].red  ) << 24;
-//		color |= (0xFF - land->VCLR->VCLR[y][x].green) << 16;
-//		color |= (0xFF - land->VCLR->VCLR[y][x].blue ) <<  8;
-//		color |= (0xFF - 0xFF                        ) <<  0;
-
-		tx[realpos] = color;
-	      }
 	    }
 	  }
+
+	  /* place the cell into the destination */
+	  for (int y = 0; y <= 32; y++)
+	  for (int x = 0; x <= 32; x++) {
+	    int realx = leftc + x + lofx;
+	    int realy = topc  + y + lofy;
+
+	    if ((realx >= 0) && (realx < sizex) &&
+		(realy >= 0) && (realy < sizey)) {
+	      unsigned long realpos = rpos(realx, realy);
+
+#define round(clr, pos)	(min((unsigned long)floor(clr + 0.5), 0xFF) << pos)
+
+	      unsigned long
+	      color  = 0;
+	      color |= round(bbuf[y][x][0], 24);
+	      color |= round(bbuf[y][x][1], 16);
+	      color |= round(bbuf[y][x][2],  8);
+	      color |= round(bbuf[y][x][3],  0);
+#undef	round
+
+	      tx[realpos] = color;
+	    }
+	  }
+
+#undef	extract
 	}
 
 	/* next */
@@ -988,11 +1023,11 @@ DWORD __stdcall ExtractFromCollection(LPVOID lp) {
   sizex *= 32;
   sizey *= 32;
 
-  InitProgress(cells * 2, 0.0); dells = 0;
+  InitProgress(cells * 1, 0.0); dells = 0;
 
 //NExtract(num);
   HExtract(num);
-  CExtract(num);
+//CExtract(num);
 
   SetStatus("Ready");
   ltex.clear();
