@@ -209,6 +209,7 @@ void InitProgress(int rng);
 void SetProgress(int dne);
 void SetTopic(const char *topic);
 void SetTopic(const char *topic, int a, int b);
+bool SetTopic(const unsigned long p, const unsigned long t, const char *topic);
 
 void InitProgress(int rng, int srng);
 void SetProgress(int dne, int sdne);
