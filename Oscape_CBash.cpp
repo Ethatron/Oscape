@@ -263,11 +263,11 @@ LPDIRECT3DTEXTURE9 TextureSearch(const char *name) {
 
 /* ############################################################################ */
 
-string weoutn;
-string weouth;
-string weoutx;
-string wename;
-int weid;
+string weoutn; bool calcn = false;
+string weouth; bool calch = false;
+string weoutx; bool calcx = false;
+string weoutm; bool calcm = false;
+string wename; int weid;
 
 /* flip y */
 #define rpos(realx, realy) ((/*(sizey - 1) -*/ realy) * sizex) + (realx)
@@ -331,7 +331,7 @@ public:
 };
 
 #undef	TEXTURE1x1
-#define TEXTURE2x2
+#undef	TEXTURE2x2
 
 /* global so it's much faster to search */
 struct landtex {
@@ -339,13 +339,12 @@ struct landtex {
   LPDIRECT3DTEXTURE9 tex;
   unsigned long mem1x1[1*1];
   unsigned long mem2x2[2*2];
+  unsigned char classification;
 };
 
 map<FORMID, struct landtex> ltex;
 
 unsigned long *LookupTexture(FORMID t) {
-  int missing = 0;
-
   /* what does a texture of 0 mean? (assume default.dds) */
   if (t && !ltex[t].rec) {
     /* find the record */
@@ -443,6 +442,56 @@ unsigned long *LookupTexture(FORMID t) {
   return ltex[t].mem2x2;
 #endif
   return ltex[t].mem1x1;
+}
+
+unsigned char ClassifyTexture(FORMID t) {
+  /* what does a texture of 0 mean? (assume default.dds) */
+  if (t && !ltex[t].rec) {
+    /* find the record */
+    ModFile *WinningModFile;
+    Record *WinningRecord;
+
+    col->LookupWinningRecord(t, WinningModFile, WinningRecord, false);
+    if (!WinningRecord)
+      return NULL;
+    ltex[t].rec = (Ob::LTEXRecord *)WinningRecord;
+  }
+
+  if (!ltex[t].classification) {
+    /* read in the name */
+    const char *name;
+
+    if (t && ltex[t].rec)
+      name = ltex[t].rec->ICON.value;
+    else
+      name = "default.dds";
+
+    /* neutral */
+    unsigned char cls = 128;
+
+    /* 1 is least solid nature, 255 is most solid man-made */
+    /**/ if (stristr(name, "terrainskstoneground"))
+      cls = 255;
+
+    else if (stristr(name, "default"))
+      cls = 1;
+    else if (stristr(name, "sand"))
+      cls = 1;
+    else if (stristr(name, "mud"))
+      cls = 1;
+    else if (stristr(name, "rock"))
+      cls = 128;
+    else if (stristr(name, "cobble"))
+      cls = 255;
+    else if (stristr(name, "road"))
+      cls = 255;
+    else if (stristr(name, "street"))
+      cls = 255;
+
+    ltex[t].classification = cls;
+  }
+
+  return ltex[t].classification;
 }
 
 class ExtractNWorldOp : public RecordOp {
@@ -552,7 +601,7 @@ public:
 #undef	scale
 
 #define shift 0x400
-		hf[realpos] = ((unsigned short)floor(hv + 0.5)) + 0x400;
+		hf[realpos] = ((unsigned short)floor(hv + 0.5)) + shift;
 #undef	shift
 	      }
 	    }
@@ -572,6 +621,208 @@ public:
 #define EXTRACT_BASELAYER	1
 #define EXTRACT_BLENDLAYER	1
 #define EXTRACT_OVERLAYER	1
+
+class ExtractMWorldOp : public RecordOp {
+  unsigned char *tx;
+
+public:
+  ExtractMWorldOp(void *mtx) : RecordOp() {
+    tx = (unsigned char *)mtx;
+  }
+
+  virtual bool Accept(Record *&curRecord) {
+    Ob::WRLDRecord *wrld = (Ob::WRLDRecord *)curRecord;
+    Ob::CELLRecord *cell;
+    Ob::LANDRecord *land;
+
+    if (!stricmp(wrld->EDID.value, wename.data())) {
+      std::vector<Record *>::iterator walk = wrld->CELLS.begin();
+      while (walk != wrld->CELLS.end()) {
+	cell = (Ob::CELLRecord *)(*walk);
+	land = (Ob::LANDRecord *)cell->LAND;
+
+	if (cell->XCLC.IsLoaded() && land) {
+	  long leftx = (cell->XCLC->posX + rofx);
+	  long topy  = (cell->XCLC->posY + rofy);
+	  long leftc = (offsx + leftx) * 32;
+	  long topc  = (offsy + topy ) * 32;
+	  float bbuf[33][33] = {0};
+
+	  SetTopic("Extracting importance from cell {%d,%d}", leftx, topy);
+	  SetProgress(dells++);
+
+	  if (EXTRACT_GROUNDLAYER) {
+	    /* search for the texture and get the average color of it */
+	    unsigned char tex = ClassifyTexture(0);
+	    /* don't apply missing textures (instead of applying black) */
+	    if (tex) {
+	      for (int y = 0; y <= 32; y++)
+	      for (int x = 0; x <= 32; x++) {
+		unsigned char ctext = tex;
+
+		bbuf[y][x] = ctext;
+	      }
+	    }
+	  }
+
+	  if (land->VTEX.IsLoaded()) {
+	    std::vector<FORMID>::iterator walk = land->VTEX.value.begin();
+	    while (walk != land->VTEX.value.end()) {
+	      /* search for the texture and get the average color of it */
+	      unsigned char tex = ClassifyTexture(*walk);
+
+	      walk++;
+	    }
+	  }
+
+	  if (EXTRACT_BASELAYER)
+	  if (land->BTXT.IsLoaded()) {
+	    std::vector<Ob::LANDRecord::LANDGENTXT *>::iterator walk = land->BTXT.value.begin();
+	    while (walk != land->BTXT.value.end()) {
+	      /* search for the texture and get the average color of it */
+	      unsigned char tex = ClassifyTexture((*walk)->texture);
+	      /* don't apply missing textures (instead of applying black) */
+	      if (tex) {
+		int offsx;
+		int offsy;
+
+		__assume(
+		  ((*walk)->quadrant >= 0) &&
+		  ((*walk)->quadrant <= 3)
+		);
+
+		/* bottom/top are y-flipped */
+		switch ((*walk)->quadrant) {
+		  case 0: /* eBottomLeft  */ offsx =  0; offsy =  0; break;
+		  case 1: /* eBottomRight */ offsx = 16; offsy =  0; break;
+		  case 2: /* eTopLeft     */ offsx =  0; offsy = 16; break;
+		  case 3: /* eTopRight    */ offsx = 16; offsy = 16; break;
+		}
+
+		/* copy over */
+		for (int lposy = 0; lposy <= 16; lposy++)
+		for (int lposx = 0; lposx <= 16; lposx++) {
+		  int y = offsy + lposy;
+		  int x = offsx + lposx;
+
+		  unsigned char ctext = tex;
+
+		  /* blending with alpha from texture looks bad,
+		   * in theory the alpha should be a max()-map anyway
+		   */
+#define blend(B, a, A, b)	(				\
+		      ((1.0f - (B/* * A / 0xFF*/)) * a) +	\
+		      ((       (B/* * A / 0xFF*/)) * b)		\
+		    )
+
+		  bbuf[y][x] = blend(1.0, bbuf[y][x], alpha, ctext);
+#undef	blend
+		}
+	      }
+
+	      walk++;
+	    }
+	  }
+
+	  /* overlay one layer after the other */
+	  if (EXTRACT_BLENDLAYER)
+	  if (land->Layers.IsLoaded()) {
+	    for (int l = 0; l < 0x8; l++) {
+	      std::vector<Ob::LANDRecord::LANDLAYERS *>::iterator srch = land->Layers.value.begin();
+	      while (srch != land->Layers.value.end()) {
+		Ob::LANDRecord::LANDGENTXT *walk = &(*srch)->ATXT.value;
+		if (walk->layer == l) {
+		  /* search for the texture and get the average color of it */
+		  unsigned char tex = ClassifyTexture((*walk).texture);
+		  /* don't apply missing textures (instead of applying black) */
+		  if (tex) {
+		    int offsx;
+		    int offsy;
+
+		    __assume(
+		      ((*walk).quadrant >= 0) &&
+		      ((*walk).quadrant <= 3)
+		    );
+
+		    /* bottom/top are y-flipped */
+		    switch ((*walk).quadrant) {
+		      case 0: /* eBottomLeft  */ offsx =  0; offsy =  0; break;
+		      case 1: /* eBottomRight */ offsx = 16; offsy =  0; break;
+		      case 2: /* eTopLeft     */ offsx =  0; offsy = 16; break;
+		      case 3: /* eTopRight    */ offsx = 16; offsy = 16; break;
+		    }
+
+		    /* blend per-pixel */
+		    std::vector<Ob::LANDRecord::LANDVTXT>::iterator over = (*srch)->VTXT.value.begin();
+		    while (over != (*srch)->VTXT.value.end()) {
+		      float opc = over->opacity;
+
+		      __assume(
+			(over->position >= 0) &&
+			(over->position < (17 * 17))
+		      );
+
+		      int lposy = over->position / 17;
+		      int lposx = over->position % 17;
+
+		      int y = offsy + lposy;
+		      int x = offsx + lposx;
+
+		      unsigned char ctext = tex;
+
+		      /* blending with alpha from texture looks bad,
+		       * in theory the alpha should be a max()-map anyway
+		       */
+#define blend(B, a, A, b)	(				\
+			  ((1.0f - (B/* * A / 0xFF*/)) * a) +	\
+			  ((       (B/* * A / 0xFF*/)) * b)	\
+			)
+
+		      bbuf[y][x] = blend(opc, bbuf[y][x], alpha, ctext);
+#undef	blend
+
+		      over++;
+		    }
+		  }
+		}
+
+		srch++;
+	      }
+	    }
+	  }
+
+	  /* place the cell into the destination */
+	  for (int y = 0; y <= 32; y++)
+	  for (int x = 0; x <= 32; x++) {
+	    int realx = leftc + x + lofx;
+	    int realy = topc  + y + lofy;
+
+	    if ((realx >= 0) && (realx < sizex) &&
+		(realy >= 0) && (realy < sizey)) {
+	      unsigned long realpos = rpos(realx, realy);
+
+#define round(clr)	min((unsigned long)floor(clr + 0.5), 0xFF)
+
+	      unsigned char
+	      color  = 0;
+	      color |= round(bbuf[y][x]);
+#undef	round
+
+	      tx[realpos] = color;
+	    }
+	  }
+
+#undef	extract
+	}
+
+	/* next */
+	walk++;
+      }
+    }
+
+    return false;
+  }
+};
 
 class ExtractCWorldOp : public RecordOp {
   unsigned long *tx;
@@ -646,7 +897,7 @@ public:
 		int offsy;
 
 		__assume(
-		  ((*walk)->quadrant >= 0) && 
+		  ((*walk)->quadrant >= 0) &&
 		  ((*walk)->quadrant <= 3)
 		);
 
@@ -706,7 +957,7 @@ public:
 		    int offsy;
 
 		    __assume(
-		      ((*walk).quadrant >= 0) && 
+		      ((*walk).quadrant >= 0) &&
 		      ((*walk).quadrant <= 3)
 		    );
 
@@ -724,7 +975,7 @@ public:
 		      float opc = over->opacity;
 
 		      __assume(
-			(over->position >= 0) && 
+			(over->position >= 0) &&
 			(over->position < (17 * 17))
 		      );
 
@@ -739,7 +990,7 @@ public:
 		      ctext = tex[((x & 1) << 0) | ((y & 1) << 1)];
 #endif
 		      unsigned long alpha = extract(ctext, 0);
-		      
+
 		      /* blending with alpha from texture looks bad,
 		       * in theory the alpha should be a max()-map anyway
 		       */
@@ -825,7 +1076,7 @@ void NExtract(SINT32 num) {
   if (oh == (HANDLE)HFILE_ERROR) throw runtime_error("Failed to open output file");
 
   /* mark them sparse (cool for zeroes) */
-  DWORD ss; BOOL 
+  DWORD ss; BOOL
   s = DeviceIoControl(oh, FSCTL_SET_SPARSE, NULL, 0, NULL, 0, &ss, NULL);
 
 //DWORD lenh = GetFileSize(oh, NULL);
@@ -874,7 +1125,7 @@ void HExtract(SINT32 num) {
   if (oh == (HANDLE)HFILE_ERROR) throw runtime_error("Failed to open output file");
 
   /* mark them sparse (cool for zeroes) */
-  DWORD ss; BOOL 
+  DWORD ss; BOOL
   s = DeviceIoControl(oh, FSCTL_SET_SPARSE, NULL, 0, NULL, 0, &ss, NULL);
 
 //DWORD lenh = GetFileSize(oh, NULL);
@@ -916,6 +1167,55 @@ void HExtract(SINT32 num) {
   CloseHandle(oh);
 }
 
+void MExtract(SINT32 num) {
+  /* create output file */
+//OFSTRUCT of; HANDLE ohx = (HANDLE)OpenFile(weoutx.data(), &of, OF_READWRITE);
+  HANDLE oh = CreateFile(weoutm.data(), GENERIC_READ | GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+  if (oh == (HANDLE)HFILE_ERROR) throw runtime_error("Failed to open output file");
+
+  /* mark them sparse (cool for zeroes) */
+  DWORD ss; BOOL
+  s = DeviceIoControl(oh, FSCTL_SET_SPARSE, NULL, 0, NULL, 0, &ss, NULL);
+
+//DWORD lenh = GetFileSize(oh, NULL);
+  DWORD len = sizex * sizey * sizeof(unsigned char) * 1;
+
+  FILE_ZERO_DATA_INFORMATION z;
+  z.FileOffset.QuadPart = 0;
+  z.BeyondFinalZero.QuadPart = len;
+
+  /* mark all zeros (cool for zeroes) */
+  s = DeviceIoControl(oh, FSCTL_SET_ZERO_DATA, &z, sizeof(z), NULL, 0, &ss, NULL);
+
+  SetFilePointer(oh, len, NULL, FILE_BEGIN); BOOL sfs = SetEndOfFile(oh);
+  if (!sfs) throw runtime_error("Failed to resize output file");
+
+  HANDLE mh = CreateFileMapping(oh, NULL, PAGE_READWRITE, 0, 0, NULL);
+  if (!mh) throw runtime_error("Failed to map output file");
+
+  char *mem = (char *)MapViewOfFile(mh, FILE_MAP_ALL_ACCESS, 0, 0, 0);
+  if (!mem) throw runtime_error("Failed to allocate output file");
+
+  /* this may be 65535 if we want to mark them invalid */
+  memset(mem, 0x00000000, len);
+
+  {
+    SetTopic("Extracting importance from cells:");
+    SetStatus("Extracting importance ...");
+
+    ExtractMWorldOp ewo(mem);
+    for (SINT32 n = 0; n < num; ++n) {
+      ModFile *mf = GetModIDByLoadOrder(col, n);
+
+      mf->VisitRecords(REV32(WRLD), ewo);
+    }
+  }
+
+  UnmapViewOfFile(mem);
+  CloseHandle(mh);
+  CloseHandle(oh);
+}
+
 void CExtract(SINT32 num) {
   /* create output file */
 //OFSTRUCT of; HANDLE ohx = (HANDLE)OpenFile(weoutx.data(), &of, OF_READWRITE);
@@ -923,7 +1223,7 @@ void CExtract(SINT32 num) {
   if (oh == (HANDLE)HFILE_ERROR) throw runtime_error("Failed to open output file");
 
   /* mark them sparse (cool for zeroes) */
-  DWORD ss; BOOL 
+  DWORD ss; BOOL
   s = DeviceIoControl(oh, FSCTL_SET_SPARSE, NULL, 0, NULL, 0, &ss, NULL);
 
 //DWORD lenh = GetFileSize(oh, NULL);
@@ -1011,8 +1311,9 @@ DWORD __stdcall ExtractFromCollection(LPVOID lp) {
 //while (sizex < (offsx + wrghtx)) sizex += 32;
 //while (sizey < (offsy + wboty )) sizey += 32;
 
-  sizex = (offsx + wrghtx);
-  sizey = (offsy + wboty );
+  /* because of (size >> 1) rounddown the positive side can be one tile bigger */
+  sizex = (offsx + max(wrghtx, offsx));
+  sizey = (offsy + max(wboty , offsy));
 
   if (sizex % 32) sizex += 32 - (sizex % 32);
   if (sizey % 32) sizey += 32 - (sizey % 32);
@@ -1023,11 +1324,18 @@ DWORD __stdcall ExtractFromCollection(LPVOID lp) {
   sizex *= 32;
   sizey *= 32;
 
-  InitProgress(cells * 1, 0.0); dells = 0;
+  int numpasses = 0;
+  numpasses += calcn ? 1 : 0;
+  numpasses += calch ? 1 : 0;
+  numpasses += calcx ? 1 : 0;
+  numpasses += calcm ? 1 : 0;
 
-//NExtract(num);
-  HExtract(num);
-//CExtract(num);
+  InitProgress(cells * numpasses, 0.0); dells = 0;
+
+  if (calcn) NExtract(num);
+  if (calch) HExtract(num);
+  if (calcm) MExtract(num);
+  if (calcx) CExtract(num);
 
   SetStatus("Ready");
   ltex.clear();

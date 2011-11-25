@@ -404,6 +404,7 @@ void write_objs(SimplField& ter, const char *pattern) {
     // 1k == 32, 3k == 96, 512 == 16 */
     int resx = rasterx / 32;
     int resy = rastery / 32;
+
     // round down, negative side would be smaller than positive side
     int offx = tilesx / 2;
     int offy = tilesy / 2;
@@ -559,11 +560,12 @@ void write_nifs(SimplField& ter, const char *pattern)
 	logrf("writing \"%s\"\r", name);
 
 	/* NIF starts on index 0 */
-	int idx = 0;
+	int idx = 0, ifx = 0;
 
 //      NiNodeRef root = new NiNode;
 //      root->SetName("");
 
+	/* normal treatment --------------------------------------------------------------- */
 	if ((SectorVerticeO[ty][tx].size() < 0xFFFF) &&
 	    (SectorFaceO   [ty][tx].size() < 0xFFFF)) {
 	  NiTriShapeRef root = new NiTriShape;
@@ -644,7 +646,13 @@ void write_nifs(SimplField& ter, const char *pattern)
 
 	  WriteNifTree(name, root, info);
 	}
+	/* special treatment --------------------------------------------------------------- */
 	else {
+	  if (!RequestFeedback("The current tile contains too much triangles.\n"
+			       "Attempt to split it to reduce it's size?\n"
+			       "These files won't be compatible with Oblivion."))
+	    throw runtime_error("ExitThread");
+
 	  NiNodeRef root = new NiNode;
 	  NifInfo info;
 
@@ -653,18 +661,24 @@ void write_nifs(SimplField& ter, const char *pattern)
 	  info.userVersion = 11;
 	  info.userVersion2 = 11;
 
-//	  Real side = 0.5 * sizescale * rasterx;
-	  Real side = 0.0;
+//	  Real sidex = 0.5 * sizescale * rasterx;
+	  Real sidex = 0.0;
+	  Real sidey = 0.0;
 
 	  {
-	    /* calculate the median */
-	    for (itv = SectorVerticeO[ty][tx].begin(); itv != SectorVerticeO[ty][tx].end(); itv++)
-	      side += (*itv)->x;
+	    /* calculate the median of either direction */
+	    for (itv = SectorVerticeO[ty][tx].begin(); itv != SectorVerticeO[ty][tx].end(); itv++) {
+	      sidex += (*itv)->x;
+	      sidey += (*itv)->y;
+	    }
 
-	    side /= SectorVerticeO[ty][tx].size();
+	    sidex /= SectorVerticeO[ty][tx].size();
+	    sidey /= SectorVerticeO[ty][tx].size();
 	  }
 
-	  for (int s = -1; s <= 1; s += 2) {
+	  /* TODO: don't emit double faces (same face in multiple quadrants) */
+	  for (int sy = -1; sy <= 1; sy += 2)
+	  for (int sx = -1; sx <= 1; sx += 2) {
 	    NiTriShapeRef node = new NiTriShape;
 	    NiTriShapeDataRef data = new NiTriShapeData;
 
@@ -682,7 +696,7 @@ void write_nifs(SimplField& ter, const char *pattern)
 	    vector<Niflib::TexCoord> passt;
 
 	    /* counter starts on index 0 */
-	    idx = 0;
+	    idx = 0, ifx = 0;
 
 	    {
 	      /* unmark them all */
@@ -691,14 +705,21 @@ void write_nifs(SimplField& ter, const char *pattern)
 	    }
 
 	    {
+	      /* mark per quadrant */
 	      for (itf = SectorFaceO[ty][tx].begin(); itf != SectorFaceO[ty][tx].end(); itf++) {
-		Real tendency =
-		  (side - (*itf)->v[0]->x) +
-		  (side - (*itf)->v[1]->x) +
-		  (side - (*itf)->v[2]->x);
+		Real tendencyy =
+		  (sidey - (*itf)->v[0]->y) +
+		  (sidey - (*itf)->v[1]->y) +
+		  (sidey - (*itf)->v[2]->y);
+		Real tendencyx =
+		  (sidex - (*itf)->v[0]->x) +
+		  (sidex - (*itf)->v[1]->x) +
+		  (sidex - (*itf)->v[2]->x);
 
-		if (((s <= 0) && (tendency <= 0)) ||
-	      	    ((s >  0) && (tendency >  0))) {
+		if (((sy <= 0) && (tendencyy <= 0)) ||
+		    ((sy >  0) && (tendencyy >  0)))
+		if (((sx <= 0) && (tendencyx <= 0)) ||
+		    ((sx >  0) && (tendencyx >  0))) {
       		  /* mark all used vertices in this slice */
       		  if ((*itf)->v[0]->idx < 0)
 		    (*itf)->v[0]->idx = idx++;
@@ -706,13 +727,17 @@ void write_nifs(SimplField& ter, const char *pattern)
 		    (*itf)->v[1]->idx = idx++;
       		  if ((*itf)->v[2]->idx < 0)
 		    (*itf)->v[2]->idx = idx++;
+
+		  ifx++;
 		}
 	      }
 	    }
 
 	    /* blaaaa */
-	    if (idx > 65535)
+	    if ((idx > 65535) || (ifx > 65535)) {
+	      throw runtime_error("Tile couldn't be split sufficiently to fit into a NIF. Reduce the number of target-points!");
 	      continue;
+	    }
 
 	    /* NIF starts on index 0 */
 	    idx = 0;
@@ -725,9 +750,14 @@ void write_nifs(SimplField& ter, const char *pattern)
 	      }
 	    }
 
+	    assert(idx >= 0);
+	    assert(idx <= 65535);
+
 	    {
 	      passv.resize(idx);
 	      for (itv = SectorVerticeO[ty][tx].begin(); itv != SectorVerticeO[ty][tx].end(); itv++) {
+		assert((*itv)->idx <= 65535);
+
       		if ((*itv)->idx >= 0)
 		  passv[(*itv)->idx] = (Niflib::Vector3(
 		    (float)(*itv)->x,
@@ -747,6 +777,8 @@ void write_nifs(SimplField& ter, const char *pattern)
 	       */
 	      passt.resize(idx);
 	      for (itv = SectorVerticeO[ty][tx].begin(); itv != SectorVerticeO[ty][tx].end(); itv++) {
+		assert((*itv)->idx <= 65535);
+
       		if ((*itv)->idx >= 0)
 		  passt[(*itv)->idx] = (Niflib::TexCoord(
 		    (float)(*itv)->tx,
@@ -760,6 +792,8 @@ void write_nifs(SimplField& ter, const char *pattern)
 	    if (emitnrm) {
 	      passn.resize(idx);
 	      for (itv = SectorVerticeO[ty][tx].begin(); itv != SectorVerticeO[ty][tx].end(); itv++) {
+		assert((*itv)->idx <= 65535);
+
       		if ((*itv)->idx >= 0)
 		  passn[(*itv)->idx] = (Niflib::Vector3(
 		    (float)(*itv)->nx,
@@ -773,7 +807,12 @@ void write_nifs(SimplField& ter, const char *pattern)
 
 	    {
 	      for (itf = SectorFaceO[ty][tx].begin(); itf != SectorFaceO[ty][tx].end(); itf++) {
-		if ((*itf)->v[0]->idx >= 0)
+		assert((*itf)->v[0]->idx <= 65535);
+
+		/* triangles touching the active area shouldn't make it */
+		if (((*itf)->v[0]->idx >= 0) &&
+		    ((*itf)->v[1]->idx >= 0) &&
+		    ((*itf)->v[2]->idx >= 0))
 		  passi.push_back(Niflib::Triangle(
 		    (*itf)->v[0]->idx,
 		    (*itf)->v[1]->idx,
@@ -1130,7 +1169,9 @@ void writetex(LPDIRECT3DTEXTURE9 tex, const char *pattern, const char *pfx, int 
       if (IsOlder(name, writechk)) {
 	/* preserve current textures-buffer */
 	LPDIRECT3DTEXTURE9 tex_plus = tex;
+	D3DSURFACE_DESC tex_dsc;
 
+	tex->GetLevelDesc(0, &tex_dsc);
 	if (1)
 	  tex->AddRef();
 
@@ -1139,7 +1180,7 @@ void writetex(LPDIRECT3DTEXTURE9 tex, const char *pattern, const char *pfx, int 
 	    res = D3DXSaveTextureToFile(name, D3DXIFF_DDS, tex_plus, NULL);
 	}
 	else {
-	  if (TextureCompressA(&tex_plus, 0))
+	  if (TextureCompressRGB(&tex_plus, 0, true))
 	    res = D3DXSaveTextureToFile(name, D3DXIFF_DDS, tex_plus, NULL);
 	}
 

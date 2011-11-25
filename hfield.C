@@ -65,13 +65,21 @@ void HField::init(ifstream& dataStream, const char *texFile, const char *greyFil
 
   //?? optimization: if emphasis==0 || texfile==0 then don't read texture
   if (texFile) {
-    ifstream texStream(texFile,ios::binary);
+    ifstream texStream(texFile, ios::binary);
     cout << "# Opening texture file: " << texFile << endl;
     tex = new RealColorTexture(texStream);
+    map = NULL;
+  }
+  else if (greyFile) {
+    ifstream greyStream(greyFile, ios::binary);
+    cout << "# Opening texture file: " << greyFile << endl;
+    tex = NULL;
+    map = new RealLumaTexture(greyStream);
   }
   else {
     emphasis = 0.0;
     tex = NULL;
+    map = NULL;
   }
 
   render_with_color = 0;
@@ -98,6 +106,7 @@ void HField::init(ifstream& dataStream, const char *texFile, const char *greyFil
 void HField::free() {
   delete data;
   delete tex;
+  delete map;
 }
 
 // bilinear interpolation
@@ -117,18 +126,18 @@ Real HField::eval_interp(Real x, Real y) const {
 // Note: this code could access off edge of array, but such bogus samples
 // should be weighted by zero (fx=0 and/or fy=0).
 void HField::luma_interp(Real x, Real y, Real &l) const {
-    int ix = (int)x; Real fx = x - ix;
-    int iy = (int)y; Real fy = y - iy;
-    const Luma *luma;
-    Luma lx0, lx1;
+  int ix = (int)x; Real fx = x - ix;
+  int iy = (int)y; Real fy = y - iy;
+  const Luma *luma;
+  Luma lx0, lx1;
 
-    luma = &luma_val(ix, iy + 0);
-    lx0.l = LERP(fx, luma[0].l, luma[1].l);
+  luma = &luma_val(ix, iy + 0);
+  lx0.l = LERP(fx, luma[0].l, luma[1].l);
 
-    luma = &luma_val(ix, iy + 1);
-    lx1.l = LERP(fx, luma[0].l, luma[1].l);
+  luma = &luma_val(ix, iy + 1);
+  lx1.l = LERP(fx, luma[0].l, luma[1].l);
 
-    l = LERP(fy, lx0.l, lx1.l);
+  l = LERP(fy, lx0.l, lx1.l);
 }
 
 // bilinear interpolation

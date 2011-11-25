@@ -298,6 +298,106 @@ void write_nrmhgt1(bool fmaps, bool nmaps, bool hmaps, const HField& hf, const c
 }
 
 void write_nrmhgt1(bool fmaps, bool nmaps, bool hmaps, const HField& hf) {
-  write_nrmhgt1(fmaps, nmaps, hmaps, hf, "%02d.%02d.%02d.%02d");
+    write_nrmhgt1(fmaps, nmaps, hmaps, hf, "%02d.%02d.%02d.%02d");
 }
 #endif
+
+void write_col1(bool cmaps, const CField& cf, const char *pattern) {
+    // 1k == 32, 3k == 96, 512 == 16 */
+    int resx = rasterx / 32;
+    int resy = rastery / 32;
+
+    // round down, negative side would be smaller than positive side
+    int offx = tilesx / 2;
+    int offy = tilesy / 2;
+
+#define ADJUSTMENT  0
+    /* 1 more to align texels with coordinates (center) */
+    int ww = rasterx + ADJUSTMENT;
+    int hh = rastery + ADJUSTMENT;
+
+    int gw = cf.get_width();
+    int gh = cf.get_height();
+
+    /* allocate persistant output-buffer */
+    LPDIRECT3DTEXTURE9 tcol = NULL;
+
+    if (cmaps) {
+      pD3DDevice->CreateTexture(ww, hh, 0, 0, D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, &tcol, NULL);
+      if (!tcol) throw runtime_error("Failed to allocate texture");
+    }
+
+    /* initialize progress */
+    InitProgress((numty - minty) * (numtx - mintx), hh);
+
+    for (int ty = minty; ty < numty; ty++) {
+    for (int tx = mintx; tx < numtx; tx++) {
+      /* codification is:
+       * "worldspace.tilex*32.tiley*32.32"
+       * worldspace == 60 == Tamriel
+       */
+      int coordx = (tx - offx) * resx;
+      int coordy = (ty - offy) * resy;
+
+      /* VBs starts on index 0 */
+      unsigned int i = 0, idx = 0;
+
+      if (cmaps && !skiptex(pattern, "", coordx, coordy, min(resx, resy), false)) {
+	/* lock persistant output-buffer */
+	D3DLOCKED_RECT rcol;
+	tcol->LockRect(0, &rcol, NULL, 0);
+	UCHAR *mcol = (UCHAR *)rcol.pBits;
+
+	SetTopic("Calculating tile {%d,%d} colors:", coordx, coordy);
+
+	/* extract values out of the tile-window */
+#pragma omp parallel for schedule(static, (PROGRESS + 1) >> 3) shared(mcol, cf)
+	for (int lh = 0; lh < hh; lh++) {
+	  const int h = (ty * rastery) + lh;
+
+	  if (!(lh & PROGRESS)) {
+	    logrf("%02dx%02d [%dx%d] %f%%\r", ty, tx, hh, ww, (100.0f * h) / ((ty * rastery) + hh));
+
+	    /* advance progress */
+	    SetProgress(-1, lh);
+	  }
+
+	  /* calculate pointer of writable position */
+	  UCHAR *wcol = mcol + (lh * ww) * 4;
+
+	  for (int lw = 0; lw < ww; lw++) {
+	    const int w = (tx * rasterx) + lw;
+
+	    unsigned long c = cf.eval(w, h);
+	    unsigned char r = (c >> 24) & 0xFF;
+	    unsigned char g = (c >> 16) & 0xFF;
+	    unsigned char b = (c >>  8) & 0xFF;
+	    unsigned char a =             0xFF;
+
+	    /* serial write to persistant output-buffer */
+	    *wcol++ = b; // R
+	    *wcol++ = g; // G
+	    *wcol++ = r; // B
+	    *wcol++ = a; // A
+	  }
+	}
+
+	tcol->UnlockRect(0);
+
+	SetTopic("Writing tile {%d,%d} colors:", coordx, coordy);
+
+	/* flush persistant output-buffer to disk */
+	writetex(tcol, pattern, "", coordx, coordy, min(resx, resy), false);
+      } /* cmaps */
+
+      /* advance progress */
+      SetProgress((numty - minty) * (ty - minty) + (tx - mintx) + 1);
+    }
+    }
+
+    if (cmaps) tcol->Release();
+}
+
+void write_col1(bool cmaps, const CField& cf) {
+    write_col1(cmaps, cf, "%02d.%02d.%02d.%02d");
+}

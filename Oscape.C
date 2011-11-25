@@ -183,8 +183,10 @@ struct sset {
   map<unsigned long int, int> mesh_yu_x;	// mesh resolutions + tile count
   map<unsigned long int, int> mesh_nu_n;	// mesh resolutions + tile count
   map<unsigned long int, int> mesh_yu_n;	// mesh resolutions + tile count
-  map<unsigned long int, int> text_d;		// texture resolutions + tile count
-  map<unsigned long int, int> text_p;		// texture resolutions + tile count
+  map<unsigned long int, int> textn_d;		// texture resolutions + tile count
+  map<unsigned long int, int> textn_p;		// texture resolutions + tile count
+  map<unsigned long int, int> textc_d;		// texture resolutions + tile count
+  map<unsigned long int, int> textc_p;		// texture resolutions + tile count
 };
 
 // ----------------------------------------------------------------------------
@@ -284,6 +286,14 @@ private:
   time_t tinit, tlast, tnow;
 
 public:
+  bool RequestFeedback(const char *question) {
+    wxMessageDialog d(this, question, "Oscape", wxOK | wxCANCEL | wxCENTRE);
+    int ret = d.ShowModal();
+    if (ret == wxID_CANCEL)
+      return false;
+    return true;
+  }
+
   virtual void PauseProgress(wxCommandEvent& event) {
     if (!paused) {
       Block();
@@ -1020,14 +1030,15 @@ public:
     wxFileName fnn(ph); fnn.ClearExt(); fnn.SetExt("nrm");
     wxFileName fnh(ph); fnh.ClearExt(); fnh.SetExt("raw");
     wxFileName fnx(ph); fnx.ClearExt(); fnx.SetExt("land");
+    wxFileName fnm(ph); fnm.ClearExt(); fnm.SetExt("map");
 
     wedata = OSPluginDir->GetPath();
-    weoutn = fnn.GetFullPath();
-    weouth = fnh.GetFullPath();
-    weoutx = fnx.GetFullPath();
-    wename = OSWorldspace->GetValue();
-    weid = 0;
-
+    weoutn = fnn.GetFullPath(); calcn = false;
+    weouth = fnh.GetFullPath(); calch = OSCalcHeight->GetValue();
+    weoutx = fnx.GetFullPath(); calcx = OSCalcColor->GetValue();
+    weoutm = fnm.GetFullPath(); calcm = OSCalcImportance->GetValue();
+    wename = OSWorldspace->GetValue(); weid = 0;
+    
     map<int, worldset::iterator >::iterator srch = wspacef.begin();
     while (srch != wspacef.end()) {
       if (*(srch->second) == wename) {
@@ -1097,11 +1108,11 @@ private:
   wxMemoryDC hdc;
 
   void PaintH(wxPaintEvent& event) {
-    wxPaintDC dc(OSHeightfieldPreview);
+    wxPaintDC dc(OSPreview);
 
-    wxRect rg = OSHeightfieldPreview->GetUpdateRegion().GetBox();
-    int dw = OSHeightfieldPreview->GetClientSize().GetWidth();
-    int dh = OSHeightfieldPreview->GetClientSize().GetHeight();
+    wxRect rg = OSPreview->GetUpdateRegion().GetBox();
+    int dw = OSPreview->GetClientSize().GetWidth();
+    int dh = OSPreview->GetClientSize().GetHeight();
     int sw = hdc.GetSize().GetWidth();
     int sh = hdc.GetSize().GetHeight();
 
@@ -1110,8 +1121,8 @@ private:
       dc.Blit(
 	0,
 	0,
-	OSHeightfieldPreview->GetClientSize().GetWidth(),
-	OSHeightfieldPreview->GetClientSize().GetHeight(),
+	OSPreview->GetClientSize().GetWidth(),
+	OSPreview->GetClientSize().GetHeight(),
 	&hdc,
 	0,
 	0,
@@ -1150,6 +1161,183 @@ private:
 #endif
   }
 
+  void RedrawH() {
+    wxString ph = OSFileHeightfieldIn1->GetPath();
+    if (ph.IsNull())
+      return;
+
+    int which = OSPreviewSelector->GetSelection();
+    wxString pw = OSPreviewSelector->GetString(which);
+
+    wxFileName fnn(ph); fnn.ClearExt(); fnn.SetExt("nrm");
+    wxFileName fnh(ph); fnh.ClearExt(); fnh.SetExt("raw");
+    wxFileName fnx(ph); fnx.ClearExt(); fnx.SetExt("land");
+    wxFileName fnm(ph); fnm.ClearExt(); fnm.SetExt("map");
+
+    /**/ if (pw == "Heightfield") ph = fnh.GetFullPath();
+    else if (pw == "Normals"    ) ph = fnn.GetFullPath();
+    else if (pw == "Features"   ) ph = fnm.GetFullPath();
+    else if (pw == "Surface"    ) ph = fnx.GetFullPath();
+    else return;
+
+    /* does it exist? */
+    DWORD atr = GetFileAttributes(ph.data());
+    if (atr == INVALID_FILE_ATTRIBUTES)
+      return;
+    
+    int rasterx = 32 * 32;
+    int rastery = 32 * 32;
+    int tilesx = 1;
+    int tilesy = 1;
+    int offsx = 1;
+    int offsy = 1;
+    int width = rWidth->GetValueAsVariant().GetInteger();
+    int height = rHeight->GetValueAsVariant().GetInteger();
+    int wdscape = 0;
+
+    {
+      /**/ if (pw == "Heightfield") OSStatusBar->SetStatusText(wxT("Skimming heightfield ..."), 0);
+      else if (pw == "Normals"    ) OSStatusBar->SetStatusText(wxT("Skimming normals ..."), 0);
+      else if (pw == "Features"   ) OSStatusBar->SetStatusText(wxT("Skimming feature-map ..."), 0);
+      else if (pw == "Surface"    ) OSStatusBar->SetStatusText(wxT("Skimming surface-map ..."), 0);
+
+      OFSTRUCT of;
+      HANDLE oh = (HANDLE)OpenFile(ph, &of, OF_READ);
+      DWORD len = GetFileSize(oh, NULL);
+      int pixel = len;
+      HANDLE mh = CreateFileMapping(oh,
+	NULL,
+	PAGE_READONLY,
+	0,
+	0,
+	NULL);
+
+      char *mem = (char *)MapViewOfFile(mh,
+	FILE_MAP_READ,
+	0,
+	0,
+	0);
+
+      if (pixel) {
+	/**/ if (pw == "Heightfield") pixel /= sizeof(unsigned short);
+	else if (pw == "Normals"    ) pixel /= sizeof(unsigned char) * 3;
+	else if (pw == "Features"   ) pixel /= sizeof(unsigned char) * 1;
+	else if (pw == "Surface"    ) pixel /= sizeof(unsigned long);
+
+	tilesx = (width  + (rasterx - 1)) / rasterx;
+	tilesy = (height + (rastery - 1)) / rastery;
+	offsx = tilesx >> 1;
+	offsy = tilesy >> 1;
+	int scanx = 64;
+	int scany = 64;
+	int pwidth  = tilesx * scanx;
+	int pheight = tilesy * scany;
+	int multx = 1024 / scanx;
+	int multy = 1024 / scany;
+
+	unsigned char *rgb;
+	unsigned char *a;
+	wxImage *im = &hgt;
+	if (!im->IsOk() || (im->GetWidth() != pwidth) || (im->GetHeight() != pheight)) {
+	  if (im->IsOk())
+	    im->Destroy();
+
+	  if (!im->Create(pwidth, pheight, false))
+	    assert(NULL);
+	}
+
+	int w = im->GetWidth();
+	int h = im->GetHeight();
+	rgb = im->GetData();
+	if (im->HasAlpha())
+	  a = im->GetAlpha();
+
+	/**/ if (pw == "Heightfield") {
+	  for (int y = 0; y < pheight; y++)
+	  for (int x = 0; x < pwidth; x++) {
+	    int cy = min(y * multy, height - 1);
+	    int cx = min(x * multx, width  - 1);
+
+	    unsigned short el = ((unsigned short *)mem)[(cy * width) + (cx)];
+
+	    if (((y % scany) == 0) ||
+		((x % scanx) == 0))
+	      el >>= 1;
+
+	    if (((y * multy) > (height - 1)) ||
+		((x * multx) > (width  - 1)))
+	      el = 512;
+
+	    rgb[((((pheight - 1) - y) * pwidth) + (x)) * 3 + 0] = min(255, el / 24);
+	    rgb[((((pheight - 1) - y) * pwidth) + (x)) * 3 + 1] = min(255, el / 24);
+	    rgb[((((pheight - 1) - y) * pwidth) + (x)) * 3 + 2] = min(255, el / 24);
+	  }
+
+	  im->ConvertToGreyscale();
+	}
+	else if (pw == "Features") {
+	  for (int y = 0; y < pheight; y++)
+	  for (int x = 0; x < pwidth; x++) {
+	    int cy = min(y * multy, height - 1);
+	    int cx = min(x * multx, width  - 1);
+
+	    unsigned char el = ((unsigned char *)mem)[(cy * width) + (cx)];
+
+	    if (((y % scany) == 0) ||
+		((x % scanx) == 0))
+	      el >>= 1;
+
+	    if (((y * multy) > (height - 1)) ||
+		((x * multx) > (width  - 1)))
+	      el = 0;
+
+	    rgb[((((pheight - 1) - y) * pwidth) + (x)) * 3 + 0] = min(255, el);
+	    rgb[((((pheight - 1) - y) * pwidth) + (x)) * 3 + 1] = min(255, el);
+	    rgb[((((pheight - 1) - y) * pwidth) + (x)) * 3 + 2] = min(255, el);
+	  }
+
+	  im->ConvertToGreyscale();
+	}
+	else if (pw == "Surface") {
+	  for (int y = 0; y < pheight; y++)
+	  for (int x = 0; x < pwidth; x++) {
+	    int cy = min(y * multy, height - 1);
+	    int cx = min(x * multx, width  - 1);
+
+	    unsigned long el = ((unsigned long *)mem)[(cy * width) + (cx)];
+	    unsigned char r = (el >> 24) & 0xFF;
+	    unsigned char g = (el >> 16) & 0xFF;
+	    unsigned char b = (el >>  8) & 0xFF;
+
+	    if (((y % scany) == 0) ||
+		((x % scanx) == 0))
+	      r >>= 1, g >>= 1, b >>= 1;
+
+	    if (((y * multy) > (height - 1)) ||
+		((x * multx) > (width  - 1)))
+	      r = 0, g = 0, b = 0;
+
+	    rgb[((((pheight - 1) - y) * pwidth) + (x)) * 3 + 0] = min(255, r);
+	    rgb[((((pheight - 1) - y) * pwidth) + (x)) * 3 + 1] = min(255, g);
+	    rgb[((((pheight - 1) - y) * pwidth) + (x)) * 3 + 2] = min(255, b);
+	  }
+	}
+
+	hdc.SelectObject(wxBitmap(hgt));
+
+//	this->Refresh();
+	OSPreview->Update();
+	OSPreview->Refresh();
+      }
+
+      UnmapViewOfFile(mem);
+      CloseHandle(mh);
+      CloseHandle(oh);
+
+      OSStatusBar->SetStatusText(wxT("Ready"), 0);
+    }
+  }
+
   void ChangeHeightfieldIn1(wxFileDirPickerEvent& event) {
     wxString ph = event.GetPath();
 
@@ -1170,6 +1358,8 @@ private:
   wxPGProperty *tBottom;
 
   void ChangeHeightfieldIn1(wxString ph) {
+    OSPreviewSelector->Hide();
+    OSPreviewSelector->Clear();
     OSHeightfieldFirst1->Show();
     OSHeightfieldFirst1->GetParent()->Layout();
     OSHeightfieldInfos->Clear();
@@ -1194,6 +1384,28 @@ private:
       RegSetKeyValue(Settings, NULL, "Heightfield In", RRF_RT_REG_SZ, HI, (DWORD)strlen(HI) + 1);
     }
 
+    wxFileName fnn(ph); fnn.ClearExt(); fnn.SetExt("nrm");
+    wxFileName fnh(ph); fnh.ClearExt(); fnh.SetExt("raw");
+    wxFileName fnx(ph); fnx.ClearExt(); fnx.SetExt("land");
+    wxFileName fnm(ph); fnm.ClearExt(); fnm.SetExt("map");
+
+    wxString snn = fnn.GetFullPath();
+    wxString snh = fnh.GetFullPath();
+    wxString snx = fnx.GetFullPath();
+    wxString snm = fnm.GetFullPath();
+
+    atr = GetFileAttributes(snn.data()); bool bnn = (atr != INVALID_FILE_ATTRIBUTES);
+    atr = GetFileAttributes(snh.data()); bool bnh = (atr != INVALID_FILE_ATTRIBUTES);
+    atr = GetFileAttributes(snx.data()); bool bnx = (atr != INVALID_FILE_ATTRIBUTES);
+    atr = GetFileAttributes(snm.data()); bool bnm = (atr != INVALID_FILE_ATTRIBUTES);
+
+    if (bnh) OSPreviewSelector->Append("Heightfield");
+    if (bnn) OSPreviewSelector->Append("Normals");
+    if (bnm) OSPreviewSelector->Append("Features");
+    if (bnx) OSPreviewSelector->Append("Surface");
+
+    OSPreviewSelector->SetSelection(0);
+    OSPreviewSelector->Show();
     OSHeightfieldFirst1->Hide();
     OSHeightfieldFirst1->GetParent()->Layout();
 
@@ -1233,26 +1445,16 @@ private:
     }
 
     {
-      OSStatusBar->SetStatusText(wxT("Skimming heightfield ..."), 0);
+      OSStatusBar->SetStatusText(wxT("Analyzing heightfield ..."), 0);
 
       OFSTRUCT of;
       HANDLE oh = (HANDLE)OpenFile(ph, &of, OF_READ);
       DWORD len = GetFileSize(oh, NULL);
       int pixel = len >> 1;
-      HANDLE mh = CreateFileMapping(oh,
-	NULL,
-	PAGE_READONLY,
-	0,
-	0,
-	NULL);
-
-      char *mem = (char *)MapViewOfFile(mh,
-	FILE_MAP_READ,
-	0,
-	0,
-	0);
 
       if (pixel) {
+	bool hor = OSOrientation->GetValue();
+
 	width  = pixel / rasterx;
 	height = pixel / width;
 
@@ -1262,7 +1464,8 @@ private:
 	  double m = sqrt((double)w * w + (double)h * h);
 
 	  if (pixel == (w * h))
-	  if (l > m) {
+	  if (( hor && (l >  m)) ||
+	      (!hor && (l >= m))) {
 	    l = m;
 
 	    width  = w;
@@ -1270,84 +1473,12 @@ private:
 	  }
 	}
 
-	/* raw tamriel */
-	if (pixel == 17700864) {
-	  width  = 4288;
-	  height = 4128;
-	}
-
 	tilesx = (width  + (rasterx - 1)) / rasterx;
 	tilesy = (height + (rastery - 1)) / rastery;
 	offsx = tilesx >> 1;
 	offsy = tilesy >> 1;
-	int pwidth  = tilesx * 32;
-	int pheight = tilesy * 32;
-
-	unsigned char *rgb;
-	unsigned char *a;
-	wxImage *im = &hgt;
-	if (!im->IsOk() || (im->GetWidth() != pwidth) || (im->GetHeight() != pheight)) {
-	  if (im->IsOk())
-	    im->Destroy();
-
-	  if (!im->Create(pwidth, pheight, false))
-	    assert(NULL);
-	}
-
-	int w = im->GetWidth();
-	int h = im->GetHeight();
-	rgb = im->GetData();
-	if (im->HasAlpha())
-	  a = im->GetAlpha();
-
-#if 1
-	for (int y = 0; y < pheight; y++)
-	for (int x = 0; x < pwidth; x++) {
-	  int cy = min(y * 32, height - 1);
-	  int cx = min(x * 32, width  - 1);
-
-	  unsigned short el = ((unsigned short *)mem)[(cy * width) + (cx)];
-
-	  if (((y % 32) == 0) ||
-	      ((x % 32) == 0))
-	    el >>= 1;
-
-	  if (((y * 32) > (height - 1)) ||
-	      ((x * 32) > (width  - 1)))
-	    el = 512;
-
-	  rgb[((((pheight - 1) - y) * pwidth) + (x)) * 3 + 0] = min(255, el / 24);
-	  rgb[((((pheight - 1) - y) * pwidth) + (x)) * 3 + 1] = min(255, el / 24);
-	  rgb[((((pheight - 1) - y) * pwidth) + (x)) * 3 + 2] = min(255, el / 24);
-	}
-#else
-	for (int y = 0; y < (height / 32); y++)
-	for (int x = 0; x < (width  / 32); x++) {
-	  unsigned short el = ((unsigned short *)mem)[(y * 32 * width) + (x * 32)];
-
-	  int cy = (((height / 32) - 1) - y);
-	  int cx = x;
-
-	  if (((cy % 32) == 0) ||
-	      ((cx % 32) == 0))
-	    el >>= 1;
-
-	  rgb[(((cy) * pwidth) + (x)) * 3 + 0] = min(255, el / 24);
-	  rgb[(((cy) * pwidth) + (x)) * 3 + 1] = min(255, el / 24);
-	  rgb[(((cy) * pwidth) + (x)) * 3 + 2] = min(255, el / 24);
-	}
-#endif
-
-	im->ConvertToGreyscale();
-	hdc.SelectObject(wxBitmap(hgt));
-
-//	this->Refresh();
-	OSHeightfieldPreview->Update();
-	OSHeightfieldPreview->Refresh();
       }
 
-      UnmapViewOfFile(mem);
-      CloseHandle(mh);
       CloseHandle(oh);
 
       OSStatusBar->SetStatusText(wxT("Ready"), 0);
@@ -1375,13 +1506,29 @@ private:
     OSHeightfieldInfos->Append(p = wxIntProperty("Maximum", wxPG_LABEL, 55600)); p->SetFlag(wxPG_PROP_READONLY);
 
 //  SetHeightfield(&hgt, _rt);
+    RedrawH();
 
     OSHeightfieldFirst1->GetParent()->Layout();
 
     VerifyHeightfieldIn();
   }
 
+  void ChangePreview(wxCommandEvent& event) {
+    RedrawH();
+  }
+
+  void ChangeOrientation(wxCommandEvent& event) {
+    ChangeHeightfieldIn1(OSFileHeightfieldIn1->GetPath());
+
+    RegSetKeyValue(Settings, NULL, "Orientation", RRF_RT_REG_DWORD, OSOrientation->GetValue() ? "H" : "V", 2);
+  }
+
   void ChangeHeightfieldInfos(wxPropertyGridEvent& event) {
+    wxPGId p = event.GetProperty();
+    
+    if ((p == rWidth ->GetId()) ||
+        (p == rHeight->GetId()))
+      RedrawH();
   }
 
   void HeightfieldAccept(wxCommandEvent& event) {
@@ -1500,6 +1647,7 @@ private:
   }
 
   void ChangeHeightfieldIn2(wxString ph) {
+    OSEmphasis->Disable();
     OSSelectGenerator->Hide();
     OSHeightfieldFirst2->Show();
     OSHeightfieldFirst2->GetParent()->Layout();
@@ -1507,17 +1655,33 @@ private:
     if (ph.IsNull())
       return;
 
+    wxFileName fnn(ph); fnn.ClearExt(); fnn.SetExt("nrm");
+    wxFileName fnh(ph); fnh.ClearExt(); fnh.SetExt("raw");
+    wxFileName fnx(ph); fnx.ClearExt(); fnx.SetExt("land");
+    wxFileName fnm(ph); fnm.ClearExt(); fnm.SetExt("map");
+
+    wxString snn = fnn.GetFullPath();
+    wxString snh = fnh.GetFullPath();
+    wxString snx = fnx.GetFullPath();
+    wxString snm = fnm.GetFullPath();
+
     /* does it exist? */
-    DWORD atr = GetFileAttributes(ph.data());
+    DWORD atr = GetFileAttributes(snh.data());
     if (atr == INVALID_FILE_ATTRIBUTES)
       return;
 
     {
-      const char *HI = ph.data();
+      const char *HI = snh.data();
       OSFileHeightfieldIn1->SetPath(HI);
       OSFileHeightfieldIn2->SetPath(HI);
       RegSetKeyValue(Settings, NULL, "Heightfield In", RRF_RT_REG_SZ, HI, (DWORD)strlen(HI) + 1);
     }
+
+    OSEmphasis->Enable(GetFileAttributes(snm.data()) != INVALID_FILE_ATTRIBUTES);
+    if (GetFileAttributes(snx.data()) != INVALID_FILE_ATTRIBUTES)
+      OSColors->Enable();
+    else
+      OSColors->Disable(), OSColors->SetValue(false), OSPanelColors->Hide();
 
     OSSelectGenerator->Show();
     OSHeightfieldFirst2->Hide();
@@ -1591,7 +1755,18 @@ private:
   }
 
   /* ---------------------------------------------------------------------------- */
-  void MaxTarget(int &_maxp, int &_maxx) {
+  wxString GetTarget(wxString val) {
+    size_t ln;
+    if ((ln = val.Index(' ')) != wxNOT_FOUND)
+      val = val.SubString(0, ln - 1);
+    return val;
+  }
+
+  wxString GetTarget() {
+    return GetTarget(OSTarget->GetValue());
+  }
+
+  void MaxTarget(int &_maxp, int &_maxx, int &_ntls) {
     int rasterx = tSize->GetValueAsVariant().GetInteger() * cSize->GetValueAsVariant().GetInteger();
     int rastery = tSize->GetValueAsVariant().GetInteger() * cSize->GetValueAsVariant().GetInteger();
 
@@ -1615,53 +1790,72 @@ private:
     /* return */
     _maxp = maxp;
     _maxx = maxx;
+    _ntls = nmtilex * nmtiley;
   }
 
   void VerifyHeightfieldIn() {
-    wxString val =
-
-    OSTarget->GetValue();
-    OSTarget->Clear();
-    OSTarget->SetValue(val);
-
+    wxString val = GetTarget();
     long l = 0; val.ToLong(&l);
 
+    OSTarget->Clear();
+
+    OSTarget->Append("220000 (~3/2 of vanilla Cyrodiil)");
+    OSTarget->Append("155000 (~3/3 of vanilla Cyrodiil)");
+    OSTarget->Append("110000 (~2/3 of vanilla Cyrodiil)");
+    OSTarget->Append("55000 (~1/3 of vanilla Cyrodiil)");
+    OSTarget->Append("615000 (~4/3 of vanilla TWMP)");
+    OSTarget->Append("450000 (~3/3 of vanilla TWMP)");
+    OSTarget->Append("290000 (~2/3 of vanilla TWMP)");
+    OSTarget->Append("150000 (~1/3 of vanilla TWMP)");
+
     /* -------------------------------------------------------------------- */
-    int maxp, maxx; MaxTarget(maxp, maxx);
+    int maxp, maxx, ntls; MaxTarget(maxp, maxx, ntls);
+    int maxs, maxm, it; maxm = maxp;
 
-    while (maxp > 1024) {
-      char buf[32]; sprintf(buf, "%d", maxp); maxp = (maxp + 1) >> 1;
+    /* multiplied by number of resolutions (limited by available tiles) */
+    maxp = 12288;
+    while ((maxp * 2) <= (12288 * ntls))
+      maxp *= 2;
 
-      OSTarget->Append(buf);
+    if (maxp != (12288 * ntls)) {
+      maxs = maxp / ntls; it = 1;
+      while (maxp > 1024) {
+	char buf[64]; sprintf(buf, "%d (1/%d of %d per tile)", maxp, it, maxs); maxp = (maxp + 1) >> 1; it *= 2;
+
+	OSTarget->Append(buf);
+      }
     }
 
     /* multiplied by number of available tiles */
     maxp = 12288;
-    maxp *= nmtilex;
-    maxp *= nmtiley;
+    maxp *= ntls;
 
-    while (maxp > 1024) {
-      char buf[32]; sprintf(buf, "%d", maxp); maxp = (maxp + 1) >> 1;
+    /**/ {
+      maxs = maxp / ntls; it = 1;
+      while (maxp > 1024) {
+	char buf[64]; sprintf(buf, "%d (1/%d of %d per tile)", maxp, it, maxs); maxp = (maxp + 1) >> 1; it *= 2;
 
-      OSTarget->Append(buf);
+	OSTarget->Append(buf);
+      }
     }
 
-    /* multiplied by number of resolutions (limited by available tiles) */
-    maxp = 12288;
-    while ((maxp * 2) <= (12288 * nmtilex * nmtiley))
-      maxp *= 2;
+    /* total maximum */
+    maxp = maxm;
 
-    if (maxp != (12288 * nmtilex * nmtiley)) {
+    /**/ {
+      maxs = maxp / ntls; it = 1;
       while (maxp > 1024) {
-	char buf[32]; sprintf(buf, "%d", maxp); maxp = (maxp + 1) >> 1;
+	char buf[64]; sprintf(buf, "%d (1/%d of %d per tile)", maxp, it, maxs); maxp = (maxp + 1) >> 1; it *= 2;
 
 	OSTarget->Append(buf);
       }
     }
 
     /* -------------------------------------------------------------------- */
+    OSTarget->SetValue(val);
     if (l > maxx) {
       char buf[32]; sprintf(buf, "%d", maxx);
+
       OSTarget->SetValue(buf);
     }
   }
@@ -1677,7 +1871,7 @@ private:
 
     wdspace = v.GetInteger();
 
-    long l = 0; if (OSTarget->GetValue().ToLong(&l)) limit = l;
+    long l = 0; if (GetTarget().ToLong(&l)) limit = l;
     double r = 0.0; if (OSTermination->GetValue().ToDouble(&r)) termination = r;
 
     /* -------------------------------------------------------------------- */
@@ -1705,6 +1899,10 @@ private:
     }
   }
 
+  void ChangeAlgorithm(wxCommandEvent& event) {
+    OSQThreshold->Enable(event.GetSelection() == 0);
+  }
+
   void ChangeTarget(wxCommandEvent& event) {
     OSRes1->Enable(false);
     OSRes2->Enable(false);
@@ -1715,14 +1913,16 @@ private:
     OSRes7->Enable(false);
     OSRes8->Enable(false);
 
-    wxString ph = event.GetString();
+    wxString ph;
     long l = 0;
 
+    ph = GetTarget(event.GetString());
+    event.SetString(ph);
     if (!ph.ToLong(&l))
       return;
 
     /* -------------------------------------------------------------------- */
-    int maxp, maxx; MaxTarget(maxp, maxx);
+    int maxp, maxx, ntls; MaxTarget(maxp, maxx, ntls);
 
     if (l > maxx) {
       ph.Printf("%d", maxx);
@@ -1765,6 +1965,12 @@ private:
     RegSetKeyValue(Settings, NULL, "Do Normals", RRF_RT_REG_DWORD, OSNormals->GetValue() ? "1" : "0", 2);
   }
 
+  void ChangeColors(wxCommandEvent& event) {
+    ChangeColors();
+
+    RegSetKeyValue(Settings, NULL, "Do Colors", RRF_RT_REG_DWORD, OSColors->GetValue() ? "1" : "0", 2);
+  }
+
   void ChangeHeightmap(wxCommandEvent& event) {
     ChangeHeightmap();
 
@@ -1778,6 +1984,7 @@ private:
       OSPanelMeshes->Hide();
 
     OSPanelMeshes->GetParent()->Layout();
+    OSSelectGenerator->SetVirtualSize(OSPanelMeshes->GetParent()->GetBestVirtualSize());
   }
 
   void ChangeNormals() {
@@ -1787,6 +1994,17 @@ private:
       OSPanelNormals->Hide();
 
     OSPanelNormals->GetParent()->Layout();
+    OSSelectGenerator->SetVirtualSize(OSPanelNormals->GetParent()->GetBestVirtualSize());
+  }
+
+  void ChangeColors() {
+    if (OSColors->GetValue())
+      OSPanelColors->Show();
+    else
+      OSPanelColors->Hide();
+
+    OSPanelColors->GetParent()->Layout();
+    OSSelectGenerator->SetVirtualSize(OSPanelColors->GetParent()->GetBestVirtualSize());
   }
 
   void ChangeHeightmap() {
@@ -1796,6 +2014,7 @@ private:
       OSPanelHeightmap->Hide();
 
     OSPanelHeightmap->GetParent()->Layout();
+    OSSelectGenerator->SetVirtualSize(OSPanelHeightmap->GetParent()->GetBestVirtualSize());
   }
 
   void CheckFloat(wxCommandEvent& event) {
@@ -1827,22 +2046,14 @@ private:
     OSToolSwitch->SetSelection(3);
 
     /* and activate */
-    wxString ph = OSBaseDirOut1->GetPath();
-
-    if (!ph.IsNull()) {
-      const char *BI = ph.data();
-      OSBaseDirIn->SetPath(BI);
-      RegSetKeyValue(Settings, NULL, "Base directory In", RRF_RT_REG_SZ, BI, (DWORD)strlen(BI) + 1);
-    }
-
-    ChangeBaseDirIn(ph);
+    ChangeBaseDirIn(OSBaseDirOut1->GetPath());
   }
 
 public:
   bool SanitizeGeneration() {
     long target;
 
-    if (OSTarget->GetValue().ToLong(&target)) {
+    if (GetTarget().ToLong(&target)) {
       int wds = formID->GetValueAsVariant().GetInteger();
       wxString dataDir = OSBaseDirOut1->GetPath();
       bool makeclean = false, haspt = false;
@@ -1900,7 +2111,7 @@ public:
 	op.fFlags = FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_SIMPLEPROGRESS;
 	op.lpszProgressTitle = "Oscape: Cleaning old targets";
 
-	int res = SHFileOperation(&op);
+	int ret = SHFileOperation(&op);
 	if (op.fAnyOperationsAborted)
 	  return false;
       }
@@ -1943,7 +2154,7 @@ public:
     long l = 0; double r = 0.0;
 
     optimizemesh = OSMeshOpt->GetValue();
-    nobasin = OSMeshBasin->GetValue();
+    nobasin = !OSMeshBasin->GetValue();
     datadep = (OSAlgorithm->GetSelection() == 0 ? 1 : 0);
     switch (QSError->GetSelection()) {
       case 0: criterion = SUMINF; break;
@@ -1952,18 +2163,33 @@ public:
       case 3: criterion = ABN; break;
     }
 
-    if (OSTarget->GetValue().ToLong(&l)) limit = l;
-    if (OSQThreshold->GetValue().ToDouble(&r)) qual_thresh = r;
-    if (OSAThreshold->GetValue().ToDouble(&r)) area_thresh = r;
-    if (OSTermination->GetValue().ToDouble(&r)) termination = r;
+    if (GetTarget().ToLong(&l)) limit = l;
+
+    if (OSQThreshold->GetValue().ToDouble(&r)) qual_thresh = max(0.001, min(r, 0.999));
+    if (OSAThreshold->GetValue().ToDouble(&r)) area_thresh = max(0.0, r);
+    if (OSTermination->GetValue().ToDouble(&r)) termination = max(0.0, r);
+    if (OSEmphasis->GetValue().ToDouble(&r)) emphasis = max(0.0, min(r, 1.0));
+
+    if (!OSEmphasis->IsEnabled()) emphasis = 0.0;
 
     /* -------------------------------------------------------------------- */
     wxString dataPth = OSFileHeightfieldIn1->GetPath();
     wxString dataPts = OSFilePoints1->GetPath();
     wxString dataDir = OSBaseDirOut1->GetPath();
 
+    wxFileName fnn(dataPth); fnn.ClearExt(); fnn.SetExt("nrm");
+    wxFileName fnh(dataPth); fnh.ClearExt(); fnh.SetExt("raw");
+    wxFileName fnx(dataPth); fnx.ClearExt(); fnx.SetExt("land");
+    wxFileName fnm(dataPth); fnm.ClearExt(); fnm.SetExt("map");
+
+    wxString greyFPth = fnm.GetFullPath();
+    wxString dataFPth = fnh.GetFullPath();
+    wxString colrFPth = fnx.GetFullPath();
+
     texFile = NULL;
-    dataFile = dataPth.data();
+    greyFile = greyFPth.data();
+    colrFile = colrFPth.data();
+    dataFile = dataFPth.data();
 
 //  if (currentRes != maxResolution_in_dataDir)
 //  if (is_selected_1/1)
@@ -1973,7 +2199,10 @@ public:
     int majortasks = 0, majordone = 0;
 
     /* reading heightfield */
-    majortasks++;
+    if (OSMeshes->GetValue() ||
+	OSNormals->GetValue() ||
+	OSHeightmap->GetValue())
+      majortasks++;
 
     /* generating meshes (generate mesh, add points, subdivide and optimize, write meshes) */
     if (OSMeshes->GetValue()) {
@@ -2016,269 +2245,362 @@ public:
       if (OSNormalHigh   ->GetValue()) majortasks += m;
     }
 
+    /* reading surfacemap */
+    if (OSColors->GetValue())
+      majortasks++;
+
+    /* generate textures (PPM, DDS, PNG) */
+    if (OSColors->GetValue()) {
+      int m = 1;
+
+//    if (OSColorPPM    ->GetValue()) m++;
+//    if (OSColorDDS    ->GetValue()) m++;
+//    if (OSColorPNG    ->GetValue()) m++;
+
+      if (OSColorLow    ->GetValue()) majortasks += m;
+      if (OSColorRegular->GetValue()) majortasks += m;
+      if (OSColorHigh   ->GetValue()) majortasks += m;
+      if (OSColorUltra  ->GetValue()) majortasks += m;
+    }
+
     /* -------------------------------------------------------------------- */
     prog->StartProgress(majortasks);
-    prog->InitProgress("Initializing:", 0, "Reading heightfield:", 0.0, majordone++, 1);
-
-    ifstream mntns(dataFile, ios::binary);
-    HField H(mntns, texFile, greyFile);
-
-    WIN32_FILE_ATTRIBUTE_DATA infoh; BOOL hex =
-    GetFileAttributesEx(dataFile, GetFileExInfoStandard, &infoh);
-    writechk = (hex ? *((__int64 *)&infoh.ftLastWriteTime) : 0);
-    if (OSOverwrite->GetValue())
-      writechk = 0;
 
     /* -------------------------------------------------------------------- */
-    if (OSMeshes->GetValue()) {
-      writetin = false;
-      writeobj = OSMeshOBJ->GetValue();
-      writenif = OSMeshNIF->GetValue();
-      writedx9 = OSMeshDX ->GetValue();
+    if (OSMeshes->GetValue() ||
+	OSNormals->GetValue() ||
+	OSHeightmap->GetValue()) {
+      prog->InitProgress("Initializing:", 0, "Reading heightfield:", 0.0, majordone++, 1);
 
-      vector< pair<int, float> > ress; size_t r = 0;
+      ifstream mntns(dataFile, ios::binary);
+      HField H(mntns, texFile, greyFile);
 
-      if (OSRes1->GetValue()) ress.push_back(pair<int, float>(limit / 1, termination * 1));
-      if (OSRes2->GetValue()) ress.push_back(pair<int, float>(limit / 2, termination * 2));
-      if (OSRes3->GetValue()) ress.push_back(pair<int, float>(limit / 4, termination * 4));
-      if (OSRes4->GetValue()) ress.push_back(pair<int, float>(limit / 8, termination * 8));
-      if (OSRes5->GetValue()) ress.push_back(pair<int, float>(limit / 16, termination * 16));
-      if (OSRes6->GetValue()) ress.push_back(pair<int, float>(limit / 32, termination * 32));
-      if (OSRes7->GetValue()) ress.push_back(pair<int, float>(limit / 64, termination * 64));
-      if (OSRes8->GetValue()) ress.push_back(pair<int, float>(limit / 128, termination * 128));
+      WIN32_FILE_ATTRIBUTE_DATA infoh; BOOL hex =
+      GetFileAttributesEx(dataFile, GetFileExInfoStandard, &infoh);
+      writechk = (hex ? *((__int64 *)&infoh.ftLastWriteTime) : 0);
+      if (OSOverwrite->GetValue())
+	writechk = 0;
 
-      if ((r = ress.size()) > 0) {
-	char temps[256], base[1024];
-	int target = limit;
+      /* -------------------------------------------------------------------- */
+      if (OSMeshes->GetValue()) {
+	writetin = false;
+	writeobj = OSMeshOBJ->GetValue();
+	writenif = OSMeshNIF->GetValue();
+	writedx9 = OSMeshDX ->GetValue();
 
-	for (size_t n = 0; n < r; n++) {
-	  limit       = ress[n].first;
-	  termination = ress[n].second;
+	vector< pair<int, float> > ress; size_t r = 0;
 
-	  srandom(limit);
+	if (OSRes1->GetValue()) ress.push_back(pair<int, float>(limit / 1, termination * 1));
+	if (OSRes2->GetValue()) ress.push_back(pair<int, float>(limit / 2, termination * 2));
+	if (OSRes3->GetValue()) ress.push_back(pair<int, float>(limit / 4, termination * 4));
+	if (OSRes4->GetValue()) ress.push_back(pair<int, float>(limit / 8, termination * 8));
+	if (OSRes5->GetValue()) ress.push_back(pair<int, float>(limit / 16, termination * 16));
+	if (OSRes6->GetValue()) ress.push_back(pair<int, float>(limit / 32, termination * 32));
+	if (OSRes7->GetValue()) ress.push_back(pair<int, float>(limit / 64, termination * 64));
+	if (OSRes8->GetValue()) ress.push_back(pair<int, float>(limit / 128, termination * 128));
 
-	  _controlfp(_RC_DOWN, _MCW_RC);    // round to -8
-//	  _controlfp(_PC_53, _MCW_PC);    // round to -8
+	if ((r = ress.size()) > 0) {
+	  char temps[256], base[1024];
+	  int target = limit;
+
+	  for (size_t n = 0; n < r; n++) {
+	    limit       = ress[n].first;
+	    termination = ress[n].second;
+
+	    srandom(limit);
+
+	    _controlfp(_RC_DOWN, _MCW_RC);    // round to -8
+//	    _controlfp(_PC_53, _MCW_PC);    // round to -8
 
 #if 0
-	  // replace default output buffer with string buffer
-	  ofstream dbg("debug.log", ios::binary);
-	  std::streambuf* old_rdbuf = std::cout.rdbuf();
-	  //std::stringbuf new_rdbuf;
-	  //std::cout.rdbuf(&new_rdbuf);
-	  std::cout.rdbuf(dbg.rdbuf());
+	    // replace default output buffer with string buffer
+	    ofstream dbg("debug.log", ios::binary);
+	    std::streambuf* old_rdbuf = std::cout.rdbuf();
+	    //std::stringbuf new_rdbuf;
+	    //std::cout.rdbuf(&new_rdbuf);
+	    std::cout.rdbuf(dbg.rdbuf());
 
-	  debug = 0;
+	    debug = 0;
 #endif
-	  try {
+	    try {
 
-	    /* let's go */
-	    prog->InitProgress("Resolution %d, generating mesh:", limit, "Adding points (current mesh error %f):", -1.0, majordone++, limit);
+	      /* let's go */
+	      prog->InitProgress("Resolution %d, generating mesh:", limit, "Selecting points (current mesh error %f):", -1.0, majordone++, limit);
 
-	    /* create the base directory */
-	    sprintf(base, "%s\\LOD-%d", dataDir.data(), limit);
-	    CreateDirectory(base, NULL);
+	      /* create the base directory */
+	      sprintf(base, "%s\\LOD-%d", dataDir.data(), limit);
+	      CreateDirectory(base, NULL);
 
-	    /* prepare the skiplist for faster processing */
-	    skiplist.clear();
+	      /* prepare the skiplist for faster processing */
+	      skiplist.clear();
 
-	    if (OSMeshUVs->Get3StateValue() != wxCHK_CHECKED) {
-	      strcpy(temps, base);
-	      strcat(temps, "\\UVoff\\%02d.%02d.%02d.%02d");
+	      if (OSMeshUVs->Get3StateValue() != wxCHK_CHECKED) {
+		strcpy(temps, base);
+		strcat(temps, "\\UVoff\\%02d.%02d.%02d.%02d");
 
-	      skiplist.push_back(temps);
-	    }
+		skiplist.push_back(temps);
+	      }
 
-	    if (OSMeshUVs->Get3StateValue() != wxCHK_UNCHECKED) {
-	      strcpy(temps, base);
-	      strcat(temps, "\\UVon\\%02d.%02d.%02d.%02d");
+	      if (OSMeshUVs->Get3StateValue() != wxCHK_UNCHECKED) {
+		strcpy(temps, base);
+		strcat(temps, "\\UVon\\%02d.%02d.%02d.%02d");
 
-	      skiplist.push_back(temps);
-	    }
+		skiplist.push_back(temps);
+	      }
 
-	    /* initial heightfield-class */
-	    SimplField ter(&H);
+	      /* initial heightfield-class */
+	      SimplField ter(&H);
 
 #ifdef	SPLIT_ON_INJECTION
-	    /* damit, the heightfield is [0,width), not inclusive */
-	    for (int h = 0; h <= height; h += rastery)
-	    for (int w = 0; w <=  width; w += rasterx)
-	      ter.select_new_point(min(w, width - 1), min(h, height - 1));
+	      /* damit, the heightfield is [0,width), not inclusive */
+	      for (int h = 0; h <= height; h += rastery)
+	      for (int w = 0; w <=  width; w += rasterx)
+		ter.select_new_point(min(w, width - 1), min(h, height - 1));
 #endif
 
 #if 0
-	    debug = 0;//(limit == 2025 ? 500 : 0);
+	      debug = 0;//(limit == 2025 ? 500 : 0);
 #endif
 
-	    /* serial insertion */
-	    greedy_insert(ter);
+	      /* serial insertion */
+	      greedy_insert(ter);
 
-	    /* parallel insertion (consume all above given error) */
-//	    greedy_insert_error(ter);
+	      /* parallel insertion (consume all above given error) */
+//	      greedy_insert_error(ter);
 
-	    /* low resolutions read the points in */
-	    if (limit < target) {
-	      prog->InitProgress("Resolution %d, generating mesh:", limit, "Adding hi-res points (current mesh error %f):", ter.max_error(), majordone++, 1);
+	      /* low resolutions read the points in */
+	      if (limit < target) {
+		prog->InitProgress("Resolution %d, generating mesh:", limit, "Placing hi-res points (current mesh error %f):", ter.max_error(), majordone++, 1);
 
-	      sprintf(temps, "%s\\LOD-%d\\%02d.pts", dataDir.data(), target, wdspace);
-	      read_pts(ter, temps);
+		sprintf(temps, "%s\\LOD-%d\\%02d.pts", dataDir.data(), target, wdspace);
+		read_pts(ter, temps);
+	      }
+
+	      /* custom points are also read in */
+	      if (dataPts.length() > 0) {
+		prog->InitProgress("Resolution %d, generating mesh:", limit, "Placing custom points (current mesh error %f):", ter.max_error(), majordone++, 1);
+
+		read_pts(ter, dataPts.data());
+	      }
+
+	      sprintf(base, "%s\\LOD-%d", dataDir.data(), limit);
+
+	      prog->InitProgress("Resolution %d, optimizing mesh:", limit, "Reordering faces:", 0.0, majordone++, 1);
+
+	      /* prepare writing */
+	      write_prolog(ter);
+
+	      prog->InitProgress("Resolution %d, optimizing mesh:", limit, "Tiling faces:", 0.0, majordone++, 1);
+
+	      /* prepare writing */
+	      write_prolog();
+
+	      prog->InitProgress("Resolution %d, optimizing mesh:", limit, "Optimizing tiles:", 0.0, majordone++, 1);
+
+	      /* prepare writing */
+	      write_optimize();
+
+	      /* go, write */
+	      if (OSMeshUVs->Get3StateValue() != wxCHK_CHECKED) {
+		sprintf(temps, "%s\\UVoff", base);
+		CreateDirectory(temps, NULL);
+
+		strcpy(temps, base);
+		strcat(temps, "\\UVoff\\%02d.%02d.%02d.%02d");
+		emituvs = false;
+
+		prog->InitProgress("Resolution %d, saving mesh:", limit, "Saving non-UV tiles:", 0.0, majordone++, 1);
+
+		write_meshes(ter, temps);
+	      }
+
+	      /* go, write */
+	      if (OSMeshUVs->Get3StateValue() != wxCHK_UNCHECKED) {
+		sprintf(temps, "%s\\UVon", base);
+		CreateDirectory(temps, NULL);
+
+		strcpy(temps, base);
+		strcat(temps, "\\UVon\\%02d.%02d.%02d.%02d");
+		emituvs = true;
+
+		prog->InitProgress("Resolution %d, saving mesh:", limit, "Saving UV tiles:", 0.0, majordone++, 1);
+
+		write_meshes(ter, temps);
+	      }
+
+	      /* the highest resolution writes the points out */
+	      if (limit == target) {
+		sprintf(temps, "%s\\LOD-%d\\%02d.pts", dataDir.data(), target, wdspace);
+		write_pts(ter, temps);
+	      }
+
+	      /* done */
+	      free_faces();
 	    }
+	    catch(exception &e) {
+	      free_faces();
 
-	    /* custom points are also read in */
-	    if (dataPts.length() > 0) {
-	      prog->InitProgress("Resolution %d, generating mesh:", limit, "Adding custom points (current mesh error %f):", ter.max_error(), majordone++, 1);
+	      if (strcmp(e.what(), "ExitThread")) {
+		wxMessageDialog d(prog, e.what(), "Oscape error");
+		d.ShowModal();
+	      }
 
-	      read_pts(ter, dataPts.data());
+	      prog->Leave(0);
+	      return;
 	    }
-
-	    sprintf(base, "%s\\LOD-%d", dataDir.data(), limit);
-
-	    prog->InitProgress("Resolution %d, optimizing mesh:", limit, "Reordering faces:", 0.0, majordone++, 1);
-
-	    /* prepare writing */
-	    write_prolog(ter);
-
-	    prog->InitProgress("Resolution %d, optimizing mesh:", limit, "Tiling faces:", 0.0, majordone++, 1);
-
-	    /* prepare writing */
-	    write_prolog();
-
-	    prog->InitProgress("Resolution %d, optimizing mesh:", limit, "Optimizing tiles:", 0.0, majordone++, 1);
-
-	    /* prepare writing */
-	    write_optimize();
-
-	    /* go, write */
-	    if (OSMeshUVs->Get3StateValue() != wxCHK_CHECKED) {
-	      sprintf(temps, "%s\\UVoff", base);
-	      CreateDirectory(temps, NULL);
-
-	      strcpy(temps, base);
-	      strcat(temps, "\\UVoff\\%02d.%02d.%02d.%02d");
-	      emituvs = false;
-
-	      prog->InitProgress("Resolution %d, saving mesh:", limit, "Saving non-UV tiles:", 0.0, majordone++, 1);
-
-	      write_meshes(ter, temps);
-	    }
-
-	    /* go, write */
-	    if (OSMeshUVs->Get3StateValue() != wxCHK_UNCHECKED) {
-	      sprintf(temps, "%s\\UVon", base);
-	      CreateDirectory(temps, NULL);
-
-	      strcpy(temps, base);
-	      strcat(temps, "\\UVon\\%02d.%02d.%02d.%02d");
-	      emituvs = true;
-
-	      prog->InitProgress("Resolution %d, saving mesh:", limit, "Saving UV tiles:", 0.0, majordone++, 1);
-
-	      write_meshes(ter, temps);
-	    }
-
-	    /* the highest resolution writes the points out */
-	    if (limit == target) {
-	      sprintf(temps, "%s\\LOD-%d\\%02d.pts", dataDir.data(), target, wdspace);
-	      write_pts(ter, temps);
-	    }
-
-	    /* --------------------------------------------------------------------
-	    if (OSHeightmap->GetValue()) {
-	      prog->InitProgress("Calculating height-maps:", 0, "Tiling values:", 0.0, majordone++, 1);
-	      write_nrmhgt0(false, false, OSHeightmapLow    ->GetValue(), H);
-
-	      prog->InitProgress("Calculating height-maps:", 0, "Tiling values:", 0.0, majordone++, 1);
-	      write_nrmhgt1(false, false, OSHeightmapRegular->GetValue(), H);
-
-	      prog->InitProgress("Calculating height-maps:", 0, "Tiling values:", 0.0, majordone++, 1);
-	      write_nrmhgt2(false, false, OSHeightmapHigh   ->GetValue(), H);
-	    }
-	     */
-
-	    free_faces();
-	  }
-	  catch(exception &e) {
-	    free_faces();
-
-	    if (strcmp(e.what(), "ExitThread")) {
-	      wxMessageDialog d(prog, e.what(), "Oscape error");
-	      d.ShowModal();
-	    }
-
-	    prog->Leave(0);
-	    return;
-	  }
 
 #if 0
-	  // restore the default buffer before destroying the new one
-	  //std::string s(new_rdbuf.str());
-	  std::cout.rdbuf(old_rdbuf);
-	  //FILE *f = fopen("debug.log", "w");
-	  //fwrite(s.data(), 1, s.size(), f);
-	  //fclose(f);
+	    // restore the default buffer before destroying the new one
+	    //std::string s(new_rdbuf.str());
+	    std::cout.rdbuf(old_rdbuf);
+	    //FILE *f = fopen("debug.log", "w");
+	    //fwrite(s.data(), 1, s.size(), f);
+	    //fclose(f);
 #endif
+	  }
+	}
+      }
+
+      /* -------------------------------------------------------------------- */
+      if (OSNormals->GetValue()) {
+	char temps[256], base[1024];
+
+	writeppm = OSNormalPPM->GetValue();
+	writepng = OSNormalPNG->GetValue();
+	writedds = OSNormalDDS->GetValue();
+
+	try {
+
+	  if (OSNormalLow    ->GetValue()) {
+	    /* create the base directory */
+	    sprintf(base, "%s\\TEX-%d", dataDir.data(), 512);
+	    CreateDirectory(base, NULL);
+
+	    strcpy(temps, base);
+	    strcat(temps, "\\%02d.%02d.%02d.%02d");
+
+	    prog->InitProgress("Resolution %d, calculating normal-maps:", 512, "Tiling normals:", 0.0, majordone++, 1);
+	    write_nrmhgt0(false, OSNormalLow    ->GetValue(), false, H, temps);
+	  }
+
+	  if (OSNormalRegular->GetValue()) {
+	    /* create the base directory */
+	    sprintf(base, "%s\\TEX-%d", dataDir.data(), 1024);
+	    CreateDirectory(base, NULL);
+
+	    strcpy(temps, base);
+	    strcat(temps, "\\%02d.%02d.%02d.%02d");
+
+	    prog->InitProgress("Resolution %d, calculating normal-maps:", 1024, "Tiling normals:", 0.0, majordone++, 1);
+	    write_nrmhgt1(false, OSNormalRegular->GetValue(), false, H, temps);
+	  }
+
+	  if (OSNormalHigh   ->GetValue()) {
+	    /* create the base directory */
+	    sprintf(base, "%s\\TEX-%d", dataDir.data(), 2048);
+	    CreateDirectory(base, NULL);
+
+	    strcpy(temps, base);
+	    strcat(temps, "\\%02d.%02d.%02d.%02d");
+
+	    prog->InitProgress("Resolution %d, calculating normal-maps:", 2048, "Tiling normals:", 0.0, majordone++, 1);
+	    write_nrmhgt2(false, OSNormalHigh   ->GetValue(), false, H, temps);
+	  }
+
+	  free_textures();
+	}
+	catch(exception &e) {
+	  free_textures();
+
+	  if (strcmp(e.what(), "ExitThread")) {
+	    wxMessageDialog d(prog, e.what(), "Oscape error");
+	    d.ShowModal();
+	  }
+
+	  prog->Leave(0);
+	  return;
 	}
       }
     }
 
     /* -------------------------------------------------------------------- */
-    if (OSNormals->GetValue()) {
-      char temps[256], base[1024];
+    if (OSColors->GetValue()) {
+      prog->InitProgress("Initializing:", 0, "Reading surface-map:", 0.0, majordone++, 1);
 
-      writeppm = OSNormalPPM->GetValue();
-      writepng = OSNormalPNG->GetValue();
-      writedds = OSNormalDDS->GetValue();
+      ifstream mntns(colrFile, ios::binary);
+      CField C(mntns);
 
-      try {
+      /* -------------------------------------------------------------------- */
+      if (OSColors->GetValue()) {
+	char temps[256], base[1024];
 
-	if (OSNormalLow    ->GetValue()) {
-	  /* create the base directory */
-	  sprintf(base, "%s\\TEX-%d", dataDir.data(), 512);
-	  CreateDirectory(base, NULL);
+	writeppm = OSColorPPM->GetValue();
+	writepng = OSColorPNG->GetValue();
+	writedds = OSColorDDS->GetValue();
 
-	  strcpy(temps, base);
-	  strcat(temps, "\\%02d.%02d.%02d.%02d");
+	try {
 
-	  prog->InitProgress("Resolution %d, calculating normal-maps:", 512, "Tiling normals:", 0.0, majordone++, 1);
-	  write_nrmhgt0(false, OSNormalLow    ->GetValue(), false, H, temps);
+	  if (OSColorLow    ->GetValue()) {
+	    /* create the base directory */
+	    sprintf(base, "%s\\TEX-%d", dataDir.data(), 512);
+	    CreateDirectory(base, NULL);
+
+	    strcpy(temps, base);
+	    strcat(temps, "\\%02d.%02d.%02d.%02d");
+
+	    prog->InitProgress("Resolution %d, calculating color-maps:", 512, "Tiling colors:", 0.0, majordone++, 1);
+	    write_col0(OSColorLow    ->GetValue(), C, temps);
+	  }
+
+	  if (OSColorRegular->GetValue()) {
+	    /* create the base directory */
+	    sprintf(base, "%s\\TEX-%d", dataDir.data(), 1024);
+	    CreateDirectory(base, NULL);
+
+	    strcpy(temps, base);
+	    strcat(temps, "\\%02d.%02d.%02d.%02d");
+
+	    prog->InitProgress("Resolution %d, calculating color-maps:", 1024, "Tiling colors:", 0.0, majordone++, 1);
+	    write_col1(OSColorRegular->GetValue(), C, temps);
+	  }
+
+	  if (OSColorHigh   ->GetValue()) {
+	    /* create the base directory */
+	    sprintf(base, "%s\\TEX-%d", dataDir.data(), 2048);
+	    CreateDirectory(base, NULL);
+
+	    strcpy(temps, base);
+	    strcat(temps, "\\%02d.%02d.%02d.%02d");
+
+	    prog->InitProgress("Resolution %d, calculating color-maps:", 2048, "Tiling colors:", 0.0, majordone++, 1);
+	    write_col2(OSColorHigh   ->GetValue(), C, temps);
+	  }
+
+	  if (OSColorUltra  ->GetValue()) {
+	    /* create the base directory */
+	    sprintf(base, "%s\\TEX-%d", dataDir.data(), 4096);
+	    CreateDirectory(base, NULL);
+
+	    strcpy(temps, base);
+	    strcat(temps, "\\%02d.%02d.%02d.%02d");
+
+	    prog->InitProgress("Resolution %d, calculating color-maps:", 4096, "Tiling colors:", 0.0, majordone++, 1);
+	    write_col3(OSColorUltra  ->GetValue(), C, temps);
+	  }
+
+	  free_textures();
 	}
+	catch(exception &e) {
+	  free_textures();
 
-	if (OSNormalLow    ->GetValue()) {
-	  /* create the base directory */
-	  sprintf(base, "%s\\TEX-%d", dataDir.data(), 1024);
-	  CreateDirectory(base, NULL);
+	  if (strcmp(e.what(), "ExitThread")) {
+	    wxMessageDialog d(prog, e.what(), "Oscape error");
+	    d.ShowModal();
+	  }
 
-	  strcpy(temps, base);
-	  strcat(temps, "\\%02d.%02d.%02d.%02d");
-
-	  prog->InitProgress("Resolution %d, calculating normal-maps:", 1024, "Tiling normals:", 0.0, majordone++, 1);
-	  write_nrmhgt1(false, OSNormalRegular->GetValue(), false, H, temps);
+	  prog->Leave(0);
+	  return;
 	}
-
-	if (OSNormalLow    ->GetValue()) {
-	  /* create the base directory */
-	  sprintf(base, "%s\\TEX-%d", dataDir.data(), 2048);
-	  CreateDirectory(base, NULL);
-
-	  strcpy(temps, base);
-	  strcat(temps, "\\%02d.%02d.%02d.%02d");
-
-	  prog->InitProgress("Resolution %d, calculating normal-maps:", 2048, "Tiling normals:", 0.0, majordone++, 1);
-	  write_nrmhgt2(false, OSNormalHigh   ->GetValue(), false, H, temps);
-	}
-
-	free_textures();
-      }
-      catch(exception &e) {
-	free_textures();
-
-	if (strcmp(e.what(), "ExitThread")) {
-	  wxMessageDialog d(prog, e.what(), "Oscape error");
-	  d.ShowModal();
-	}
-
-	prog->Leave(0);
-	return;
       }
     }
 
@@ -2307,14 +2629,22 @@ private:
 #define LEVEL1_INST 1
 #define LEVEL2_INST 2
 #define LEVEL3_INST 3
+#define LEVEL0UV_INST 0
+#define LEVEL1UV_INST 1
+#define LEVEL2UV_INST 2
+#define LEVEL3UV_INST 3
 #define LEVEL0_MRES 4
 #define LEVEL1_MRES 5
 #define LEVEL2_MRES 6
 #define LEVEL3_MRES 7
-#define LEVEL0_TRES 8
-#define LEVEL1_TRES 9
-#define LEVEL2_TRES 10
-#define LEVEL3_TRES 11
+#define LEVEL0N_TRES 8
+#define LEVEL1N_TRES 9
+#define LEVEL2N_TRES 10
+#define LEVEL3N_TRES 11
+#define LEVEL0C_TRES 12
+#define LEVEL1C_TRES 13
+#define LEVEL2C_TRES 14
+#define LEVEL3C_TRES 15
 
     size_t wxID_Page = OSInstallWS->GetPageCount();
     int wxID_Base = /*(wsv << 4) + 1*/ 16384;
@@ -2328,10 +2658,20 @@ private:
 
     /* ----------------------------------------------------------------------- */
     wxStaticBoxSizer* OSLevel0;
-    OSLevel0 = new wxStaticBoxSizer( new wxStaticBox( m_scrolledWindow4, wxID_ANY, wxT("Level 0") ), wxVERTICAL );
+    OSLevel0 = new wxStaticBoxSizer( new wxStaticBox( m_scrolledWindow4, wxID_ANY, wxT("Level0") ), wxVERTICAL );
+
+    wxBoxSizer* bSizer28;
+    bSizer28 = new wxBoxSizer( wxHORIZONTAL );
 
     OSInstallLevel0 = new wxCheckBox( m_scrolledWindow4, wID(LEVEL0_INST), wxT("Install"), wxDefaultPosition, wxDefaultSize, 0 );
-    OSLevel0->Add( OSInstallLevel0, 0, wxALL, 5 );
+    bSizer28->Add( OSInstallLevel0, 0, wxALL, 5 );
+
+    OSInstallLevel0UVs = new wxCheckBox( m_scrolledWindow4, wID(LEVEL0UV_INST), wxT("with UVs"), wxDefaultPosition, wxDefaultSize, 0 );
+    OSInstallLevel0UVs->Hide();
+
+    bSizer28->Add( OSInstallLevel0UVs, 0, wxALL, 5 );
+
+    OSLevel0->Add( bSizer28, 1, wxEXPAND, 5 );
 
     wxGridSizer* gSizer4;
     gSizer4 = new wxGridSizer( 2, 2, 0, 0 );
@@ -2349,10 +2689,19 @@ private:
     m_staticText401->Wrap( -1 );
     gSizer4->Add( m_staticText401, 0, wxALIGN_CENTER_VERTICAL|wxALL, 5 );
 
-    wxArrayString OSInstallLevel0TextResChoices;
-    OSInstallLevel0TextRes = new wxChoice( m_scrolledWindow4, wID(LEVEL0_TRES), wxDefaultPosition, wxDefaultSize, OSInstallLevel0TextResChoices, 0 );
-    OSInstallLevel0TextRes->SetSelection( 0 );
-    gSizer4->Add( OSInstallLevel0TextRes, 0, wxALL|wxEXPAND, 5 );
+    wxArrayString OSInstallLevel0TextResNChoices;
+    OSInstallLevel0TextResN = new wxChoice( m_scrolledWindow4, wID(LEVEL0N_TRES), wxDefaultPosition, wxDefaultSize, OSInstallLevel0TextResNChoices, 0 );
+    OSInstallLevel0TextResN->SetSelection( 0 );
+    gSizer4->Add( OSInstallLevel0TextResN, 0, wxALL|wxEXPAND, 5 );
+
+    m_staticText4014 = new wxStaticText( m_scrolledWindow4, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, 0 );
+    m_staticText4014->Wrap( -1 );
+    gSizer4->Add( m_staticText4014, 0, wxALL, 5 );
+
+    wxArrayString OSInstallLevel0TextResCChoices;
+    OSInstallLevel0TextResC = new wxChoice( m_scrolledWindow4, wID(LEVEL0C_TRES), wxDefaultPosition, wxDefaultSize, OSInstallLevel0TextResCChoices, 0 );
+    OSInstallLevel0TextResC->SetSelection( 0 );
+    gSizer4->Add( OSInstallLevel0TextResC, 0, wxALL|wxEXPAND, 5 );
 
     OSLevel0->Add( gSizer4, 0, wxEXPAND, 5 );
 
@@ -2360,10 +2709,20 @@ private:
 
     /* ----------------------------------------------------------------------- */
     wxStaticBoxSizer* OSLevel1;
-    OSLevel1 = new wxStaticBoxSizer( new wxStaticBox( m_scrolledWindow4, wxID_ANY, wxT("Level 1 (for OBGE LLOD)") ), wxVERTICAL );
+    OSLevel1 = new wxStaticBoxSizer( new wxStaticBox( m_scrolledWindow4, wxID_ANY, wxT("Level1") ), wxVERTICAL );
+
+    wxBoxSizer* bSizer281;
+    bSizer281 = new wxBoxSizer( wxHORIZONTAL );
 
     OSInstallLevel1 = new wxCheckBox( m_scrolledWindow4, wID(LEVEL1_INST), wxT("Install"), wxDefaultPosition, wxDefaultSize, 0 );
-    OSLevel1->Add( OSInstallLevel1, 0, wxALL, 5 );
+    bSizer281->Add( OSInstallLevel1, 0, wxALL, 5 );
+
+    OSInstallLevel1UVs = new wxCheckBox( m_scrolledWindow4, wID(LEVEL1UV_INST), wxT("with UVs"), wxDefaultPosition, wxDefaultSize, 0 );
+    OSInstallLevel1UVs->Hide();
+
+    bSizer281->Add( OSInstallLevel1UVs, 0, wxALL, 5 );
+
+    OSLevel1->Add( bSizer281, 1, wxEXPAND, 5 );
 
     wxGridSizer* gSizer41;
     gSizer41 = new wxGridSizer( 2, 2, 0, 0 );
@@ -2381,10 +2740,19 @@ private:
     m_staticText4011->Wrap( -1 );
     gSizer41->Add( m_staticText4011, 0, wxALIGN_CENTER_VERTICAL|wxALL, 5 );
 
-    wxArrayString OSInstallLevel1TextResChoices;
-    OSInstallLevel1TextRes = new wxChoice( m_scrolledWindow4, wID(LEVEL1_TRES), wxDefaultPosition, wxDefaultSize, OSInstallLevel1TextResChoices, 0 );
-    OSInstallLevel1TextRes->SetSelection( 0 );
-    gSizer41->Add( OSInstallLevel1TextRes, 0, wxALL|wxEXPAND, 5 );
+    wxArrayString OSInstallLevel1TextResNChoices;
+    OSInstallLevel1TextResN = new wxChoice( m_scrolledWindow4, wID(LEVEL1N_TRES), wxDefaultPosition, wxDefaultSize, OSInstallLevel1TextResNChoices, 0 );
+    OSInstallLevel1TextResN->SetSelection( 0 );
+    gSizer41->Add( OSInstallLevel1TextResN, 0, wxALL|wxEXPAND, 5 );
+
+    m_staticText40111 = new wxStaticText( m_scrolledWindow4, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, 0 );
+    m_staticText40111->Wrap( -1 );
+    gSizer41->Add( m_staticText40111, 0, wxALL, 5 );
+
+    wxArrayString OSInstallLevel1TextResCChoices;
+    OSInstallLevel1TextResC = new wxChoice( m_scrolledWindow4, wID(LEVEL1C_TRES), wxDefaultPosition, wxDefaultSize, OSInstallLevel1TextResCChoices, 0 );
+    OSInstallLevel1TextResC->SetSelection( 0 );
+    gSizer41->Add( OSInstallLevel1TextResC, 0, wxALL|wxEXPAND, 5 );
 
     OSLevel1->Add( gSizer41, 0, wxEXPAND, 5 );
 
@@ -2392,10 +2760,20 @@ private:
 
     /* ----------------------------------------------------------------------- */
     wxStaticBoxSizer* OSLevel2;
-    OSLevel2 = new wxStaticBoxSizer( new wxStaticBox( m_scrolledWindow4, wxID_ANY, wxT("Level 2 (for OBGE LLOD)") ), wxVERTICAL );
+    OSLevel2 = new wxStaticBoxSizer( new wxStaticBox( m_scrolledWindow4, wxID_ANY, wxT("Level2") ), wxVERTICAL );
+
+    wxBoxSizer* bSizer282;
+    bSizer282 = new wxBoxSizer( wxHORIZONTAL );
 
     OSInstallLevel2 = new wxCheckBox( m_scrolledWindow4, wID(LEVEL2_INST), wxT("Install"), wxDefaultPosition, wxDefaultSize, 0 );
-    OSLevel2->Add( OSInstallLevel2, 0, wxALL, 5 );
+    bSizer282->Add( OSInstallLevel2, 0, wxALL, 5 );
+
+    OSInstallLevel2UVs = new wxCheckBox( m_scrolledWindow4, wID(LEVEL2UV_INST), wxT("with UVs"), wxDefaultPosition, wxDefaultSize, 0 );
+    OSInstallLevel2UVs->Hide();
+
+    bSizer282->Add( OSInstallLevel2UVs, 0, wxALL, 5 );
+
+    OSLevel2->Add( bSizer282, 1, wxEXPAND, 5 );
 
     wxGridSizer* gSizer42;
     gSizer42 = new wxGridSizer( 2, 2, 0, 0 );
@@ -2413,10 +2791,19 @@ private:
     m_staticText4012->Wrap( -1 );
     gSizer42->Add( m_staticText4012, 0, wxALIGN_CENTER_VERTICAL|wxALL, 5 );
 
-    wxArrayString OSInstallLevel2TextResChoices;
-    OSInstallLevel2TextRes = new wxChoice( m_scrolledWindow4, wID(LEVEL2_TRES), wxDefaultPosition, wxDefaultSize, OSInstallLevel2TextResChoices, 0 );
-    OSInstallLevel2TextRes->SetSelection( 0 );
-    gSizer42->Add( OSInstallLevel2TextRes, 0, wxALL|wxEXPAND, 5 );
+    wxArrayString OSInstallLevel2TextResNChoices;
+    OSInstallLevel2TextResN = new wxChoice( m_scrolledWindow4, wID(LEVEL2N_TRES), wxDefaultPosition, wxDefaultSize, OSInstallLevel2TextResNChoices, 0 );
+    OSInstallLevel2TextResN->SetSelection( 0 );
+    gSizer42->Add( OSInstallLevel2TextResN, 0, wxALL|wxEXPAND, 5 );
+
+    m_staticText40121 = new wxStaticText( m_scrolledWindow4, wxID_ANY, wxT("Texture-resolution:"), wxDefaultPosition, wxDefaultSize, 0 );
+    m_staticText40121->Wrap( -1 );
+    gSizer42->Add( m_staticText40121, 0, wxALL, 5 );
+
+    wxArrayString OSInstallLevel2TextResCChoices;
+    OSInstallLevel2TextResC = new wxChoice( m_scrolledWindow4, wID(LEVEL2C_TRES), wxDefaultPosition, wxDefaultSize, OSInstallLevel2TextResCChoices, 0 );
+    OSInstallLevel2TextResC->SetSelection( 0 );
+    gSizer42->Add( OSInstallLevel2TextResC, 0, wxALL|wxEXPAND, 5 );
 
     OSLevel2->Add( gSizer42, 0, wxEXPAND, 5 );
 
@@ -2424,10 +2811,20 @@ private:
 
     /* ----------------------------------------------------------------------- */
     wxStaticBoxSizer* OSLevel3;
-    OSLevel3 = new wxStaticBoxSizer( new wxStaticBox( m_scrolledWindow4, wxID_ANY, wxT("Level 3 (for OBGE LLOD)") ), wxVERTICAL );
+    OSLevel3 = new wxStaticBoxSizer( new wxStaticBox( m_scrolledWindow4, wxID_ANY, wxT("Level3") ), wxVERTICAL );
+
+    wxBoxSizer* bSizer283;
+    bSizer283 = new wxBoxSizer( wxHORIZONTAL );
 
     OSInstallLevel3 = new wxCheckBox( m_scrolledWindow4, wID(LEVEL3_INST), wxT("Install"), wxDefaultPosition, wxDefaultSize, 0 );
-    OSLevel3->Add( OSInstallLevel3, 0, wxALL, 5 );
+    bSizer283->Add( OSInstallLevel3, 0, wxALL, 5 );
+
+    OSInstallLevel3UVs = new wxCheckBox( m_scrolledWindow4, wID(LEVEL3UV_INST), wxT("with UVs"), wxDefaultPosition, wxDefaultSize, 0 );
+    OSInstallLevel3UVs->Hide();
+
+    bSizer283->Add( OSInstallLevel3UVs, 0, wxALL, 5 );
+
+    OSLevel3->Add( bSizer283, 1, wxEXPAND, 5 );
 
     wxGridSizer* gSizer43;
     gSizer43 = new wxGridSizer( 2, 2, 0, 0 );
@@ -2445,10 +2842,19 @@ private:
     m_staticText4013->Wrap( -1 );
     gSizer43->Add( m_staticText4013, 0, wxALIGN_CENTER_VERTICAL|wxALL, 5 );
 
-    wxArrayString OSInstallLevel3TextResChoices;
-    OSInstallLevel3TextRes = new wxChoice( m_scrolledWindow4, wID(LEVEL3_TRES), wxDefaultPosition, wxDefaultSize, OSInstallLevel3TextResChoices, 0 );
-    OSInstallLevel3TextRes->SetSelection( 0 );
-    gSizer43->Add( OSInstallLevel3TextRes, 0, wxALL|wxEXPAND, 5 );
+    wxArrayString OSInstallLevel3TextResNChoices;
+    OSInstallLevel3TextResN = new wxChoice( m_scrolledWindow4, wID(LEVEL3N_TRES), wxDefaultPosition, wxDefaultSize, OSInstallLevel3TextResNChoices, 0 );
+    OSInstallLevel3TextResN->SetSelection( 0 );
+    gSizer43->Add( OSInstallLevel3TextResN, 0, wxALL|wxEXPAND, 5 );
+
+    m_staticText40131 = new wxStaticText( m_scrolledWindow4, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, 0 );
+    m_staticText40131->Wrap( -1 );
+    gSizer43->Add( m_staticText40131, 0, wxALL, 5 );
+
+    wxArrayString OSInstallLevel3TextResCChoices;
+    OSInstallLevel3TextResC = new wxChoice( m_scrolledWindow4, wID(LEVEL3C_TRES), wxDefaultPosition, wxDefaultSize, OSInstallLevel3TextResCChoices, 0 );
+    OSInstallLevel3TextResC->SetSelection( 0 );
+    gSizer43->Add( OSInstallLevel3TextResC, 0, wxALL|wxEXPAND, 5 );
 
     OSLevel3->Add( gSizer43, 0, wxEXPAND, 5 );
 
@@ -2472,156 +2878,226 @@ private:
     buf[0] = 0; RegGetValue(Settings, wsn.data(), "Install3", RRF_RT_REG_SZ, NULL, buf, &bufl);
     if (buf[0]) OSInstallLevel3->SetValue(buf[0] == '1'); bufl = 1023;
 
+    /* --------------------------------------------------------------------- */
+    unsigned long int res_;
+    int numN, numY;
+    int addm = 0, fndn = 0, fndc = 0, divm = 1, texn = 0, texc = 0,
+	ackm = 0, tckn = 0, tckc = 0, resm = 0, resn = 0, resc = 0;
+
     set<unsigned long int>::const_iterator walk = config->seed.begin();
     while (walk != config->seed.end()) {
-      unsigned long int res = *walk;
+      res_ = *walk;
+      while (res_ > 1024) {
+	if ((numN = config->mesh_nu_n[res_]) > 0) {
+	  sprintf(buf, "1/%d: %d points, no UVs, %d tiles", divm, res_, numN); resm = max(resm, res_);
 
-      /* --------------------------------------------------------------------- */
-      int div = 1, fnd = 0, numN, numY, add = 0, tex = 0, ack = 0, tck = 0;
-      while (res > 1024) {
-	if ((numN = config->mesh_nu_n[res]) > 0) {
-	  sprintf(buf, "1/%d: %d points, no UVs, %d tiles", div, res, numN);
-
-	  OSInstallLevel0MeshRes->Append(buf, (void *)-((int)res));
-	  if ((ack == 0))
-	    OSInstallLevel0MeshRes->SetSelection(OSInstallLevel0MeshRes->GetCount() - 1), ack = 1;
+	  OSInstallLevel0MeshRes->Append(buf, (void *)-((int)res_));
+	  if ((ackm == 0))
+	    OSInstallLevel0MeshRes->SetSelection(OSInstallLevel0MeshRes->GetCount() - 1), ackm = 1;
 	}
 
-	if ((numY = config->mesh_yu_n[res]) > 0) {
-	  sprintf(buf, "1/%d: %d points, UVs, %d tiles", div, res, numY);
+	if ((numY = config->mesh_yu_n[res_]) > 0) {
+	  sprintf(buf, "1/%d: %d points, UVs, %d tiles", divm, res_, numY); resm = max(resm, res_);
 
-	  OSInstallLevel0MeshRes->Append(buf, (void *) ((int)res));
-	  if ((ack == 0))
-	    OSInstallLevel0MeshRes->SetSelection(OSInstallLevel0MeshRes->GetCount() - 1), ack = 1;
+	  OSInstallLevel0MeshRes->Append(buf, (void *) ((int)res_));
+	  if ((ackm == 0))
+	    OSInstallLevel0MeshRes->SetSelection(OSInstallLevel0MeshRes->GetCount() - 1), ackm = 1;
 	}
 
-	add += (numN || numY) ? 1 : 0;
-	res /= 2;
-	div *= 2;
+	addm += (numN || numY) ? 1 : 0;
+	res_ /= 2;
+	divm *= 2;
       }
 
-      res = 2048, fnd = 0;
-      while (res > 64) {
-	numN = config->text_d[res];
-	numY = config->text_p[res];
+      walk++;
+    }
+
+    {
+      res_ = 2048, fndn = 0;
+      while (res_ > 64) {
+	numN = config->textn_d[res_];
+	numY = config->textn_p[res_];
 
 	/* if there are resolution, all lower ones are available as well */
-	if ((numN + numY + fnd) > 0) {
-	  sprintf(buf, "%dx%d, %d tiles", res, res, max(numN, numY));
+	if ((numN + numY + fndn) > 0) {
+	  sprintf(buf, "%dx%d normals, %d tiles", res_, res_, max(numN, numY)); resn = max(resn, res_);
 
-	  OSInstallLevel0TextRes->Append(buf, (void *) ((int)res));
-	  if ((tck == 0))
-	    OSInstallLevel0TextRes->SetSelection(OSInstallLevel0TextRes->GetCount() - 1), tck = 1;
+	  OSInstallLevel0TextResN->Append(buf, (void *) ((int)res_));
+	  if ((tckn == 0))
+	    OSInstallLevel0TextResN->SetSelection(OSInstallLevel0TextResN->GetCount() - 1), tckn = 1;
 	}
 
-	tex += (numN || numY || fnd) ? 1 : 0;
-	fnd += (numN || numY) ? 1 : 0;
-	res /= 2;
+	texn += (numN || numY || fndn) ? 1 : 0;
+	fndn += (numN || numY) ? 1 : 0;
+	res_ /= 2;
       }
 
-      if (add <= 0)
-	OSInstallLevel0MeshRes->Enable(FALSE);
-      if (tex <= 0)
-	OSInstallLevel0TextRes->Enable(FALSE);
-
-      /* --------------------------------------------------------------------- */
-      res = *walk, div = 1, numN, numY, add = 0, tex = 0;
-      while (res > 1024) {
-	if ((numN = config->mesh_nu_x[res]) > 0) {
-	  sprintf(buf, "1/%d: %d points, no UVs, %d tiles", div, res, numN);
-
-	  OSInstallLevel1MeshRes->Append(buf, (void *)-((int)res));
-	  OSInstallLevel2MeshRes->Append(buf, (void *)-((int)res));
-	  OSInstallLevel3MeshRes->Append(buf, (void *)-((int)res));
-
-	  if ((ack == 3) && (res < *walk))
-	    OSInstallLevel3MeshRes->SetSelection(OSInstallLevel3MeshRes->GetCount() - 1), ack = 4;
-	  if ((ack == 2) && (res < *walk))
-	    OSInstallLevel2MeshRes->SetSelection(OSInstallLevel2MeshRes->GetCount() - 1), ack = 3;
-	  if ((ack == 1) && (res < *walk))
-	    OSInstallLevel1MeshRes->SetSelection(OSInstallLevel1MeshRes->GetCount() - 1), ack = 2;
-	}
-
-	if ((numY = config->mesh_yu_x[res]) > 0) {
-	  sprintf(buf, "1/%d: %d points, UVs, %d tiles", div, res, numY);
-
-	  OSInstallLevel1MeshRes->Append(buf, (void *) ((int)res));
-	  OSInstallLevel2MeshRes->Append(buf, (void *) ((int)res));
-	  OSInstallLevel3MeshRes->Append(buf, (void *) ((int)res));
-
-	  if ((ack == 3) && (res < *walk))
-	    OSInstallLevel3MeshRes->SetSelection(OSInstallLevel3MeshRes->GetCount() - 1), ack = 4;
-	  if ((ack == 2) && (res < *walk))
-	    OSInstallLevel2MeshRes->SetSelection(OSInstallLevel2MeshRes->GetCount() - 1), ack = 3;
-	  if ((ack == 1) && (res < *walk))
-	    OSInstallLevel1MeshRes->SetSelection(OSInstallLevel1MeshRes->GetCount() - 1), ack = 2;
-	}
-
-	add += (numN || numY) ? 1 : 0;
-	res /= 2;
-	div *= 2;
-      }
-
-      res = 2048, fnd = 0;
-      while (res > 64) {
-	numN = config->text_d[res];
-	numY = config->text_p[res];
+      res_ = 4096, fndc = 0;
+      while (res_ > 64) {
+	numN = config->textc_d[res_];
+	numY = config->textc_p[res_];
 
 	/* if there are resolution, all lower ones are available as well */
-	if ((numN + numY + fnd) > 0) {
-	  sprintf(buf, "%dx%d, %d tiles", res, res, max(numN, numY));
+	if ((numN + numY + fndc) > 0) {
+	  sprintf(buf, "%dx%d colors, %d tiles", res_, res_, max(numN, numY)); resc = max(resc, res_);
 
-	  OSInstallLevel1TextRes->Append(buf, (void *) ((int)res));
-	  OSInstallLevel2TextRes->Append(buf, (void *) ((int)res));
-	  OSInstallLevel3TextRes->Append(buf, (void *) ((int)res));
-
-	  if ((tck == 3) && (res < 2048))
-	    OSInstallLevel3TextRes->SetSelection(OSInstallLevel3TextRes->GetCount() - 1), tck = 4;
-	  if ((tck == 2) && (res < 2048))
-	    OSInstallLevel2TextRes->SetSelection(OSInstallLevel2TextRes->GetCount() - 1), tck = 3;
-	  if ((tck == 1) && (res < 2048))
-	    OSInstallLevel1TextRes->SetSelection(OSInstallLevel1TextRes->GetCount() - 1), tck = 2;
+	  OSInstallLevel0TextResC->Append(buf, (void *) ((int)res_));
+	  if ((tckc == 0))
+	    OSInstallLevel0TextResC->SetSelection(OSInstallLevel0TextResC->GetCount() - 1), tckc = 1;
 	}
 
-	tex += (numN || numY || fnd) ? 1 : 0;
-	fnd += (numN || numY) ? 1 : 0;
-	res /= 2;
+	texc += (numN || numY || fndc) ? 1 : 0;
+	fndc += (numN || numY) ? 1 : 0;
+	res_ /= 2;
       }
 
-      if (add <= 1) {
-	if (!tex) OSLevel1->ShowItems(FALSE), OSInstallLevel1->SetValue(FALSE);
-	else      OSInstallLevel1MeshRes->Enable(FALSE); }
-      if (!tex)   OSInstallLevel1TextRes->Enable(FALSE);
+      if (addm <= 0) OSInstallLevel0MeshRes ->Enable(FALSE);
+      if (texn <= 0) OSInstallLevel0TextResN->Enable(FALSE);
+      if (texc <= 0) OSInstallLevel0TextResC->Enable(FALSE);
+    }
 
-      if (add <= 2) {
-	if (!tex) OSLevel2->ShowItems(FALSE), OSInstallLevel2->SetValue(FALSE);
-	else      OSInstallLevel2MeshRes->Enable(FALSE); }
-      if (!tex)   OSInstallLevel2TextRes->Enable(FALSE);
+    /* --------------------------------------------------------------------- */
+    divm = 1, addm = 0, texn = 0, texc = 0;
 
-      if (add <= 3) {
-	if (!tex) OSLevel3->ShowItems(FALSE), OSInstallLevel3->SetValue(FALSE);
-	else      OSInstallLevel3MeshRes->Enable(FALSE); }
-      if (!tex)   OSInstallLevel3TextRes->Enable(FALSE);
+    walk = config->seed.begin();
+    while (walk != config->seed.end()) {
+      res_ = *walk;
+      while (res_ > 1024) {
+	if ((numN = config->mesh_nu_x[res_]) > 0) {
+	  sprintf(buf, "1/%d: %d points, no UVs, %d tiles", divm, res_, numN);
+
+	  OSInstallLevel1MeshRes->Append(buf, (void *)-((int)res_));
+	  OSInstallLevel2MeshRes->Append(buf, (void *)-((int)res_));
+	  OSInstallLevel3MeshRes->Append(buf, (void *)-((int)res_));
+
+	  if ((ackm == 3) && (res_ < resm))
+	    OSInstallLevel3MeshRes->SetSelection(OSInstallLevel3MeshRes->GetCount() - 1), ackm = 4;
+	  if ((ackm == 2) && (res_ < resm))
+	    OSInstallLevel2MeshRes->SetSelection(OSInstallLevel2MeshRes->GetCount() - 1), ackm = 3;
+	  if ((ackm == 1) && (res_ < resm))
+	    OSInstallLevel1MeshRes->SetSelection(OSInstallLevel1MeshRes->GetCount() - 1), ackm = 2;
+	}
+
+	if ((numY = config->mesh_yu_x[res_]) > 0) {
+	  sprintf(buf, "1/%d: %d points, UVs, %d tiles", divm, res_, numY);
+
+	  OSInstallLevel1MeshRes->Append(buf, (void *) ((int)res_));
+	  OSInstallLevel2MeshRes->Append(buf, (void *) ((int)res_));
+	  OSInstallLevel3MeshRes->Append(buf, (void *) ((int)res_));
+
+	  if ((ackm == 3) && (res_ < resm))
+	    OSInstallLevel3MeshRes->SetSelection(OSInstallLevel3MeshRes->GetCount() - 1), ackm = 4;
+	  if ((ackm == 2) && (res_ < resm))
+	    OSInstallLevel2MeshRes->SetSelection(OSInstallLevel2MeshRes->GetCount() - 1), ackm = 3;
+	  if ((ackm == 1) && (res_ < resm))
+	    OSInstallLevel1MeshRes->SetSelection(OSInstallLevel1MeshRes->GetCount() - 1), ackm = 2;
+	}
+
+	addm += (numN || numY) ? 1 : 0;
+	res_ /= 2;
+	divm *= 2;
+      }
+
+      walk++;
+    }
+
+    {
+      res_ = 2048, fndn = 0;
+      while (res_ > 64) {
+	numN = config->textn_d[res_];
+	numY = config->textn_p[res_];
+
+	/* if there are resolution, all lower ones are available as well */
+	if ((numN + numY + fndn) > 0) {
+	  /* if there is a higher resolution and this one got none, we can calculate them */
+	  if (resn && !(numN + numY))
+	    sprintf(buf, "%dx%d normals, automatic", res_, res_);
+	  else
+	    sprintf(buf, "%dx%d normals, %d tiles", res_, res_, max(numN, numY));
+
+	  OSInstallLevel1TextResN->Append(buf, (void *) ((int)res_));
+	  OSInstallLevel2TextResN->Append(buf, (void *) ((int)res_));
+	  OSInstallLevel3TextResN->Append(buf, (void *) ((int)res_));
+
+	  if ((tckn == 3) && (res_ < resn))
+	    OSInstallLevel3TextResN->SetSelection(OSInstallLevel3TextResN->GetCount() - 1), tckn = 4;
+	  if ((tckn == 2) && (res_ < resn))
+	    OSInstallLevel2TextResN->SetSelection(OSInstallLevel2TextResN->GetCount() - 1), tckn = 3;
+	  if ((tckn == 1) && (res_ < resn))
+	    OSInstallLevel1TextResN->SetSelection(OSInstallLevel1TextResN->GetCount() - 1), tckn = 2;
+	}
+
+	texn += (numN || numY || fndn) ? 1 : 0;
+	fndn += (numN || numY) ? 1 : 0;
+	res_ /= 2;
+      }
+
+      res_ = 4096, fndc = 0;
+      while (res_ > 64) {
+	numN = config->textc_d[res_];
+	numY = config->textc_p[res_];
+
+	/* if there are resolution, all lower ones are available as well */
+	if ((numN + numY + fndc) > 0) {
+	  /* if there is a higher resolution and this one got none, we can calculate them */
+	  if (resc && !(numN + numY))
+	    sprintf(buf, "%dx%d colors, automatic", res_, res_);
+	  else
+	    sprintf(buf, "%dx%d colors, %d tiles", res_, res_, max(numN, numY));
+
+	  OSInstallLevel1TextResC->Append(buf, (void *) ((int)res_));
+	  OSInstallLevel2TextResC->Append(buf, (void *) ((int)res_));
+	  OSInstallLevel3TextResC->Append(buf, (void *) ((int)res_));
+
+	  if ((tckc == 3) && (res_ < resc))
+	    OSInstallLevel3TextResC->SetSelection(OSInstallLevel3TextResC->GetCount() - 1), tckc = 4;
+	  if ((tckc == 2) && (res_ < resc))
+	    OSInstallLevel2TextResC->SetSelection(OSInstallLevel2TextResC->GetCount() - 1), tckc = 3;
+	  if ((tckc == 1) && (res_ < resc))
+	    OSInstallLevel1TextResC->SetSelection(OSInstallLevel1TextResC->GetCount() - 1), tckc = 2;
+	}
+
+	texc += (numN || numY || fndc) ? 1 : 0;
+	fndc += (numN || numY) ? 1 : 0;
+	res_ /= 2;
+      }
+    }
+
+    /* --------------------------------------------------------------------- */
+    {
+      if (addm <= 1) {
+	if (!texn && !texc)
+	           OSLevel1->ShowItems(FALSE),
+		   OSInstallLevel1->SetValue(FALSE);
+	else       OSInstallLevel1MeshRes ->Enable(FALSE); }
+      if (!texn)   OSInstallLevel1TextResN->Enable(FALSE);
+      if (!texc)   OSInstallLevel1TextResC->Enable(FALSE);
+
+      if (addm <= 2) {
+	if (!texn && !texc)
+		   OSLevel2->ShowItems(FALSE),
+		   OSInstallLevel2->SetValue(FALSE);
+	else       OSInstallLevel2MeshRes ->Enable(FALSE); }
+      if (!texn)   OSInstallLevel2TextResN->Enable(FALSE);
+      if (!texc)   OSInstallLevel2TextResC->Enable(FALSE);
+
+      if (addm <= 3) {
+	if (!texn && !texc)
+		   OSLevel3->ShowItems(FALSE),
+		   OSInstallLevel3->SetValue(FALSE);
+	else       OSInstallLevel3MeshRes ->Enable(FALSE); }
+      if (!texn)   OSInstallLevel3TextResN->Enable(FALSE);
+      if (!texc)   OSInstallLevel3TextResC->Enable(FALSE);
 
 //    OSInstallLevel0MeshRes->SetSelection(0);
 //    OSInstallLevel1MeshRes->SetSelection(1);
 //    OSInstallLevel2MeshRes->SetSelection(2);
 //    OSInstallLevel3MeshRes->SetSelection(3);
-
-      walk++;
     }
   }
 
   void ChangeBaseDirIn(wxFileDirPickerEvent& event) {
-    wxString ph = event.GetPath();
-
-    if (!ph.IsNull()) {
-      const char *BO = ph.data();
-      OSBaseDirIn->SetPath(BO);
-      RegSetKeyValue(Settings, NULL, "Base directory Out", RRF_RT_REG_SZ, BO, (DWORD)strlen(BO) + 1);
-    }
-
-    ChangeBaseDirIn(ph);
+    ChangeBaseDirIn(event.GetPath());
   }
 
   void ChangeBaseDirIn(wxString ph) {
@@ -2632,6 +3108,11 @@ private:
 
     if (ph.IsNull())
       return;
+    {
+      const char *BO = ph.data();
+      OSBaseDirIn->SetPath(BO);
+      RegSetKeyValue(Settings, NULL, "Base directory In", RRF_RT_REG_SZ, BO, (DWORD)strlen(BO) + 1);
+    }
 
     OSStatusBar->SetStatusText(wxT("Skimming directory ..."), 0);
 
@@ -2652,7 +3133,7 @@ private:
 
 	if ((file == stristr(file, "LOD-"))) {
 	  if (sscanf(file + 4, "%d", &res) == 1) {
-	    sprintf(temp, "%s\\%s\\*.pts", ph.data(), file, 1024);
+	    sprintf(temp, "%s\\LOD-%d\\*.pts", ph.data(), res);
 	    if ((RFiles = FindFirstFileEx(temp, FindExInfoBasic, &RFound, FindExSearchNameMatch, NULL, 0)) != INVALID_HANDLE_VALUE) {
 	      do {
 		const char *subfile = RFound.cFileName;
@@ -2665,7 +3146,7 @@ private:
 	      FindClose(RFiles);
 	    }
 
-	    sprintf(temp, "%s\\%s\\UVon\\*", ph.data(), file, 1024);
+	    sprintf(temp, "%s\\LOD-%d\\UVon\\*", ph.data(), res);
 	    if ((RFiles = FindFirstFileEx(temp, FindExInfoBasic, &RFound, FindExSearchNameMatch, NULL, 0)) != INVALID_HANDLE_VALUE) {
 	      do {
 		const char *subfile = RFound.cFileName;
@@ -2679,7 +3160,7 @@ private:
 	      FindClose(RFiles);
 	    }
 
-	    sprintf(temp, "%s\\%s\\UVoff\\*", ph.data(), file, 1024);
+	    sprintf(temp, "%s\\LOD-%d\\UVoff\\*", ph.data(), res);
 	    if ((RFiles = FindFirstFileEx(temp, FindExInfoBasic, &RFound, FindExSearchNameMatch, NULL, 0)) != INVALID_HANDLE_VALUE) {
 	      do {
 		const char *subfile = RFound.cFileName;
@@ -2699,14 +3180,28 @@ private:
 
 	if ((file == stristr(file, "TEX-"))) {
 	  if (sscanf(file + 4, "%d", &res) == 1) {
-	    sprintf(temp, "%s\\%s\\*", ph.data(), file, 1024);
+	    sprintf(temp, "%s\\TEX-%d\\*", ph.data(), res);
 	    if ((RFiles = FindFirstFileEx(temp, FindExInfoBasic, &RFound, FindExSearchNameMatch, NULL, 0)) != INVALID_HANDLE_VALUE) {
 	      do {
 		const char *subfile = RFound.cFileName;
-		if (sscanf(subfile, "%d.%d.%d.%d_fn", &ws, &cx, &xy, &rs) == 4) {
+		if (sscanf(subfile, "%d.%d.%d.%d", &ws, &cx, &xy, &rs) == 4) {
 		  struct sset *match = &wsset[ws];
-		  if (stristr(subfile, ".dds")) match->text_d[res]++;
-		  if (stristr(subfile, ".png")) match->text_p[res]++;
+
+		  /* a bit weak, but works */
+		  if (stristr(subfile, ".dds")) {
+		    if (stristr(subfile, "_fn"))
+		      match->textn_d[res]++;
+		    else
+		      match->textc_d[res]++;
+		  }
+
+		  /* a bit weak, but works */
+		  if (stristr(subfile, ".png")) {
+		    if (stristr(subfile, "_fn"))
+		      match->textn_p[res]++;
+		    else
+		      match->textc_p[res]++;
+		  }
 		}
 	      } while (FindNextFile(RFiles, &RFound));
 
@@ -2741,12 +3236,7 @@ private:
   }
 
   void ChangePlugoutDir(wxFileDirPickerEvent& event) {
-    wxString ph = event.GetPath();
-
-    if (!ph.IsNull()) {
-    }
-
-    ChangePlugoutDir(ph);
+    ChangePlugoutDir(event.GetPath());
   }
 
   void ChangePlugoutDir(wxString ph) {
@@ -2773,15 +3263,14 @@ private:
 public:
   int installdone;
 
-  bool SynchronizeInstall(int wsv, int mres, int tres, const char *subdir, const char *lid) {
+  bool SynchronizeInstall(int wsv, int res, const char *subdir, const char *lid) {
     wxString ph = OSBaseDirIn->GetPath();
     HANDLE RFiles; WIN32_FIND_DATA RFound;
-    char trgm[261], trgt[261];
-    char temp[1024], base[1024];
     vector< pair<string, string> > copy;
     vector< pair<string, string> >::const_iterator walk;
-    int dne = 0; installdone -= 2;
-    char tpc[256];
+    int dne = 0; 
+    char tpc[256], trgm[261];
+    char base[1024], temp[1024];
 
     /* --------------------------------------------------------------------- */
     sprintf(tpc, "Level %s meshes:", lid);
@@ -2796,8 +3285,8 @@ public:
     strcat(trgm, "\\");
 
     /* look for all the directories */
-    sprintf(temp, "%s\\LOD-%d\\%s\\"          , ph.data(), abs(mres), mres > 0 ? "UVon" : "UVoff"     );
-    sprintf(base, "%s\\LOD-%d\\%s\\%02d.*.nif", ph.data(), abs(mres), mres > 0 ? "UVon" : "UVoff", wsv);
+    sprintf(temp, "%s\\LOD-%d\\%s\\"          , ph.data(), abs(res), res > 0 ? "UVon" : "UVoff"     );
+    sprintf(base, "%s\\LOD-%d\\%s\\%02d.*.nif", ph.data(), abs(res), res > 0 ? "UVon" : "UVoff", wsv);
 
     copy.clear();
     if ((RFiles = FindFirstFileEx(base, FindExInfoBasic, &RFound, FindExSearchNameMatch, NULL, 0)) != INVALID_HANDLE_VALUE) {
@@ -2820,10 +3309,10 @@ public:
       while (!CopyFile(walk->first.data(), walk->second.data(), FALSE)) {
 	char buf[256]; sprintf(buf, "Failed to copy file \"%s\". Retry?", strrchr(walk->second.data(), '\\') + 1);
 	wxMessageDialog d(this, buf, "Oscape error", wxYES_NO | wxCANCEL | wxCENTRE);
-	int res = d.ShowModal();
-	if (res == wxID_CANCEL)
+	int ret = d.ShowModal();
+	if (ret == wxID_CANCEL)
 	  return false;
-	if (res == wxID_NO)
+	if (ret == wxID_NO)
 	  break;
       }
 
@@ -2831,8 +3320,20 @@ public:
       walk++;
     }
 
+    return true;
+  }
+
+  bool SynchronizeInstall(int wsv, bool n, int res, const char *subdir, const char *lid) {
+    wxString ph = OSBaseDirIn->GetPath();
+    HANDLE RFiles; WIN32_FIND_DATA RFound;
+    vector< pair<string, string> > copy;
+    vector< pair<string, string> >::const_iterator walk;
+    int dne = 0; 
+    char tpc[256], trgt[261];
+    char base[1024], temp[1024];
+
     /* --------------------------------------------------------------------- */
-    sprintf(tpc, "Level %s textures:", lid);
+    sprintf(tpc, "Level %s %s textures:", lid, n ? "normal" : "color");
     prog->InitProgress(NULL, 0, tpc, 0.0, installdone++, 1);
 
     strcpy(trgt, OSPlugoutDir->GetPath().data());
@@ -2844,8 +3345,8 @@ public:
     strcat(trgt, "\\");
 
     /* look for all the directories */
-    sprintf(temp, "%s\\TEX-%d\\"          , ph.data(), abs(tres));
-    sprintf(base, "%s\\TEX-%d\\%02d.*.dds", ph.data(), abs(tres), wsv);
+    sprintf(temp, "%s\\TEX-%d\\"          , ph.data(), abs(res));
+    sprintf(base, "%s\\TEX-%d\\%02d.*.dds", ph.data(), abs(res), wsv);
 
     copy.clear();
     if ((RFiles = FindFirstFileEx(base, FindExInfoBasic, &RFound, FindExSearchNameMatch, NULL, 0)) != INVALID_HANDLE_VALUE) {
@@ -2853,10 +3354,12 @@ public:
       string ou = trgt;
 
       do {
-	copy.push_back(pair<string, string>(
-	  in + RFound.cFileName,
-	  ou + RFound.cFileName
-	));
+	if (( n &&  stristr(RFound.cFileName, "_fn")) ||
+	    (!n && !stristr(RFound.cFileName, "_fn")))
+	  copy.push_back(pair<string, string>(
+	    in + RFound.cFileName,
+	    ou + RFound.cFileName
+	  ));
       } while (FindNextFile(RFiles, &RFound));
 
       FindClose(RFiles);
@@ -2868,10 +3371,10 @@ public:
       while (!CopyFile(walk->first.data(), walk->second.data(), FALSE)) {
 	char buf[256]; sprintf(buf, "Failed to copy file \"%s\". Retry?", strrchr(walk->second.data(), '\\') + 1);
 	wxMessageDialog d(this, buf, "Oscape error", wxYES_NO | wxCANCEL | wxCENTRE);
-	int res = d.ShowModal();
-	if (res == wxID_CANCEL)
+	int ret = d.ShowModal();
+	if (ret == wxID_CANCEL)
 	  return false;
-	if (res == wxID_NO)
+	if (ret == wxID_NO)
 	  break;
       }
 
@@ -2883,8 +3386,8 @@ public:
     if (copy.size() == 0) {
       /* recalculate levels after conversion */
       int levels = 1; {
-	int ww = tres;
-	int hh = tres;
+	int ww = res;
+	int hh = res;
 	while ((ww > 1) && (hh > 1)) {
 	  ww = (ww + 1) >> 1;
 	  hh = (hh + 1) >> 1;
@@ -2898,8 +3401,9 @@ public:
        * - higher resolution PNGs?
        * - higher resolution DDSs?
        */
-      int tcnv = tres;
-      while (tcnv <= 2048) {
+      int tcnv = res;
+      int tmax = n ? 2048 : 4096;
+      while (tcnv <= tmax) {
 	/* higher resolution PPMs? */
 	sprintf(temp, "%s\\TEX-%d\\", ph.data(), abs(tcnv));
 	sprintf(base, "%s\\TEX-%d\\%02d.*.ppm", ph.data(), abs(tcnv), wsv);
@@ -2910,10 +3414,12 @@ public:
 	  string ou = trgt;
 
 	  do {
-	    copy.push_back(pair<string, string>(
-	      in + RFound.cFileName,
-	      ou + RFound.cFileName
-	    ));
+	    if (( n &&  stristr(RFound.cFileName, "_fn")) ||
+		(!n && !stristr(RFound.cFileName, "_fn")))
+	      copy.push_back(pair<string, string>(
+		in + RFound.cFileName,
+		ou + RFound.cFileName
+	      ));
 	  } while (FindNextFile(RFiles, &RFound));
 
 	  FindClose(RFiles);
@@ -2932,10 +3438,12 @@ public:
 	  string ou = trgt;
 
 	  do {
-	    copy.push_back(pair<string, string>(
-	      in + RFound.cFileName,
-	      ou + RFound.cFileName
-	    ));
+	    if (( n &&  stristr(RFound.cFileName, "_fn")) ||
+		(!n && !stristr(RFound.cFileName, "_fn")))
+	      copy.push_back(pair<string, string>(
+		in + RFound.cFileName,
+		ou + RFound.cFileName
+	      ));
 	  } while (FindNextFile(RFiles, &RFound));
 
 	  FindClose(RFiles);
@@ -2954,10 +3462,12 @@ public:
 	  string ou = trgt;
 
 	  do {
-	    copy.push_back(pair<string, string>(
-	      in + RFound.cFileName,
-	      ou + RFound.cFileName
-	    ));
+	    if (( n &&  stristr(RFound.cFileName, "_fn")) ||
+	        (!n && !stristr(RFound.cFileName, "_fn")))
+	      copy.push_back(pair<string, string>(
+		in + RFound.cFileName,
+		ou + RFound.cFileName
+	      ));
 	  } while (FindNextFile(RFiles, &RFound));
 
 	  FindClose(RFiles);
@@ -2975,9 +3485,9 @@ public:
 	while (walk != copy.end()) {
 	  LPDIRECT3DTEXTURE9 base = NULL;
 	  LPDIRECT3DTEXTURE9 trns = NULL;
-	  HRESULT res;
+	  HRESULT ret;
 
-	  while ((res = D3DXCreateTextureFromFileEx(
+	  while ((ret = D3DXCreateTextureFromFileEx(
 	    pD3DDevice, walk->first.data(),
 	    D3DX_DEFAULT, D3DX_DEFAULT, 0/*D3DX_DEFAULT*/,
 	    0, D3DFMT_UNKNOWN, D3DPOOL_SYSTEMMEM, D3DX_FILTER_NONE/*D3DX_DEFAULT*/,
@@ -2986,10 +3496,10 @@ public:
 	  )) != D3D_OK) {
 	    char buf[256]; sprintf(buf, "Failed to read file \"%s\". Retry?", strrchr(walk->first.data(), '\\') + 1);
 	    wxMessageDialog d(this, buf, "Oscape error", wxYES_NO | wxCANCEL | wxCENTRE);
-	    int res = d.ShowModal();
-	    if (res == wxID_CANCEL)
+	    int ret = d.ShowModal();
+	    if (ret == wxID_CANCEL)
 	      return false;
-	    if (res == wxID_NO)
+	    if (ret == wxID_NO)
 	      break;
 	  }
 
@@ -3005,16 +3515,16 @@ public:
 	    D3DSURFACE_DESC based;
 	    base->GetLevelDesc(0, &based);
 
-	    if ((res = D3DXCreateTexture(
+	    if ((ret = D3DXCreateTexture(
 	      pD3DDevice,
-	      tres, tres, 0,
+	      res, res, 0,
 	      0, based.Format, D3DPOOL_SYSTEMMEM, &trns
 	    )) != D3D_OK)
 	      goto terminal_error;
 
 	    int baselvl = 0;
 	    int trnslvl = 0;
-	    while (based.Width > (UINT)tres) {
+	    while (based.Width > (UINT)res) {
 	      based.Width = (based.Width + 1) >> 1;
 	      baselvl++;
 	    }
@@ -3046,9 +3556,9 @@ public:
 	    D3DSURFACE_DESC based;
 	    base->GetLevelDesc(0, &based);
 
-	    if ((res = D3DXCreateTexture(
+	    if ((ret = D3DXCreateTexture(
 		pD3DDevice,
-		tres, tres, 0,
+		res, res, 0,
 		0, based.Format, D3DPOOL_SYSTEMMEM, &trns
 	      )) != D3D_OK)
 	      goto terminal_error;
@@ -3069,22 +3579,28 @@ public:
 	    base->Release();
 	    base = trns;
 
-	    if (!TextureCompressXYZ(&base, 0))
-	      goto terminal_error;
+	    if (n) {
+	      if (!TextureCompressXYZ(&base, 0))
+		goto terminal_error;
+	    }
+	    else {
+	      if (!TextureCompressRGB(&base, 0, true))
+		goto terminal_error;
+	    }
 	  }
 
 	  char out[260];
 	  strcpy(out, walk->second.data());
 	  strcpy(strrchr(out, '.'), ".dds");
 
-	  while ((res = D3DXSaveTextureToFile(
+	  while ((ret = D3DXSaveTextureToFile(
 	    out, D3DXIFF_DDS, base, NULL
 	  )) != D3D_OK) {
 	    wxMessageDialog d(this, "Failed to write file. Retry?", "Oscape error", wxYES_NO | wxCANCEL | wxCENTRE);
-	    int res = d.ShowModal();
-	    if (res == wxID_CANCEL) {
+	    int ret = d.ShowModal();
+	    if (ret == wxID_CANCEL) {
 	      base->Release(); return false; }
-	    if (res == wxID_NO)
+	    if (ret == wxID_NO)
 	      break;
 	  }
 
@@ -3100,8 +3616,8 @@ terminal_error: {
 
 	    char buf[256]; sprintf(buf, "Failed to convert file \"%s\". Retry?", strrchr(walk->second.data(), '\\') + 1);
 	    wxMessageDialog d(this, buf, "Oscape error", wxYES | wxCANCEL | wxCENTRE);
-	    int res = d.ShowModal();
-	    if (res == wxID_CANCEL)
+	    int ret = d.ShowModal();
+	    if (ret == wxID_CANCEL)
 	      return false;
 
 	    prog->SetProgress(dne += 1);
@@ -3114,11 +3630,24 @@ terminal_error: {
     return true;
   }
 
+  bool SynchronizeInstall(int wsv, int mres, int tres, int cres, const char *subdir, const char *lid) {
+    installdone -= 2;
+
+    if (!SynchronizeInstall(wsv, mres, subdir, lid))
+      return false;
+    if (!SynchronizeInstall(wsv, true, tres, subdir, lid))
+      return false;
+    if (!SynchronizeInstall(wsv, false, cres, subdir, lid))
+      return false;
+
+    return true;
+  }
+
   void HeightfieldInstall() {
     size_t pages = OSInstallWS->GetPageCount();
     installdone = 0;
 
-    prog->StartProgress((int)(pages * 8));
+    prog->StartProgress((int)(pages * 12));
     prog->InitProgress("Installing:", 0, "Preparing:", 0.0, installdone, 1);
 
     for (size_t wxID_Page = 0; wxID_Page < pages; wxID_Page++) {
@@ -3148,10 +3677,14 @@ terminal_error: {
 	wxChoice   *m1 = (wxChoice   *)pg->FindWindowById(wID(LEVEL1_MRES));
 	wxChoice   *m2 = (wxChoice   *)pg->FindWindowById(wID(LEVEL2_MRES));
 	wxChoice   *m3 = (wxChoice   *)pg->FindWindowById(wID(LEVEL3_MRES));
-	wxChoice   *t0 = (wxChoice   *)pg->FindWindowById(wID(LEVEL0_TRES));
-	wxChoice   *t1 = (wxChoice   *)pg->FindWindowById(wID(LEVEL1_TRES));
-	wxChoice   *t2 = (wxChoice   *)pg->FindWindowById(wID(LEVEL2_TRES));
-	wxChoice   *t3 = (wxChoice   *)pg->FindWindowById(wID(LEVEL3_TRES));
+	wxChoice   *t0 = (wxChoice   *)pg->FindWindowById(wID(LEVEL0N_TRES));
+	wxChoice   *t1 = (wxChoice   *)pg->FindWindowById(wID(LEVEL1N_TRES));
+	wxChoice   *t2 = (wxChoice   *)pg->FindWindowById(wID(LEVEL2N_TRES));
+	wxChoice   *t3 = (wxChoice   *)pg->FindWindowById(wID(LEVEL3N_TRES));
+	wxChoice   *c0 = (wxChoice   *)pg->FindWindowById(wID(LEVEL0C_TRES));
+	wxChoice   *c1 = (wxChoice   *)pg->FindWindowById(wID(LEVEL1C_TRES));
+	wxChoice   *c2 = (wxChoice   *)pg->FindWindowById(wID(LEVEL2C_TRES));
+	wxChoice   *c3 = (wxChoice   *)pg->FindWindowById(wID(LEVEL3C_TRES));
 
 	bool inst0 = (i0 ? i0->GetValue() : false);
 	bool inst1 = (i1 ? i1->GetValue() : false);
@@ -3168,26 +3701,31 @@ terminal_error: {
 	int tres2 = (t2 && t2->GetCount() ? (int)t2->GetClientData(t2->GetSelection()) : -1);
 	int tres3 = (t3 && t3->GetCount() ? (int)t3->GetClientData(t3->GetSelection()) : -1);
 
+	int cres0 = (c0 && c0->GetCount() ? (int)c0->GetClientData(c0->GetSelection()) : -1);
+	int cres1 = (c1 && c1->GetCount() ? (int)c1->GetClientData(c1->GetSelection()) : -1);
+	int cres2 = (c2 && c2->GetCount() ? (int)c2->GetClientData(c2->GetSelection()) : -1);
+	int cres3 = (c3 && c3->GetCount() ? (int)c3->GetClientData(c3->GetSelection()) : -1);
+
 	try {
 
-	  prog->InitProgress(tpc, 0, "Level zero:", 0.0, installdone, 1), installdone += 2;
+	  prog->InitProgress(tpc, 0, "Level zero:", 0.0, installdone, 1), installdone += 3;
 	  if (inst0)
-	    if (!SynchronizeInstall(wsv, mres0, tres0, NULL, "zero"))
+	    if (!SynchronizeInstall(wsv, mres0, tres0, cres0, NULL, "zero"))
 	      break;
 
-	  prog->InitProgress(tpc, 0, "Level one:", 0.0, installdone, 1), installdone += 2;
+	  prog->InitProgress(tpc, 0, "Level one:", 0.0, installdone, 1), installdone += 3;
 	  if (inst1)
-	    if (!SynchronizeInstall(wsv, mres1, tres1, "farnear", "one"))
+	    if (!SynchronizeInstall(wsv, mres1, tres1, cres1, "farnear", "one"))
 	      break;
 
-	  prog->InitProgress(tpc, 0, "Level two:", 0.0, installdone, 1), installdone += 2;
+	  prog->InitProgress(tpc, 0, "Level two:", 0.0, installdone, 1), installdone += 3;
 	  if (inst2)
-	    if (!SynchronizeInstall(wsv, mres2, tres2, "farfar", "two"))
+	    if (!SynchronizeInstall(wsv, mres2, tres2, cres2, "farfar", "two"))
 	      break;
 
-	  prog->InitProgress(tpc, 0, "Level three:", 0.0, installdone, 1), installdone += 2;
+	  prog->InitProgress(tpc, 0, "Level three:", 0.0, installdone, 1), installdone += 3;
 	  if (inst3)
-	    if (!SynchronizeInstall(wsv, mres3, tres3, "farinf", "three"))
+	    if (!SynchronizeInstall(wsv, mres3, tres3, cres3, "farinf", "three"))
 	      break;
 
 	  free_textures();
@@ -3220,6 +3758,38 @@ terminal_error: {
     OSStatusBar->SetStatusText(status);
   }
 private:
+
+  void ChangeDefaults(wxCommandEvent& event) {
+    if (OSDefaults->FindChildItem(wxID_DEFV, NULL)->IsChecked()) {
+      OSMeshUVs->SetValue(true);
+      OSMeshNIF->SetValue(true);
+      OSMeshDX->SetValue(false);
+      OSRes1->SetValue(true ); OSRes2->SetValue(false); OSRes3->SetValue(false); OSRes4->SetValue(false);
+      OSRes5->SetValue(false); OSRes6->SetValue(false); OSRes7->SetValue(false); OSRes8->SetValue(false);
+
+      RegSetKeyValue(Settings, NULL, "Defaults", RRF_RT_REG_SZ, "0", 2);
+    }
+    else if (OSDefaults->FindChildItem(wxID_DEFT, NULL)->IsChecked()) {
+      OSDefaults->FindChildItem(wxID_DEFT, NULL)->Check(true);
+      OSMeshUVs->SetValue(true);
+      OSMeshNIF->SetValue(true);
+      OSMeshDX->SetValue(false);
+      OSRes1->SetValue(true ); OSRes2->SetValue(false); OSRes3->SetValue(false); OSRes4->SetValue(false);
+      OSRes5->SetValue(false); OSRes6->SetValue(false); OSRes7->SetValue(false); OSRes8->SetValue(false);
+
+      RegSetKeyValue(Settings, NULL, "Defaults", RRF_RT_REG_SZ, "1", 2);
+    }
+    else if (OSDefaults->FindChildItem(wxID_DEFL, NULL)->IsChecked()) {
+      OSDefaults->FindChildItem(wxID_DEFL, NULL)->Check(true);
+      OSMeshUVs->SetValue(false);
+      OSMeshNIF->SetValue(true);
+      OSMeshDX->SetValue(true);
+      OSRes1->SetValue(true); OSRes2->SetValue(true); OSRes3->SetValue(true); OSRes4->SetValue(true);
+      OSRes5->SetValue(true); OSRes6->SetValue(true); OSRes7->SetValue(true); OSRes8->SetValue(true);
+
+      RegSetKeyValue(Settings, NULL, "Defaults", RRF_RT_REG_SZ, "2", 2);
+    }
+  }
 
 public:
   OscapeGUI::OscapeGUI(const wxString& title)
@@ -3259,19 +3829,54 @@ public:
     if (TS[0]) OSBaseDirOut2->SetPath(TS); TSL = 1023;
     TS[0] = 0; RegGetValue(Settings, NULL, "Base directory In", RRF_RT_REG_SZ, NULL, TS, &TSL);
     if (TS[0]) OSBaseDirIn->SetPath(TS); TSL = 1023;
-    TS[0] = 0; RegGetValue(Settings, NULL, "Target", RRF_RT_REG_SZ, NULL, TS, &TSL);
-    if (TS[0]) OSTarget->SetValue(TS); TSL = 1023;
     TS[0] = 0; RegGetValue(Settings, NULL, "Autosave", RRF_RT_REG_SZ, NULL, TS, &TSL);
     if (TS[0]) OSPluginAutosave->SetValue(TS[0] == '1'); TSL = 1023;
     TS[0] = 0; RegGetValue(Settings, NULL, "Do Meshes", RRF_RT_REG_SZ, NULL, TS, &TSL);
     if (TS[0]) OSMeshes->SetValue(TS[0] == '1'); TSL = 1023;
     TS[0] = 0; RegGetValue(Settings, NULL, "Do Normals", RRF_RT_REG_SZ, NULL, TS, &TSL);
     if (TS[0]) OSNormals->SetValue(TS[0] == '1'); TSL = 1023;
+    TS[0] = 0; RegGetValue(Settings, NULL, "Do Colors", RRF_RT_REG_SZ, NULL, TS, &TSL);
+    if (TS[0]) OSColors->SetValue(TS[0] == '1'); TSL = 1023;
     TS[0] = 0; RegGetValue(Settings, NULL, "Do Heightmap", RRF_RT_REG_SZ, NULL, TS, &TSL);
     if (TS[0]) OSHeightmap->SetValue(TS[0] == '1'); TSL = 1023;
+    TS[0] = 0; RegGetValue(Settings, NULL, "Defaults", RRF_RT_REG_SZ, NULL, TS, &TSL);
+    switch (TS[0]) {
+      default:
+      case '0':
+	OSDefaults->FindChildItem(wxID_DEFV, NULL)->Check(true);
+	OSMeshUVs->SetValue(true);
+	OSMeshNIF->SetValue(true);
+	OSMeshDX->SetValue(false);
+	OSRes1->SetValue(true ); OSRes2->SetValue(false); OSRes3->SetValue(false); OSRes4->SetValue(false);
+	OSRes5->SetValue(false); OSRes6->SetValue(false); OSRes7->SetValue(false); OSRes8->SetValue(false);
+	break;
+      case '1':
+	OSDefaults->FindChildItem(wxID_DEFT, NULL)->Check(true);
+	OSMeshUVs->SetValue(true);
+	OSMeshNIF->SetValue(true);
+	OSMeshDX->SetValue(false);
+	OSRes1->SetValue(true ); OSRes2->SetValue(false); OSRes3->SetValue(false); OSRes4->SetValue(false);
+	OSRes5->SetValue(false); OSRes6->SetValue(false); OSRes7->SetValue(false); OSRes8->SetValue(false);
+	break;
+      case '2':
+	OSDefaults->FindChildItem(wxID_DEFL, NULL)->Check(true);
+	OSMeshUVs->SetValue(false);
+	OSMeshNIF->SetValue(true);
+	OSMeshDX->SetValue(true);
+	OSRes1->SetValue(true); OSRes2->SetValue(true); OSRes3->SetValue(true); OSRes4->SetValue(true);
+	OSRes5->SetValue(true); OSRes6->SetValue(true); OSRes7->SetValue(true); OSRes8->SetValue(true);
+	break;
+    }
+    TS[0] = 0; RegGetValue(Settings, NULL, "Orientation", RRF_RT_REG_SZ, NULL, TS, &TSL);
+    if (TS[0]) OSOrientation->SetValue(TS[0] == 'H'); TSL = 1023;
+    if (!TS[0]) OSOrientation->SetValue(!OSDefaults->FindChildItem(wxID_DEFV, NULL)->IsChecked());
+    TS[0] = 0; RegGetValue(Settings, NULL, "Target", RRF_RT_REG_SZ, NULL, TS, &TSL);
+    if (TS[0]) OSTarget->SetValue(TS); TSL = 1023;
+    if (!TS[0]) OSTarget->SetValue(OSDefaults->FindChildItem(wxID_DEFV, NULL)->IsChecked() ? "155000" : "450000");
 
     ChangeMeshes();
     ChangeNormals();
+    ChangeColors();
     ChangeHeightmap();
 
     wxString
@@ -3289,8 +3894,6 @@ public:
 
     ph = OSBaseDirIn->GetPath();
     ChangeBaseDirIn(ph);
-
-    formID = NULL;
   }
 
   OscapeGUI::~OscapeGUI() {
@@ -3451,6 +4054,12 @@ void SetProgress(int dne, int sdne) {
 void PollProgress() {
   if (prg)
     prg->PollProgress();
+}
+
+bool RequestFeedback(const char *question) {
+  if (prg)
+    return prg->RequestFeedback(question);
+  return true;
 }
 
 DWORD __stdcall HeightfieldExtract(LPVOID lp) {

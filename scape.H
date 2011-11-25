@@ -55,6 +55,7 @@ extern void parse_cmdline(int argc, char *argv[]);
 
 extern const char *texFile;
 extern const char *greyFile;
+extern const char *colrFile;
 extern const char *dataFile;
 
 extern bool writeobjmaps;
@@ -124,6 +125,7 @@ extern int dotilex, dotiley;
 #include "views.H"
 
 #include "hfield.H"
+#include "cfield.H"
 #include "simplfield.H"
 
 #ifdef	MATCH_WITH_HIRES
@@ -188,6 +190,15 @@ void write_nrmhgt1(bool fmaps, bool nmaps, bool hmaps, const HField& hf);
 void write_nrmhgt2(bool fmaps, bool nmaps, bool hmaps, const HField& hf, const char *pattern);
 void write_nrmhgt2(bool fmaps, bool nmaps, bool hmaps, const HField& hf);
 
+void write_col0(bool cmaps, const CField& cf, const char *pattern);
+void write_col0(bool cmaps, const CField& cf);
+void write_col1(bool cmaps, const CField& cf, const char *pattern);
+void write_col1(bool cmaps, const CField& cf);
+void write_col2(bool cmaps, const CField& cf, const char *pattern);
+void write_col2(bool cmaps, const CField& cf);
+void write_col3(bool cmaps, const CField& cf, const char *pattern);
+void write_col3(bool cmaps, const CField& cf);
+
 bool skiptex(const char *pattern, const char *pfx, int coordx, int coordy, int reso, bool xyz);
 void writetex(LPDIRECT3DTEXTURE9 tex, const char *pattern, const char *pfx, int coordx, int coordy, int reso, bool xyz);
 
@@ -214,5 +225,6 @@ bool SetTopic(const unsigned long p, const unsigned long t, const char *topic);
 void InitProgress(int rng, int srng);
 void SetProgress(int dne, int sdne);
 void PollProgress();
+bool RequestFeedback(const char *question);
 
 bool IsOlder(const char *name, __int64 tschk);

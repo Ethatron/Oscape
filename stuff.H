@@ -257,3 +257,17 @@ public:
     int width() const { return z.w(); }
     int height() const { return z.h(); }
 };
+
+class RGBAdata {
+    array2<unsigned long> c;
+
+public:
+    RGBAdata(ifstream&);
+    ~RGBAdata() { c.free(); }
+
+    unsigned long eval(int x, int y) const { return (unsigned long)c.val(x, y); }
+    const unsigned long &val(int x, int y) const { return c.val(x, y); }
+    unsigned long &ref(int x, int y) { return c.ref(x, y); }
+    int width() const { return c.w(); }
+    int height() const { return c.h(); }
+};

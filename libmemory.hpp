@@ -216,42 +216,67 @@ public:
    * use basic-memorypool[size];
    */
   static void *operator new[] (size_t size, class MemQueue<4> *queue) {
-    return queue->obtainBlock(size);
+    void *res;
+
+    /* make the allocator thread-safe */
+#pragma omp critical
+    res = queue->obtainBlock(size);
+
+    return res;
   }
   static void operator delete[] (void *adr, size_t size, class MemQueue<4> *queue) {
+    /* make the allocator thread-safe */
+#pragma omp critical
     queue->releaseBlock(adr, size);
   }
   static void operator delete[] (void *adr, class MemQueue<4> *queue) {
+    /* standard-allocator are thread-safe */
     abort();
   }
 
   static void *operator new[] (size_t size) {
+    /* standard-allocator are thread-safe */
     abort(); return malloc(size);
   }
   static void operator delete[] (void *adr, size_t size) {
+    /* standard-allocator are thread-safe */
     abort(); free(adr);
   }
   static void operator delete[] (void *adr) {
+    /* standard-allocator are thread-safe */
     abort(); free(adr);
   }
 
   static void *operator new(size_t size, class MemQueue<4> *queue) {
-    return queue->obtainBlock();
+    void *res;
+
+    /* make the allocator thread-safe */
+#pragma omp critical
+    res = queue->obtainBlock();
+
+    return res;
   }
   static void operator delete(void *adr, size_t size, class MemQueue<4> *queue) {
+    /* make the allocator thread-safe */
+#pragma omp critical
     queue->releaseBlock(adr);
   }
   static void operator delete(void *adr, class MemQueue<4> *queue) {
+    /* make the allocator thread-safe */
+#pragma omp critical
     queue->releaseBlock(adr);
   }
 
   static void *operator new(size_t size) {
+    /* standard-allocator are thread-safe */
     return malloc(size);
   }
   static void operator delete(void *adr, size_t size) {
+    /* standard-allocator are thread-safe */
     free(adr);
   }
   static void operator delete(void *adr) {
+    /* standard-allocator are thread-safe */
     free(adr);
   }
 };
@@ -334,10 +359,18 @@ public:
   }
 
   pointer allocate(size_type n, const void * /*hint*/=0 ) {
-    return (pointer)queue->obtainPuddle(n * sizeof(T));
+    void *ret;
+
+    /* make the allocator thread-safe */
+#pragma omp critical
+    ret = queue->obtainPuddle(n * sizeof(T));
+
+    return (pointer)ret;
   }
 
   void deallocate(pointer p, size_type n) {
+    /* make the allocator thread-safe */
+#pragma omp critical
     queue->releasePuddle(p, n * sizeof(T));
   }
 

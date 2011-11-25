@@ -638,13 +638,23 @@ void rcalculate_faces() {
   set<class objVertex *, struct V>::const_iterator itv;
   vector<class objFace *>::const_iterator itf;
 
-//#pragma omp parallel for shared(Faces)
   for (itf = Faces.begin(); itf != Faces.end(); itf++)
     (*itf)->fill();
-
-//#pragma omp parallel for shared(Vertices)
   for (itv = Vertices.begin(); itv != Vertices.end(); itv++)
     (*itv)->fill();
+
+/* damit, no parallel sets ...
+
+  int faces = (int)Faces.size();
+#pragma omp parallel for schedule(runtime) shared(Faces)
+  for (int f = 0; f < faces; f++)
+    Faces[f]->fill();
+
+  int verts = (int)Vertices.size();
+#pragma omp parallel for schedule(runtime) shared(Vertices)
+  for (int v = 0; v < verts; v++)
+    Vertices[v]->fill();
+*/
 }
 
 /* ---------------------------------------------------- */
@@ -652,6 +662,9 @@ void rcalculate_faces() {
 #ifdef	SPLIT_ON_INJECTION
 std::set<class objVertex *, struct V> SectorVertices[16][16];
 std::vector<class objFace *> SectorFaces[16][16];
+
+#include <omp.h>
+omp_lock_t SectorLocks[16][16];
 
 void rassignsector_faces() {
     set<class objVertex *, struct V>::const_iterator itv;
@@ -666,11 +679,15 @@ void rassignsector_faces() {
     int offy = tilesy / 2;
 
     InitProgress((int)Faces.size());
-//  for (itf = Faces.begin(); itf != Faces.end(); itf++) {
 
-    size_t faces = Faces.size();
-//#pragma omp parallel for shared(Faces, Vertices, SectorFaces, SectorVertices)
-    for (size_t f = 0; f < faces; f++) {
+    for (int ty = minty; ty < numty; ty++)
+    for (int tx = mintx; tx < numtx; tx++)
+      omp_init_lock(&SectorLocks[ty][tx]);
+
+    int faces = (int)Faces.size();
+#pragma omp parallel for schedule(runtime) shared(Faces, Vertices, SectorFaces, SectorVertices)
+    for (int f = 0; f < faces; f++) {
+//  for (itf = Faces.begin(); itf != Faces.end(); itf++) {
       class objVertex vo1 = *(Faces[f]->v[0]), *v1;
       class objVertex vo2 = *(Faces[f]->v[1]), *v2;
       class objVertex vo3 = *(Faces[f]->v[2]), *v3;
@@ -699,6 +716,8 @@ void rassignsector_faces() {
 	int coordy = (sy - offy) * resy;
 
 	if (!skiptile(coordx, coordy, 32)) {
+	  omp_set_lock(&SectorLocks[sy][sx]);
+
 	  /* this set MUST be searchable by local coordinates
 	   * (to enable optimization)
 	   * this means local coordinates (not heightfield coordinates)
@@ -807,6 +826,8 @@ void rassignsector_faces() {
 	  f->fill();
 
 	  SectorFaces[sy][sx].push_back(f);
+
+	  omp_unset_lock(&SectorLocks[sy][sx]);
 	}
       }
       }
@@ -815,6 +836,10 @@ void rassignsector_faces() {
       if ((++tri_sectd & 0xFF) == 0)
 	SetProgress(tri_sectd);
     }
+
+    for (int ty = minty; ty < numty; ty++)
+    for (int tx = mintx; tx < numtx; tx++)
+      omp_destroy_lock(&SectorLocks[ty][tx]);
 }
 
 void rextrudeborder_faces() {

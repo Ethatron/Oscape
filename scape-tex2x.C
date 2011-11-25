@@ -548,3 +548,17 @@ void write_nrmhgt2(bool fmaps, bool nmaps, bool hmaps, const HField& hf) {
   write_nrmhgt2(fmaps, nmaps, hmaps, hf, "%02d.%02d.%02d.%02d");
 }
 #endif
+
+void write_col2(bool cmaps, const CField& cf, const char *pattern) {
+}
+
+void write_col3(bool cmaps, const CField& cf, const char *pattern) {
+}
+
+void write_col2(bool cmaps, const CField& cf) {
+//write_col2(cmaps, hf, "%02d.%02d.%02d.%02d");
+}
+
+void write_col3(bool cmaps, const CField& cf) {
+//write_col3(cmaps, hf, "%02d.%02d.%02d.%02d");
+}

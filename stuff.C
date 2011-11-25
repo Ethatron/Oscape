@@ -83,190 +83,354 @@ void Plane::init(const Vector3d& p,const Vector3d& q,const Vector3d& r)
 }
 
 
-ColorTexture::ColorTexture(ifstream& in)
-{
-    char tmp[16];
-    int width,height,cmax,x,y,r,g,b;
-    int is_raw = 0;
-    char byte;
+ColorTexture::ColorTexture(ifstream& in) {
+  int width, height, maxval;
+  int x, y;
+  char byte;
+  char head[3];
+  int type = 0;
 
-    if( !in.good() ) {
-	cerr << "ERROR:  Unable to read texture file." << endl;
-	exit(1);
-    }
+  if (!in.good()) {
+    cerr << "ERROR:  Unable to read texture file." << endl;
+    exit(1);
+  }
 
+  /* read head */
+  in >> head[0] >> head[1] >> head[2];//"STM";
 
-    in >> tmp >> width >> height >> cmax;
+  /* detect file-format */
+  if ((head[0] == 'P') &&
+      (head[1] == '6') &&
+      (head[2] == '\n')) {
+    type = 2;
 
-    assert( cmax==255 );
+    in >> width >> height >> maxval;
+  }
+  else {
+    type = 3;
 
-    data.init(width,height);
+    in.seekg(0, ios_base::end);
+    maxval = in.tellg();
+    in.seekg(0, ios_base::beg);
 
+    maxval /= sizeof(unsigned char) * 3;
 
-    if( tmp[0]=='P' && tmp[1]=='3' )
-	;
-    else if( tmp[0]=='P' && tmp[1]=='6' ) {
-	is_raw = 1;
-	// There may be a single whitespace character in our way
-	if( isspace(in.peek()) )
-	    in.get(byte);
-    } else {
-	cerr << "BOGUS PPM TEXTURE FILE" << endl;
-	exit(1);
-    }
-
-    // for(y=0;y<height;y++)
-    for(y=height-1;y>=0;y--)
-	for(x=0;x<width;x++) {
-	    Color& c = data.ref(x,y);
-
-	    if( is_raw ) {
-		in.get(byte);
-		c.r = (rgb_val)byte / (rgb_val)cmax;
-
-		in.get(byte);
-		c.g = (rgb_val)byte / (rgb_val)cmax;
-
-		in.get(byte);
-		c.b = (rgb_val)byte / (rgb_val)cmax;;
-	    } else {
-		in >> r >> g >> b;
-		c.r = (rgb_val)r / (rgb_val)cmax;;
-		c.g = (rgb_val)g / (rgb_val)cmax;;
-		c.b = (rgb_val)b / (rgb_val)cmax;;
-	    }
+    if ((rwsizex <= 0) && (rwsizey <= 0)) {
+      /* favor landscape mode */
+      for (int rwy = 1; (rwy <= 32) && (rwsizey <= 0); rwy++)
+      for (int rwx = 1; (rwx <= 32) && (rwsizex <= 0); rwx++)
+	if (maxval == ((rwx * rwy) * (rasterx * rastery))) {
+	  rwsizex = rwx;
+	  rwsizey = rwy;
+	  break;
 	}
+    }
+    else if ((rwsizex > 0) && (rwsizey <= 0)) {
+      rwsizey = maxval / rwsizex;
+    }
+    else if ((rwsizex <= 0) && (rwsizey > 0)) {
+      rwsizex = maxval / rwsizey;
+    }
+
+    if ((rwsizex > 0) && (rwsizey > 0)) {
+      if (maxval != (rwsizex * rwsizey)) {
+	cerr << "error: " << maxval << " != " << rwsizex << " * " << rwsizey << endl;
+	exit(0);
+      }
+    }
+
+    width  = rwsizex;
+    height = rwsizey;
+    maxval = 255;
+  }
+
+  if (debug)
+    cout << "# Width: " << width << "   Height: " << height;
+
+  data.init(width, height);
+
+//for (y = height - 1; y >= 0; y--)
+  for (y = 0; y < height; y++)
+  for (x = 0; x < width; x++) {
+    Color& c = data.ref(x, y);
+
+    in.get(byte); c.r = (rgb_val)byte / (rgb_val)maxval;
+    in.get(byte); c.g = (rgb_val)byte / (rgb_val)maxval;
+    in.get(byte); c.b = (rgb_val)byte / (rgb_val)maxval;
+  }
 }
 
 
 
 
-DEMdata::DEMdata(ifstream& in)
-{
-    int width, height, maxval;
-    int x, y;
-    char c;
-    char head[3];
-    char orderBytes[4];
-    int type = 0;
+LumaTexture::LumaTexture(ifstream& in) {
+  int width, height, maxval;
+  int x, y;
+  char byte;
+  char head[3];
+  int type = 0;
 
-    /* read head */
-    in >> head[0] >> head[1] >> head[2];//"STM";
+  if (!in.good()) {
+    cerr << "ERROR:  Unable to read texture file." << endl;
+    exit(1);
+  }
 
-    /* detect file-format */
-    if ((head[0] == 'S') &&
-	(head[1] == 'T') &&
-	(head[2] == 'M')) {
-      type = 1;
+  /* read head */
+  in >> head[0] >> head[1] >> head[2];//"STM";
 
-      in >> width >> height;
-      in >> orderBytes[0] >> orderBytes[1] >> orderBytes[2] >> orderBytes[3];
+  /* detect file-format */
+  if ((head[0] == 'P') &&
+      (head[1] == '5') &&
+      (head[2] == '\n')) {
+    type = 2;
 
-      // Read the EOL byte
-      in.get(c);
-    }
-    else if ((head[0] == 'P') &&
-	     (head[1] == '5') &&
-	     (head[2] == '\n')) {
-      type = 2;
+    in >> width >> height >> maxval;
+  }
+  else {
+    type = 3;
 
-      in >> width >> height >> maxval;
+    in.seekg(0, ios_base::end);
+    maxval = in.tellg();
+    in.seekg(0, ios_base::beg);
 
-      // big endian
-      orderBytes[0] = 0x04;
-      orderBytes[1] = 0x03;
-      orderBytes[2] = 0x02;
-      orderBytes[3] = 0x01;
-    }
-    else {
-      type = 3;
+    maxval /= sizeof(unsigned char) * 1;
 
-      in.seekg(0, ios_base::end);
-      maxval = in.tellg();
-      in.seekg(0, ios_base::beg);
-
-      maxval /= sizeof(unsigned short);
-
-      if ((rwsizex <= 0) && (rwsizey <= 0)) {
-	/* favor landscape mode */
-	for (int rwy = 1; (rwy <= 32) && (rwsizey <= 0); rwy++)
-	for (int rwx = 1; (rwx <= 32) && (rwsizex <= 0); rwx++)
-	  if (maxval == ((rwx * rwy) * (rasterx * rastery))) {
-	    rwsizex = rwx;
-	    rwsizey = rwy;
-	    break;
-	  }
-      }
-      else if ((rwsizex > 0) && (rwsizey <= 0)) {
-	rwsizey = maxval / rwsizex;
-      }
-      else if ((rwsizex <= 0) && (rwsizey > 0)) {
-	rwsizex = maxval / rwsizey;
-      }
-
-      if ((rwsizex > 0) && (rwsizey > 0)) {
-	if (maxval != (rwsizex * rwsizey)) {
-	  cerr << "error: " << maxval << " != " << rwsizex << " * " << rwsizey << endl;
-	  exit(0);
+    if ((rwsizex <= 0) && (rwsizey <= 0)) {
+      /* favor landscape mode */
+      for (int rwy = 1; (rwy <= 32) && (rwsizey <= 0); rwy++)
+      for (int rwx = 1; (rwx <= 32) && (rwsizex <= 0); rwx++)
+	if (maxval == ((rwx * rwy) * (rasterx * rastery))) {
+	  rwsizex = rwx;
+	  rwsizey = rwy;
+	  break;
 	}
-      }
-
-      width  = rwsizex;
-      height = rwsizey;
-
-      // little endian
-      orderBytes[0] = 0x01;
-      orderBytes[1] = 0x02;
-      orderBytes[2] = 0x03;
-      orderBytes[3] = 0x04;
+    }
+    else if ((rwsizex > 0) && (rwsizey <= 0)) {
+      rwsizey = maxval / rwsizex;
+    }
+    else if ((rwsizex <= 0) && (rwsizey > 0)) {
+      rwsizex = maxval / rwsizey;
     }
 
-    if (debug)
-	cout << "# Width: " << width << "   Height: " << height;
+    if ((rwsizex > 0) && (rwsizey > 0)) {
+      if (maxval != (rwsizex * rwsizey)) {
+	cerr << "error: " << maxval << " != " << rwsizex << " * " << rwsizey << endl;
+	exit(0);
+      }
+    }
 
-    z.init(width, height);
-    z.bitread(in);
+    width  = rwsizex;
+    height = rwsizey;
+    maxval = 255;
+  }
 
-    if (!stmMatchOrder(orderBytes))
-        for (x = 0; x < width; x++)
-	    for (y = 0; y < height; y++) {
-		unsigned short v = z.ref(x, y);
+  if (debug)
+    cout << "# Width: " << width << "   Height: " << height;
 
-		v = ((v << 8) & 0xff00) | ((v >> 8) & 0xff);
-		if (nobasin)
-		  v = max(basinshift, v);
+  data.init(width, height);
 
-		z.ref(x, y) = v;
-	    }
+  //for (y = height - 1; y >= 0; y--)
+  for (y = 0; y < height; y++)
+  for (x = 0; x < width; x++) {
+    Luma& l = data.ref(x, y);
 
-    //
-    // The data is stored with (0,0) in the upper left ala image
-    // coordinates.  However, GL will display things with (0,0) in the
-    // lower left corner.  So we'll just flip the data.
-    // This has no affect on the TIN that is generated.
-    // It only changes the display.
-    //
-    if (type != 3)
-      for (y = 0; y < height / 2; y++)
-	  for (x = 0; x < width; x++) {
-	      unsigned short tmp = z.ref(x, y);
-	      z.ref(x, y) = z.ref(x, height - 1 - y);
-	      z.ref(x, height - 1 - y) = tmp;
-	  }
+    in.get(byte); l.l = (luma_val)byte / (luma_val)maxval;
+  }
+}
 
-    zmax = -MINFLOAT;
-    zmin =  MAXFLOAT;
 
+
+
+DEMdata::DEMdata(ifstream& in) {
+  int width, height, maxval;
+  int x, y;
+  char head[3];
+  char orderBytes[4];
+  int type = 0;
+
+  /* read head */
+  in >> head[0] >> head[1] >> head[2];//"STM";
+
+  /* detect file-format */
+  if ((head[0] == 'S') &&
+      (head[1] == 'T') &&
+      (head[2] == 'M')) {
+    type = 1;
+
+    in >> width >> height;
+    in >> orderBytes[0] >> orderBytes[1] >> orderBytes[2] >> orderBytes[3];
+
+    // Read the EOL byte
+    char c; in.get(c);
+  }
+  else if ((head[0] == 'P') &&
+	   (head[1] == '5') &&
+	   (head[2] == '\n')) {
+    type = 2;
+
+    in >> width >> height >> maxval;
+
+    // big endian
+    orderBytes[0] = 0x04;
+    orderBytes[1] = 0x03;
+    orderBytes[2] = 0x02;
+    orderBytes[3] = 0x01;
+  }
+  else {
+    type = 3;
+
+    in.seekg(0, ios_base::end);
+    maxval = in.tellg();
+    in.seekg(0, ios_base::beg);
+
+    maxval /= sizeof(unsigned short);
+
+    if ((rwsizex <= 0) && (rwsizey <= 0)) {
+      /* favor landscape mode */
+      for (int rwy = 1; (rwy <= 32) && (rwsizey <= 0); rwy++)
+      for (int rwx = 1; (rwx <= 32) && (rwsizex <= 0); rwx++)
+	if (maxval == ((rwx * rwy) * (rasterx * rastery))) {
+	  rwsizex = rwx;
+	  rwsizey = rwy;
+	  break;
+	}
+    }
+    else if ((rwsizex > 0) && (rwsizey <= 0)) {
+      rwsizey = maxval / rwsizex;
+    }
+    else if ((rwsizex <= 0) && (rwsizey > 0)) {
+      rwsizex = maxval / rwsizey;
+    }
+
+    if ((rwsizex > 0) && (rwsizey > 0)) {
+      if (maxval != (rwsizex * rwsizey)) {
+	cerr << "error: " << maxval << " != " << rwsizex << " * " << rwsizey << endl;
+	exit(0);
+      }
+    }
+
+    width  = rwsizex;
+    height = rwsizey;
+
+    // little endian
+    orderBytes[0] = 0x01;
+    orderBytes[1] = 0x02;
+    orderBytes[2] = 0x03;
+    orderBytes[3] = 0x04;
+  }
+
+  if (debug)
+    cout << "# Width: " << width << "   Height: " << height;
+
+  z.init(width, height);
+  z.bitread(in);
+
+  if (!stmMatchOrder(orderBytes)) {
     for (x = 0; x < width; x++)
-	for (y = 0; y < height; y++) {
-	    Real val = (Real)z.val(x, y);
+    for (y = 0; y < height; y++) {
+      unsigned short v = z.ref(x, y);
 
-	    if (val != DEM_BAD) {
-		if (val > zmax) zmax = val;
-		if (val < zmin) zmin = val;
-	    }
+      v = ((v << 8) & 0xff00) | ((v >> 8) & 0xff);
+      if (nobasin)
+	v = max(basinshift, v);
+
+      z.ref(x, y) = v;
+    }
+  }
+  else if (nobasin) {
+    for (x = 0; x < width; x++)
+    for (y = 0; y < height; y++) {
+      unsigned short v = z.ref(x, y);
+
+      v = max(basinshift, v);
+
+      z.ref(x, y) = v;
+    }
+  }
+
+  //
+  // The data is stored with (0,0) in the upper left ala image
+  // coordinates.  However, GL will display things with (0,0) in the
+  // lower left corner.  So we'll just flip the data.
+  // This has no affect on the TIN that is generated.
+  // It only changes the display.
+  //
+  if (type != 3)
+    for (y = 0; y < height / 2; y++)
+    for (x = 0; x < width; x++) {
+      unsigned short tmp = z.ref(x, y);
+      z.ref(x, y) = z.ref(x, height - 1 - y);
+      z.ref(x, height - 1 - y) = tmp;
+    }
+
+  zmax = -MINFLOAT;
+  zmin =  MAXFLOAT;
+
+  for (x = 0; x < width; x++)
+  for (y = 0; y < height; y++) {
+    Real val = (Real)z.val(x, y);
+
+    if (val != DEM_BAD) {
+      if (val > zmax) zmax = val;
+      if (val < zmin) zmin = val;
+    }
+  }
+
+  if (debug)
+    cerr << "# zmin=" << zmin << ", zmax=" << zmax << endl;
+}
+
+RGBAdata::RGBAdata(ifstream& in) {
+  int width, height, maxval;
+//int x, y;
+  char head[3];
+//char orderBytes[4];
+  int type = 0;
+
+  /* read head */
+  in >> head[0] >> head[1] >> head[2];//"STM";
+
+  /* detect file-format */
+  {
+    type = 3;
+
+    in.seekg(0, ios_base::end);
+    maxval = in.tellg();
+    in.seekg(0, ios_base::beg);
+
+    maxval /= sizeof(unsigned long);
+
+    if ((rwsizex <= 0) && (rwsizey <= 0)) {
+      /* favor landscape mode */
+      for (int rwy = 1; (rwy <= 32) && (rwsizey <= 0); rwy++)
+      for (int rwx = 1; (rwx <= 32) && (rwsizex <= 0); rwx++)
+	if (maxval == ((rwx * rwy) * (rasterx * rastery))) {
+	  rwsizex = rwx;
+	  rwsizey = rwy;
+	  break;
 	}
+    }
+    else if ((rwsizex > 0) && (rwsizey <= 0)) {
+      rwsizey = maxval / rwsizex;
+    }
+    else if ((rwsizex <= 0) && (rwsizey > 0)) {
+      rwsizex = maxval / rwsizey;
+    }
 
-    if (debug)
-	cerr << "# zmin=" << zmin << ", zmax=" << zmax << endl;
+    if ((rwsizex > 0) && (rwsizey > 0)) {
+      if (maxval != (rwsizex * rwsizey)) {
+	cerr << "error: " << maxval << " != " << rwsizex << " * " << rwsizey << endl;
+	exit(0);
+      }
+    }
+
+    width  = rwsizex;
+    height = rwsizey;
+  }
+
+  if (debug)
+    cout << "# Width: " << width << "   Height: " << height;
+
+  c.init(width, height);
+  c.bitread(in);
 }
