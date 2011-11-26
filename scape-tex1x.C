@@ -114,7 +114,7 @@ void write_nrmhgt1(bool fmaps, bool nmaps, bool hmaps, const HField& hf, const c
        */
       Real zscale = (2.0f * sizescale) / heightscale;
 
-      if (nmaps && !skiptex(pattern, "_fn", coordx, coordy, min(resx, resy), true)) {
+      if (nmaps && !skipTexture(pattern, "_fn", coordx, coordy, min(resx, resy), true)) {
 	/* lock persistant output-buffer */
 	D3DLOCKED_RECT rnrm;
 	tnrm->LockRect(0, &rnrm, NULL, 0);
@@ -202,10 +202,10 @@ void write_nrmhgt1(bool fmaps, bool nmaps, bool hmaps, const HField& hf, const c
 	SetTopic("Writing tile {%d,%d} normals:", coordx, coordy);
 
 	/* flush persistant output-buffer to disk */
-	writetex(tnrm, pattern, "_fn", coordx, coordy, min(resx, resy), true);
+	wrteDXTexture(tnrm, pattern, "_fn", coordx, coordy, min(resx, resy), true);
       } /* nmaps */
 
-      if (hmaps && !skiptex(pattern, "_fh", coordx, coordy, min(resx, resy), false)) {
+      if (hmaps && !skipTexture(pattern, "_fh", coordx, coordy, min(resx, resy), false)) {
 	/* lock persistant output-buffer */
 	D3DLOCKED_RECT rhgt;
 	thgt->LockRect(0, &rhgt, NULL, 0);
@@ -285,7 +285,7 @@ void write_nrmhgt1(bool fmaps, bool nmaps, bool hmaps, const HField& hf, const c
 	SetTopic("Writing tile {%d,%d} deviations:", coordx, coordy);
 
 	/* flush persistant output-buffer to disk */
-	writetex(thgt, pattern, "_fh", coordx, coordy, min(resx, resy), false);
+	wrteDXTexture(thgt, pattern, "_fh", coordx, coordy, min(resx, resy), false);
       } /* fmaps */
 
       /* advance progress */
@@ -342,7 +342,7 @@ void write_col1(bool cmaps, const CField& cf, const char *pattern) {
       /* VBs starts on index 0 */
       unsigned int i = 0, idx = 0;
 
-      if (cmaps && !skiptex(pattern, "", coordx, coordy, min(resx, resy), false)) {
+      if (cmaps && !skipTexture(pattern, "", coordx, coordy, min(resx, resy), false)) {
 	/* lock persistant output-buffer */
 	D3DLOCKED_RECT rcol;
 	tcol->LockRect(0, &rcol, NULL, 0);
@@ -387,7 +387,7 @@ void write_col1(bool cmaps, const CField& cf, const char *pattern) {
 	SetTopic("Writing tile {%d,%d} colors:", coordx, coordy);
 
 	/* flush persistant output-buffer to disk */
-	writetex(tcol, pattern, "", coordx, coordy, min(resx, resy), false);
+	wrteDXTexture(tcol, pattern, "", coordx, coordy, min(resx, resy), false);
       } /* cmaps */
 
       /* advance progress */

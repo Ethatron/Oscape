@@ -119,10 +119,10 @@ void Subdivision::init(const Point2d& a, const Point2d& b,
   Splice(eb->Sym(), diag->Sym());
   diag->EndPoints(da, dc);
 
-  first_face = NULL;
+  firstFace = NULL;
 
-  Triangle *f1 = make_face(ea->Sym());
-  Triangle *f2 = make_face(ec->Sym());
+  Triangle *f1 = makeFace(ea->Sym());
+  Triangle *f2 = makeFace(ec->Sym());
 }
 
 void Subdivision::free() {
@@ -157,23 +157,23 @@ Edge* Connect(Edge* a, Edge* b) {
 static Triangle *recycle1 = NULL;
 static Triangle *recycle2 = NULL;
 
-void Subdivision::rebuild_face(Edge *e) {
+void Subdivision::rebuildFace(Edge *e) {
   Triangle *f;
 
   if (recycle1) {
     f = recycle1;
     f->setAnchor(e);
-    f->attach_face();
+    f->attachFace();
     recycle1 = NULL;
   }
   else if (recycle2) {
     f = recycle2;
     f->setAnchor(e);
-    f->attach_face();
+    f->attachFace();
     recycle2 = NULL;
   }
   else
-    f = make_face(e);
+    f = makeFace(e);
 
   // this call creates a new Triangle with null heap index,
   // among other things
@@ -196,8 +196,8 @@ void Swap(Edge* e) {
 
   f1->setAnchor(e);
   f2->setAnchor(e->Sym());
-  f1->attach_face();
-  f2->attach_face();
+  f1->attachFace();
+  f2->attachFace();
 }
 
 /*************** Geometric Predicates for Delaunay Diagrams *****************/
@@ -396,7 +396,7 @@ Edge *Subdivision::Spoke(const Point2d& x, Triangle *tri) {
   // If point x on perimeter, then don't add an exterior face
   base = pedge ? startingEdge->Rprev() : startingEdge->Sym();
   do {
-    rebuild_face(base);
+    rebuildFace(base);
     base = base->Onext();
   } while(base != startingEdge->Sym());
 
@@ -475,7 +475,7 @@ void Edge::OverEdges(unsigned int stamp, edge_callback f, void *closure) {
 }
 
 void Subdivision::OverFaces(face_callback f, void *closure) {
-  Triangle *t = first_face;
+  Triangle *t = firstFace;
   while (t) {
     (*f)(t, closure);
 
@@ -512,7 +512,7 @@ Triangle *UpdateRegion::next() {
   // no need to check, can't have two null faces
 }
 
-void Triangle::attach_face() {
+void Triangle::attachFace() {
   anchor->set_Lface(this);
   anchor->Lnext()->set_Lface(this);
   anchor->Lprev()->set_Lface(this);

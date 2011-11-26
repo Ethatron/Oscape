@@ -85,9 +85,9 @@ protected:
 public:
     array() { data=NULL; len=0; }
     array(int l) { init(l); }
-    ~array() { if( data ) delete[] data; }
+    ~array() { if (data) delete[] data; }
 
-    void init(int l) { len=l; data=new T[l]; }
+    void init(int l) { len = l; data = new T[l]; }
     void free() { delete[] data; }
     void resize(int l) {
 	T *old = data;
@@ -114,18 +114,26 @@ template<class T>
 class array2 {
 protected:
     T *data;
-    int width,height;
+    int width, height;
 public:
     array2() { data=NULL; }
-    array2(int w,int h) { init(w,h); }
+    array2(int w, int h) { init(w,h); }
     ~array2() { free(); }
 
-    void init(int w,int h) {
-	data = new T[w*h];
-	width = w; height = h;
+    void init(int w, int h) {
+      data = new T[w * h];
+      width = w; height = h;
     }
-    void free() { if (data) delete[] data; data = NULL; }
 
+    void clear() {
+      memset(data, 0, sizeof(T) * width * height);
+    }
+
+    void free() {
+      if (data)
+	delete[] data;
+      data = NULL;
+    }
 
     const T& val(int i, int j) const {
 #ifdef SAFETY
@@ -145,30 +153,156 @@ public:
       return data[j * width + i];
     }
 
-    T& operator()(int i,int j) { return ref(i, j); }
+    T& operator()(int i, int j) { return ref(i, j); }
 
     int w() const { return width; }
     int h() const { return height; }
 
-    void bitread(ifstream& in)
-    {
+    void bitread(ifstream& in) {
 #ifdef SAFETY
-	assert( data );
+      assert( data );
 #endif
-	char *loc = (char *)data;
-	std::streamsize target = width * height * sizeof(T);
-	while (target > 0) {
-	    in.read(loc, target);
-	    target -= in.gcount();
-	    loc += in.gcount();
-	}
+      char *loc = (char *)data;
+      std::streamsize target = width * height * sizeof(T);
+      while (target > 0) {
+	in.read(loc, target);
+	target -= in.gcount();
+	loc += in.gcount();
+      }
     }
-
 
     T *raw() { return data; }
     void set_raw(T *d) { data = d; }
 };
 
+#define	BITFIELD2
+/* 4x4/8x8 per value, two-dimensional bitfield */
+template<
+#ifndef	_WIN64
+  class bitfield = unsigned short,
+  int hshift = 2,
+  int wshift = 2,
+  unsigned char hmask = (1 << hshift) - 1,
+  unsigned char wmask = (1 << wshift) - 1,
+  unsigned char cmask = (1 << (hshift + wshift)) - 1
+#else
+  class bitfield = unsigned __int64,
+  int hshift = 3,
+  int wshift = 3,
+  unsigned char hmask = (1ULL << hshift) - 1,
+  unsigned char wmask = (1ULL << wshift) - 1,
+  unsigned char cmask = (1ULL << (hshift + wshift)) - 1
+#endif
+>
+class bitarray2 : private array2<bitfield> {
+
+protected:
+  int width, height;
+
+public:
+  bitarray2() : array2() { }
+  bitarray2(int w, int h) : array2() { init(w, h); }
+  ~bitarray2() { free(); }
+
+  void init(int w, int h) {
+    width  = w;
+    height = h;
+    array2::init(
+      (w + wmask) >> wshift, 
+      (h + hmask) >> hshift
+    );
+  }
+
+  void clear() {
+    array2::clear();
+  }
+
+  void free() {
+    array2::free();
+  }
+
+public:
+  inline bool check(int i, int j) const {
+    unsigned long q = (j >> hshift) * array2::width + (i >> wshift);
+    bitfield p = 1; p <<= (cmask & ((j << wshift) | (i & wmask)));
+
+    return !!(data[q] & p);
+  }
+
+  inline void mark(int i, int j) {
+    unsigned long q = (j >> hshift) * array2::width + (i >> wshift);
+    bitfield p = 1; p <<= (cmask & ((j << wshift) | (i & wmask)));
+
+    data[q] = (data[q] | p);
+  }
+
+  inline void clear(int i, int j) {
+    unsigned long q = (j >> hshift) * array2::width + (i >> wshift);
+    bitfield p = 1; p <<= (cmask & ((j << wshift) | (i & wmask)));
+
+    data[q] = (data[q] | p) ^ p;
+  }
+
+  inline void set(int i, int j, int b) {
+    unsigned long q = (j >> hshift) * array2::width + (i >> wshift);
+    bitfield p = 1; p <<= (cmask & ((j << wshift) | (i & wmask)));
+    bitfield s = b; b <<= (cmask & ((j << wshift) | (i & wmask)));
+
+    data[q] = (data[q] & ~p) ^ s;
+  }
+
+  inline bool skip(int i, int j) {
+    unsigned long q = (j >> hshift) * array2::width + (i >> wshift);
+    bitfield p = 1; p <<= (cmask & ((j << wshift) | (i & wmask)));
+    bool res = !!(data[q] & p);
+    data[q] = (data[q] | p);
+
+    return res;
+  }
+
+public:
+  /* ------------------------------------------------------ */
+  inline bool operator ()(int i, int j) const { return check(i, j); }
+//inline void operator =(int i, int j) const { return check(i, j); }
+
+  /* ------------------------------------------------------ */
+  class bit2 {
+    friend class bitarray2;
+
+    bitfield *data, smp;
+    unsigned char hp, lp;
+
+    bit2(bitfield *d, unsigned char pos) {
+      data = d;
+
+      hp = pos & (hmask << wshift);
+      lp = pos & (wmask);
+
+      smp = *data++ >> hp;
+    }
+
+public:
+    inline bool operator *() {
+      return !!((smp >> lp) & 1);
+    }
+
+    inline void operator ++() {
+      /* wrap around, advance */
+      if ((lp = (lp + 1) & wmask) == 0)
+	smp = *data++ >> hp;
+    }
+  };
+
+  bit2 ref(int i, int j) {
+    unsigned long q = (j >> hshift) * array2::width + (i >> wshift);
+    unsigned char o = (cmask & ((j << wshift) | (i & wmask)));
+
+    return bit2(data + q, o);
+  }
+
+  int w() const { return width; }
+  int h() const { return height; }
+};
 
 template<class T>
 class buffer {

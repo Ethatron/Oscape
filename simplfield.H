@@ -94,7 +94,21 @@ class SimplField : public Subdivision  {
     Real angle_between_all_normals(const FitPlane&, const FitPlane&);
 
 public:
+#ifdef BITFIELD2
+    bitarray2<> is_used;
+
+    bool check_used(int i, int j) { return is_used.check(i, j); }
+    void  mark_used(int i, int j) {        is_used.mark (i, j); }
+    void clear_used(int i, int j) {        is_used.clear(i, j); }
+    bool  skip_used(int i, int j) { return is_used.skip (i, j); }
+#else
     array2<char> is_used;
+
+    bool check_used(int i, int j) { if (is_used(i, j)) return true;                    return false; }
+    void  mark_used(int i, int j) {                                 is_used(i, j) = 1;               }
+    void clear_used(int i, int j) {                                 is_used(i, j) = 0;               }
+    bool  skip_used(int i, int j) { if (is_used(i, j)) return true; is_used(i, j) = 1; return false; }
+#endif
 
     SimplField(HField *h) { init(h); }
     ~SimplField() { free(); }
@@ -103,14 +117,15 @@ public:
     Edge *select_new_point(int x, int y);
     Edge *select_fix_point(int x, int y);
     int select_new_points(Real limit);
+
     int isUsedInterp(Real x, Real y);	// for bilinear interpolation
 
     Real rms_error();
     Real rms_error_supersample(int ss);
     Real rms_error_estimate();
     Real getCurrentError();
-    HField *original() { return H; }
-    Heap &get_heap() { return *heap; }
+    HField *getHField() { return H; }
+    Heap &getHeap() { return *heap; }
 };
 
 

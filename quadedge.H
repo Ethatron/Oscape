@@ -136,20 +136,23 @@ class QuadEdge : public MemQueueable {
 class Subdivision {
 private:
     Edge *startingEdge;
-    Triangle *first_face;
+    Triangle *firstFace;
 
-    Triangle *make_face(Edge *);
-    void rebuild_face(Edge *);
+    Triangle *makeFace(Edge *);
+    void rebuildFace(Edge *);
+
 protected:
     void init(const Point2d&,const Point2d&,const Point2d&,const Point2d&);
     void free();
+
     Subdivision() { }
     ~Subdivision() { free(); }
+
 public:
+    Subdivision(const Point2d& a, const Point2d& b,
+		const Point2d& c, const Point2d& d) { init(a,b,c,d); }
+
     Edge *Locate(const Point2d& x, Edge *hintedge);
-    Subdivision(const Point2d& a,const Point2d& b,
-		const Point2d& c ,const Point2d& d)
-	{ init(a,b,c,d); }
     Edge *Spoke(const Point2d& x, Triangle *tri);
     Edge *InsertSite(const Point2d&, Triangle *tri);
 
@@ -160,128 +163,112 @@ public:
     void vef(int &nv, int &ne, int &nf);
 };
 
-inline QuadEdge::QuadEdge()
-{
-	e[0].num = 0, e[1].num = 1, e[2].num = 2, e[3].num = 3;
-	e[0].next = &(e[0]); e[1].next = &(e[3]);
-	e[2].next = &(e[2]); e[3].next = &(e[1]);
-	assert(!e[0].lface_data);
-	assert(!e[1].lface_data);
-	assert(!e[2].lface_data);
-	assert(!e[3].lface_data);
-	ts = 0;
+inline QuadEdge::QuadEdge() {
+    e[0].num = 0, e[1].num = 1, e[2].num = 2, e[3].num = 3;
+    e[0].next = &(e[0]); e[1].next = &(e[3]);
+    e[2].next = &(e[2]); e[3].next = &(e[1]);
+
+    assert(!e[0].lface_data);
+    assert(!e[1].lface_data);
+    assert(!e[2].lface_data);
+    assert(!e[3].lface_data);
+
+    ts = 0;
 }
 
-inline int QuadEdge::TimeStamp(unsigned int stamp)
-{
-	if (ts != stamp) {
-		ts = stamp;
-		return TRUE;
-	} else
-		return FALSE;
+inline int QuadEdge::TimeStamp(unsigned int stamp) {
+    if (ts != stamp) {
+      ts = stamp;
+      return TRUE;
+    }
+    else
+      return FALSE;
 }
 
 /************************* Edge Algebra *************************************/
 
-inline Edge* Edge::Rot()
 // Return the dual of the current edge, directed from its right to its left.
-{
-	return (num < 3) ? this + 1 : this - 3;
+inline Edge* Edge::Rot() {
+  return (num < 3) ? this + 1 : this - 3;
 }
 
-inline Edge* Edge::invRot()
 // Return the dual of the current edge, directed from its left to its right.
-{
-	return (num > 0) ? this - 1 : this + 3;
+inline Edge* Edge::invRot() {
+  return (num > 0) ? this - 1 : this + 3;
 }
 
-inline Edge* Edge::Sym()
 // Return the edge from the destination to the origin of the current edge.
-{
-	return (num < 2) ? this + 2 : this - 2;
+inline Edge* Edge::Sym() {
+  return (num < 2) ? this + 2 : this - 2;
 }
 
-inline Edge* Edge::Onext()
 // Return the next ccw edge around (from) the origin of the current edge.
-{
-	return next;
+inline Edge* Edge::Onext() {
+  return next;
 }
 
-inline Edge* Edge::Oprev()
 // Return the next cw edge around (from) the origin of the current edge.
-{
-	return Rot()->Onext()->Rot();
+inline Edge* Edge::Oprev() {
+  return Rot()->Onext()->Rot();
 }
 
-inline Edge* Edge::Dnext()
 // Return the next ccw edge around (into) the destination of the current edge.
-{
-	return Sym()->Onext()->Sym();
+inline Edge* Edge::Dnext() {
+  return Sym()->Onext()->Sym();
 }
 
-inline Edge* Edge::Dprev()
 // Return the next cw edge around (into) the destination of the current edge.
-{
-	return invRot()->Onext()->invRot();
+inline Edge* Edge::Dprev() {
+  return invRot()->Onext()->invRot();
 }
 
-inline Edge* Edge::Lnext()
 // Return the ccw edge around the left face following the current edge.
-{
-	return invRot()->Onext()->Rot();
+inline Edge* Edge::Lnext() {
+  return invRot()->Onext()->Rot();
 }
 
-inline Edge* Edge::Lprev()
 // Return the ccw edge around the left face before the current edge.
-{
-	return Onext()->Sym();
+inline Edge* Edge::Lprev() {
+  return Onext()->Sym();
 }
 
-inline Edge* Edge::Rnext()
 // Return the edge around the right face ccw following the current edge.
-{
-	return Rot()->Onext()->invRot();
+inline Edge* Edge::Rnext() {
+  return Rot()->Onext()->invRot();
 }
 
-inline Edge* Edge::Rprev()
 // Return the edge around the right face ccw before the current edge.
-{
-	return Sym()->Onext();
+inline Edge* Edge::Rprev() {
+  return Sym()->Onext();
 }
 
 /************** Access to data pointers *************************************/
 
-inline Point2d* Edge::Org()
-{
-	return data;
+inline Point2d* Edge::Org() {
+  return data;
 }
 
-inline Point2d* Edge::Dest()
-{
-	return Sym()->data;
+inline Point2d* Edge::Dest() {
+  return Sym()->data;
 }
 
-inline const Point2d& Edge::Org2d() const
-{
-	return *data;
+inline const Point2d& Edge::Org2d() const {
+  return *data;
 }
 
-inline const Point2d& Edge::Dest2d() const
-{
-	return (num < 2) ? *((this + 2)->data) : *((this - 2)->data);
+inline const Point2d& Edge::Dest2d() const {
+  return (num < 2) ? *((this + 2)->data) : *((this - 2)->data);
 }
 
-inline void Edge::EndPoints(Point2d* _or, Point2d* _de)
-{
-	data = _or;
-	Sym()->data = _de;
+inline void Edge::EndPoints(Point2d* _or, Point2d* _de) {
+  data = _or;
+  Sym()->data = _de;
 }
 
 
-inline ostream& operator<<(ostream& os,Edge *e)
-{
-    os << "[" << e->Org2d() << "-->" << e->Dest2d() << "]";
-    return os;
+inline ostream& operator<<(ostream& os, Edge *e) {
+  os << "[" << e->Org2d() << "-->" << e->Dest2d() << "]";
+  return os;
 }
 
 
@@ -314,7 +301,7 @@ public:
     void setAnchor(Edge *e) { anchor = e; }
     void dontAnchor(Edge *e);
 
-    void attach_face();
+    void attachFace();
 
     friend ostream& operator<<(ostream&,Triangle *);
 };
@@ -325,14 +312,14 @@ inline Triangle::Triangle(Edge *e) {
   err = UNSCANNED;
   sx = sy = 0;
 
-  attach_face();
+  attachFace();
 }
 
-inline Triangle *Subdivision::make_face(Edge *e) {
+inline Triangle *Subdivision::makeFace(Edge *e) {
   Triangle *f = new(&TPool) Triangle(e);
 
-  f->next = first_face;
-  first_face = f;
+  f->next = firstFace;
+  firstFace = f;
 
   return f;
 }

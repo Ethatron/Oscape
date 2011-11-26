@@ -51,7 +51,7 @@ using namespace std;
 #define	MATCH_WITH_HIRES
 #endif
 
-extern void parse_cmdline(int argc, char *argv[]);
+extern void parseCommandline(int argc, char *argv[]);
 
 extern const char *texFile;
 extern const char *greyFile;
@@ -127,10 +127,10 @@ extern int dotilex, dotiley;
 #include "simplfield.H"
 
 #ifdef	MATCH_WITH_HIRES
-void read_pts(SimplField& ter, const char *name);
-void write_pts(SimplField& ter, const char *name);
-void read_pts(SimplField& ter);
-void write_pts(SimplField& ter);
+void readPointsFile(SimplField& ter, const char *name);
+void wrtePointsFile(SimplField& ter, const char *name);
+void readPointsFile(SimplField& ter);
+void wrtePointsFile(SimplField& ter);
 #endif
 
 /* ---------------------------------------------------- */
@@ -138,11 +138,11 @@ void write_pts(SimplField& ter);
 void greedy_insert(SimplField& ter);
 void greedy_insert_error(SimplField& ter);
 
-void free_faces();
+void FreeGeometry();
 
-void write_prolog(SimplField &ter);
-void write_prolog();
-void write_optimize();
+void TransferGeometry(SimplField &ter);
+void TransferGeometry();
+void RevisitGeometry();
 
 /* ---------------------------------------------------- */
 
@@ -152,26 +152,26 @@ extern bool writeobj;
 extern bool writedx9;
 extern bool writenif;
 
-bool skiptile(int coordx, int coordy, int reso);
+bool skipTile(int coordx, int coordy, int reso);
 
 void write_mesh(SimplField& ter);
 
-void write_obj(const char *name);
-void write_objs(SimplField& ter, const char *pattern);
-void write_obj(SimplField& ter);
+void wrteWavefront(const char *name);
+void wrteWavefront(SimplField& ter, const char *pattern);
+void wrteWavefront(SimplField& ter);
 
-void write_nif(const char *name);
-void write_nifs(SimplField& ter, const char *pattern);
-void write_nif(SimplField& ter);
+void wrteNIF(const char *name);
+void wrteNIF(SimplField& ter, const char *pattern);
+void wrteNIF(SimplField& ter);
 
-void write_d9x(const char *name);
-void write_d9xs(SimplField& ter, const char *pattern);
-void write_d9x(SimplField& ter);
+void wrteDXMesh(const char *name);
+void wrteDXMesh(SimplField& ter, const char *pattern);
+void wrteDXMesh(SimplField& ter);
 
 bool skipmsh(const char *pattern, const char *pfx, int coordx, int coordy, int reso, bool uvs);
-void write_meshes(SimplField& ter, const char *pattern);
+void wrteGeometry(SimplField& ter, const char *pattern);
 
-void free_textures();
+void FreeTextures();
 
 #include "scape-tex.h"
 
@@ -197,8 +197,8 @@ void write_col2(bool cmaps, const CField& cf);
 void write_col3(bool cmaps, const CField& cf, const char *pattern);
 void write_col3(bool cmaps, const CField& cf);
 
-bool skiptex(const char *pattern, const char *pfx, int coordx, int coordy, int reso, bool xyz);
-void writetex(LPDIRECT3DTEXTURE9 tex, const char *pattern, const char *pfx, int coordx, int coordy, int reso, bool xyz);
+bool skipTexture(const char *pattern, const char *pfx, int coordx, int coordy, int reso, bool xyz);
+void wrteDXTexture(LPDIRECT3DTEXTURE9 tex, const char *pattern, const char *pfx, int coordx, int coordy, int reso, bool xyz);
 
 /* ---------------------------------------------------- */
 

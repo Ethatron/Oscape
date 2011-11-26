@@ -167,7 +167,11 @@ void scanLineDataindep(int y, HField *H, SimplField *S,
 
   Real diff, z = z_plane(startx, y), dz = z_plane.a;
   unsigned short *zp = &H->getZRef(startx, y);
+#ifndef BITFIELD2
   char *usedp = &S->is_used.ref(startx, y);
+#else
+  bitarray2<>::bit2 usedp = S->is_used.ref(startx, y);
+#endif
 
   for (x = startx; x <= endx; x++) {
     if (!*usedp) {
@@ -186,8 +190,9 @@ void scanLineDataindep(int y, HField *H, SimplField *S,
     }
 
     z += dz;
-    zp++;
-    usedp++;
+
+    ++zp;
+    ++usedp;
   }
 
   scancount += endx - startx + 1;
@@ -401,7 +406,11 @@ void scan_line_datadep_z(int y, HField *H, SimplField *S,
   Real   vz = v->z(startx, y);
 
   unsigned short *zp = &H->getZRef(startx, y);
+#ifndef BITFIELD2
   char *usedp = &S->is_used.ref(startx, y);
+#else
+  bitarray2<>::bit2 usedp = S->is_used.ref(startx, y);
+#endif
 
   for (x = startx; x <= endx; x++) {
     if (!*usedp) {
@@ -461,8 +470,8 @@ void scan_line_datadep_z(int y, HField *H, SimplField *S,
     uz += u->z.a;
     vz += v->z.a;
 
-    zp++;
-    usedp++;
+    ++zp;
+    ++usedp;
   }
 
   if (debug > 2)

@@ -50,7 +50,7 @@ int scancount;		// count of #pixels scanned during an update
 FitPlane::FitPlane(SimplField &ter, Triangle *tri) {
   // initialize plane equations for z, r, g, b in tri
   init(
-    ter.original(), 
+    ter.getHField(), 
     tri->point1(), 
     tri->point2(), 
     tri->point3()
@@ -67,7 +67,7 @@ FitPlane::FitPlane(SimplField &ter, Triangle *tri) {
 
     // candidate's heap index
     int index = tri->locate();	
-    cerr = index == NOT_IN_HEAP ? 0 : ter.get_heap()[index].val;
+    cerr = index == NOT_IN_HEAP ? 0 : ter.getHeap()[index].val;
     done = 1;
   }
 }
@@ -148,6 +148,7 @@ void SimplField::init(HField *Hf) {
   h = Hf->getHeight();
 
   is_used.init(w, h);
+  is_used.clear();
 
   // mark points with invalid data as "used", but mark others "unused"
   int count = 0;
@@ -156,10 +157,8 @@ void SimplField::init(HField *Hf) {
     if (H->getZ(x, y) == DEM_BAD) {
       count++;
 
-      is_used(x,y) = 1;
+      mark_used(x, y);
     }
-    else
-      is_used(x,y) = 0;
   }
 
   if (count)
@@ -175,24 +174,28 @@ void SimplField::init(HField *Hf) {
 
   Subdivision::init(a, b, c, d);
 
-  is_used(    0,     0) = 1;
-  is_used(    0, h - 1) = 1;
-  is_used(w - 1, h - 1) = 1;
-  is_used(w - 1,     0) = 1;
+  mark_used(    0,     0);
+  mark_used(    0, h - 1);
+  mark_used(w - 1, h - 1);
+  mark_used(w - 1,     0);
 
   init_cache();
 }
 
 int SimplField::isUsedInterp(Real x, Real y) {
 // for bilinear interpolation
-    int ix = (int)x, intx = x==ix;
-    int iy = (int)y, inty = y==iy;
+    int ix = (int)x, intx = x == ix;
+    int iy = (int)y, inty = y == iy;
+
     // be conservative -- if any of the neighbors are bad, then I'm bad
-    if (intx && inty) return is_used(ix, iy);
-    if (intx) return is_used(ix, iy) || is_used(ix, iy+1);
-    if (inty) return is_used(ix, iy) || is_used(ix+1, iy);
-    return is_used(ix, iy)   || is_used(ix+1, iy)
-	|| is_used(ix, iy+1) || is_used(ix+1, iy+1);
+    if (intx &&
+        inty) return check_used(ix, iy);
+
+    if (intx) return check_used(ix, iy) || check_used(ix    , iy + 1);
+    if (inty) return check_used(ix, iy) || check_used(ix + 1, iy    );
+
+    return check_used(ix, iy    ) || check_used(ix + 1, iy    )
+	|| check_used(ix, iy + 1) || check_used(ix + 1, iy + 1);
 }
 
 void check_for_diagonal(Triangle *tri, void *closure) {
@@ -235,7 +238,7 @@ void SimplField::select(Triangle *tri, int x, int y, Real cerr) {
 
   // triangle has valid candidate
   if (cerr > 1e-4) {
-    assert(!is_used(x, y));
+    assert(!check_used(x, y));
     tri->setSelection(x, y);
 
     // new triangle, so insert
@@ -294,8 +297,8 @@ Edge *SimplField::select_new_point() {
   // mark point as selected
   int sx, sy;
   n->tri->getSelection(&sx, &sy);
-  assert(!is_used(sx, sy));
-  is_used(sx, sy) = TRUE;
+  assert(!check_used(sx, sy));
+  mark_used(sx, sy);
   Point2d p(sx, sy);
 
   if (debug)
@@ -323,7 +326,7 @@ Edge *SimplField::select_new_point(int x, int y) {
   if (error < termination)
     return NULL;
 
-  if (is_used(x, y))
+  if (check_used(x, y))
     return NULL;
 
   /* TODO: it may be possible that we don't need to search for the triangles
@@ -371,11 +374,13 @@ Edge *SimplField::select_new_point(int x, int y) {
     return NULL;
   }
 
+  // manual point
   int sx, sy;
 //n->tri->get_selection(&sx, &sy);
-  sx = x; sy = y;			// manual point
+  sx = x; sy = y;			
 
-  is_used(sx, sy) = TRUE;		// mark point as selected
+  // mark point as selected
+  mark_used(sx, sy);		
   Point2d p(sx, sy);
   if (debug)
     cout << endl << "SELECTING: " << p << "  " << n->val << endl;
@@ -402,14 +407,16 @@ Edge *SimplField::select_fix_point(int x, int y) {
   if (error < termination)
     return NULL;
 
-  if (is_used(x, y))
+  if (check_used(x, y))
     return NULL;
 
+  // manual point
   int sx, sy;
 //n->tri->get_selection(&sx, &sy);
-  sx = x; sy = y;			// manual point
+  sx = x; sy = y;			
 
-  is_used(sx, sy) = TRUE;		// mark point as selected
+  // mark point as selected
+  mark_used(sx, sy);		
   Point2d p(sx, sy);
   if (debug)
     cout << endl << "SELECTING: " << p << "  " << endl;
@@ -441,12 +448,13 @@ int SimplField::select_new_points(Real limit) {
 
     n->tri->getSelection(&x, &y);
 
-    if (!is_used(x, y)) {
-      taken++;
-      is_used(x, y) = TRUE;
+    if (!check_used(x, y)) {
+      mark_used(x, y);
 
       xs.insert(x);
       ys.insert(y);
+
+      taken++;
     }
 
     error = getCurrentError();

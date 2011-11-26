@@ -2373,14 +2373,14 @@ public:
 		prog->InitProgress("Resolution %d, generating mesh:", limit, "Placing hi-res points (current mesh error %f):", ter.getCurrentError(), majordone++, 1);
 
 		sprintf(temps, "%s\\LOD-%d\\%02d.pts", dataDir.data(), target, wdspace);
-		read_pts(ter, temps);
+		readPointsFile(ter, temps);
 	      }
 
 	      /* custom points are also read in */
 	      if (dataPts.length() > 0) {
 		prog->InitProgress("Resolution %d, generating mesh:", limit, "Placing custom points (current mesh error %f):", ter.getCurrentError(), majordone++, 1);
 
-		read_pts(ter, dataPts.data());
+		readPointsFile(ter, dataPts.data());
 	      }
 
 	      sprintf(base, "%s\\LOD-%d", dataDir.data(), limit);
@@ -2388,17 +2388,17 @@ public:
 	      prog->InitProgress("Resolution %d, optimizing mesh:", limit, "Reordering faces:", 0.0, majordone++, 1);
 
 	      /* prepare writing */
-	      write_prolog(ter);
+	      TransferGeometry(ter);
 
 	      prog->InitProgress("Resolution %d, optimizing mesh:", limit, "Tiling faces:", 0.0, majordone++, 1);
 
 	      /* prepare writing */
-	      write_prolog();
+	      TransferGeometry();
 
 	      prog->InitProgress("Resolution %d, optimizing mesh:", limit, "Optimizing tiles:", 0.0, majordone++, 1);
 
 	      /* prepare writing */
-	      write_optimize();
+	      RevisitGeometry();
 
 	      /* go, write */
 	      if (OSMeshUVs->Get3StateValue() != wxCHK_CHECKED) {
@@ -2411,7 +2411,7 @@ public:
 
 		prog->InitProgress("Resolution %d, saving mesh:", limit, "Saving non-UV tiles:", 0.0, majordone++, 1);
 
-		write_meshes(ter, temps);
+		wrteGeometry(ter, temps);
 	      }
 
 	      /* go, write */
@@ -2425,20 +2425,20 @@ public:
 
 		prog->InitProgress("Resolution %d, saving mesh:", limit, "Saving UV tiles:", 0.0, majordone++, 1);
 
-		write_meshes(ter, temps);
+		wrteGeometry(ter, temps);
 	      }
 
 	      /* the highest resolution writes the points out */
 	      if (limit == target) {
 		sprintf(temps, "%s\\LOD-%d\\%02d.pts", dataDir.data(), target, wdspace);
-		write_pts(ter, temps);
+		wrtePointsFile(ter, temps);
 	      }
 
 	      /* done */
-	      free_faces();
+	      FreeGeometry();
 	    }
 	    catch(exception &e) {
-	      free_faces();
+	      FreeGeometry();
 
 	      if (strcmp(e.what(), "ExitThread")) {
 		wxMessageDialog d(prog, e.what(), "Oscape error");
@@ -2507,10 +2507,10 @@ public:
 	    write_nrmhgt2(false, OSNormalHigh   ->GetValue(), false, H, temps);
 	  }
 
-	  free_textures();
+	  FreeTextures();
 	}
 	catch(exception &e) {
-	  free_textures();
+	  FreeTextures();
 
 	  if (strcmp(e.what(), "ExitThread")) {
 	    wxMessageDialog d(prog, e.what(), "Oscape error");
@@ -2588,10 +2588,10 @@ public:
 	    write_col3(OSColorUltra  ->GetValue(), C, temps);
 	  }
 
-	  free_textures();
+	  FreeTextures();
 	}
 	catch(exception &e) {
-	  free_textures();
+	  FreeTextures();
 
 	  if (strcmp(e.what(), "ExitThread")) {
 	    wxMessageDialog d(prog, e.what(), "Oscape error");
@@ -3728,10 +3728,10 @@ terminal_error: {
 	    if (!SynchronizeInstall(wsv, mres3, tres3, cres3, "farinf", "three"))
 	      break;
 
-	  free_textures();
+	  FreeTextures();
 	}
 	catch(exception &e) {
-	  free_textures();
+	  FreeTextures();
 
 	  if (strcmp(e.what(), "ExitThread")) {
 	    wxMessageDialog d(prog, e.what(), "Oscape error");

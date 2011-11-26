@@ -224,14 +224,14 @@ int tri_sectd = 0;
 std::set<class objVertex *, struct V> Vertices;
 std::vector<class objFace *> Faces;
 
-void register_checked_face(const Point2d& _p1,
-			   const Point2d& _p2,
-			   const Point2d& _p3, void *closure) {
+void RegisterFace(const Point2d& _p1,
+		  const Point2d& _p2,
+		  const Point2d& _p3, void *closure) {
     HField *H = (HField *)closure;
 
     /* orient CCW */
     if (getArea2x(_p1, _p2, _p3) < 0.0) {
-      register_checked_face(_p1, _p3, _p2, closure); return; }
+      RegisterFace(_p1, _p3, _p2, closure); return; }
 
     Point2d p1, p2, p3;
 
@@ -368,7 +368,7 @@ void register_checked_face(const Point2d& _p1,
     Faces.push_back(f);
 }
 
-void rcollect_checked_face(const Point2d& tp1, const Point2d& tp2, const Point2d& tp3, void *closure, bool checkx = true, bool checky = true) {
+void SplitFace(const Point2d& tp1, const Point2d& tp2, const Point2d& tp3, void *closure, bool checkx = true, bool checky = true) {
     HField *H = (HField *)closure;
 
     Point2d p1 = tp1;
@@ -407,9 +407,9 @@ void rcollect_checked_face(const Point2d& tp1, const Point2d& tp2, const Point2d
 	p4.y = p1.y - (p1.x - p4.x) * (p1.y - p3.y) / (p1.x - p3.x);
 
 	/* p1->p2->p4 (left of border) still check y */
-	rcollect_checked_face(p1, p2, p4, closure, false, true);
+	SplitFace(p1, p2, p4, closure, false, true);
 	/* p2->p3->p4 (recurse) check both */
-	rcollect_checked_face(p2, p3, p4, closure, true, true);
+	SplitFace(p2, p3, p4, closure, true, true);
 
 	tri_added += 1; return;
       }
@@ -437,18 +437,18 @@ void rcollect_checked_face(const Point2d& tp1, const Point2d& tp2, const Point2d
 	if (devA <= devB) {
 	  /* p1->p2->p4 (left of border) still check y */
 	  /* p1->p4->p5 (left of border) still check y */
-	  rcollect_checked_face(p1, p2, p4, closure, false, true);
-	  rcollect_checked_face(p1, p4, p5, closure, false, true);
+	  SplitFace(p1, p2, p4, closure, false, true);
+	  SplitFace(p1, p4, p5, closure, false, true);
 	}
 	else {
 	  /* p1->p2->p5 (left of border) still check y */
 	  /* p2->p4->p5 (left of border) still check y */
-	  rcollect_checked_face(p1, p2, p5, closure, false, true);
-	  rcollect_checked_face(p2, p4, p5, closure, false, true);
+	  SplitFace(p1, p2, p5, closure, false, true);
+	  SplitFace(p2, p4, p5, closure, false, true);
 	}
 
 	/* p4->p3->p5 (recurse) check both */
-	rcollect_checked_face(p4, p3, p5, closure, true, true);
+	SplitFace(p4, p3, p5, closure, true, true);
 
 	tri_added += 2; return;
       }
@@ -474,19 +474,19 @@ void rcollect_checked_face(const Point2d& tp1, const Point2d& tp2, const Point2d
 	Real devB = sqrt(areaB1 * areaB1 + areaB2 * areaB2);
 
 	/* p1->p4->p5 (left of border) still check y */
-	rcollect_checked_face(p1, p4, p5, closure, false, true);
+	SplitFace(p1, p4, p5, closure, false, true);
 
 	if (devA <= devB) {
 	  /* p4->p2->p3 (recurse) check both */
 	  /* p4->p3->p5 (recurse) check both */
-	  rcollect_checked_face(p4, p2, p3, closure, true, true);
-	  rcollect_checked_face(p4, p3, p5, closure, true, true);
+	  SplitFace(p4, p2, p3, closure, true, true);
+	  SplitFace(p4, p3, p5, closure, true, true);
 	}
 	else {
 	  /* p4->p3->p5 (recurse) check both */
 	  /* p4->p2->p3 (recurse) check both */
-	  rcollect_checked_face(p4, p2, p5, closure, true, true);
-	  rcollect_checked_face(p2, p3, p5, closure, true, true);
+	  SplitFace(p4, p2, p5, closure, true, true);
+	  SplitFace(p2, p3, p5, closure, true, true);
 	}
 
 	tri_added += 2; return;
@@ -517,9 +517,9 @@ void rcollect_checked_face(const Point2d& tp1, const Point2d& tp2, const Point2d
 	p4.x = p1.x - (p1.y - p4.y) * (p1.x - p3.x) / (p1.y - p3.y);
 
 	/* p1->p2->p4 (left of border) no more checks */
-	rcollect_checked_face(p1, p2, p4, closure, false, false);
+	SplitFace(p1, p2, p4, closure, false, false);
 	/* p2->p3->p4 (recurse) still check y */
-	rcollect_checked_face(p2, p3, p4, closure, false, true);
+	SplitFace(p2, p3, p4, closure, false, true);
 
 	tri_added += 1; return;
       }
@@ -547,18 +547,18 @@ void rcollect_checked_face(const Point2d& tp1, const Point2d& tp2, const Point2d
 	if (devA <= devB) {
 	  /* p1->p2->p4 (left of border) no more checks */
 	  /* p1->p4->p5 (left of border) no more checks */
-	  rcollect_checked_face(p1, p2, p4, closure, false, false);
-	  rcollect_checked_face(p1, p4, p5, closure, false, false);
+	  SplitFace(p1, p2, p4, closure, false, false);
+	  SplitFace(p1, p4, p5, closure, false, false);
 	}
 	else {
 	  /* p1->p2->p5 (left of border) no more checks */
 	  /* p2->p4->p5 (left of border) no more checks */
-	  rcollect_checked_face(p1, p2, p5, closure, false, false);
-	  rcollect_checked_face(p2, p4, p5, closure, false, false);
+	  SplitFace(p1, p2, p5, closure, false, false);
+	  SplitFace(p2, p4, p5, closure, false, false);
 	}
 
 	/* p4->p3->p5 (recurse) still check y */
-	rcollect_checked_face(p4, p3, p5, closure, false, true);
+	SplitFace(p4, p3, p5, closure, false, true);
 
 	tri_added += 2; return;
       }
@@ -584,19 +584,19 @@ void rcollect_checked_face(const Point2d& tp1, const Point2d& tp2, const Point2d
 	Real devB = sqrt(areaB1 * areaB1 + areaB2 * areaB2);
 
 	/* p1->p4->p5 (left of border) no more checks */
-	rcollect_checked_face(p1, p4, p5, closure, false, false);
+	SplitFace(p1, p4, p5, closure, false, false);
 
 	if (devA <= devB) {
 	  /* p4->p2->p3 (recurse) still check y */
 	  /* p4->p3->p5 (recurse) still check y */
-	  rcollect_checked_face(p4, p2, p3, closure, false, true);
-	  rcollect_checked_face(p4, p3, p5, closure, false, true);
+	  SplitFace(p4, p2, p3, closure, false, true);
+	  SplitFace(p4, p3, p5, closure, false, true);
 	}
 	else {
 	  /* p4->p3->p5 (recurse) still check y */
 	  /* p4->p2->p3 (recurse) still check y */
-	  rcollect_checked_face(p4, p2, p5, closure, false, true);
-	  rcollect_checked_face(p2, p3, p5, closure, false, true);
+	  SplitFace(p4, p2, p5, closure, false, true);
+	  SplitFace(p2, p3, p5, closure, false, true);
 	}
 
 	tri_added += 2; return;
@@ -606,10 +606,10 @@ void rcollect_checked_face(const Point2d& tp1, const Point2d& tp2, const Point2d
     /* ------------------------------------------------ */
 #endif
 
-    register_checked_face(p1, p2, p3, closure);
+    RegisterFace(p1, p2, p3, closure);
 }
 
-void rcollect_face(Triangle *t, void *closure) {
+void CollectFace(Triangle *t, void *closure) {
   HField *H = (HField *)closure;
 
   const Point2d& p1 = t->point1();
@@ -624,7 +624,7 @@ set<class objVertex *, struct V>::iterator itv;
  */
 #endif
 
-  rcollect_checked_face(p1, p2, p3, closure); tri_procd++;
+  SplitFace(p1, p2, p3, closure); tri_procd++;
 
   if ((tri_procd & 0xFF) == 0) {
     logrf("faces processed %d & added %d\r", tri_procd, tri_added);
@@ -634,7 +634,7 @@ set<class objVertex *, struct V>::iterator itv;
   }
 }
 
-void rcalculate_faces() {
+void CalculateGeometryNormals() {
   set<class objVertex *, struct V>::const_iterator itv;
   vector<class objFace *>::const_iterator itf;
 
@@ -666,7 +666,7 @@ std::vector<class objFace *> SectorFaces[16][16];
 #include <omp.h>
 omp_lock_t SectorLocks[16][16];
 
-void rassignsector_faces() {
+void TileGeometry() {
     set<class objVertex *, struct V>::const_iterator itv;
     vector<class objFace *>::const_iterator itf;
 
@@ -715,7 +715,7 @@ void rassignsector_faces() {
 	int coordx = (sx - offx) * resx;
 	int coordy = (sy - offy) * resy;
 
-	if (!skiptile(coordx, coordy, 32)) {
+	if (!skipTile(coordx, coordy, 32)) {
 	  omp_set_lock(&SectorLocks[sy][sx]);
 
 	  /* this set MUST be searchable by local coordinates
@@ -842,7 +842,7 @@ void rassignsector_faces() {
       omp_destroy_lock(&SectorLocks[ty][tx]);
 }
 
-void rextrudeborder_faces() {
+void ExtrudeBorders() {
     set<class objVertex *, struct V>::const_iterator itv;
     vector<class objFace *>::const_iterator itf;
 
@@ -863,7 +863,7 @@ void rextrudeborder_faces() {
       int coordx = (tx - offx) * resx;
       int coordy = (ty - offy) * resy;
 
-      if (!skiptile(coordx, coordy, 32)) {
+      if (!skipTile(coordx, coordy, 32)) {
 	for (itv = SectorVertices[ty][tx].begin(); itv != SectorVertices[ty][tx].end(); itv++) {
 	  /* border-vertex */
 	  if (((*itv)->x == 0) ||
@@ -1080,15 +1080,14 @@ void PrintStats( FILE *fp, TootleStats* pStats )
    }
 }
 
-// 3D Vector ( for posisiton and normals )
-struct Vertex3D
-{
+// 3D Vector ( for posistion and normals )
+struct Vertex3D {
    float x;
    float y;
    float z;
 }; // End of ObjVertex3D
 
-void roptimize_faces() {
+void OptimizeGeometry() {
     set<class objVertex *, struct V>::const_iterator itv;
     vector<class objFace *>::const_iterator itf;
 
@@ -1133,7 +1132,7 @@ void roptimize_faces() {
 
       SetTopic("Optimizing tile {%d,%d}:", coordx, coordy);
 
-      if (!skiptile(coordx, coordy, 32)) {
+      if (!skipTile(coordx, coordy, 32)) {
       char buf[256];
 
       /* VBs starts on index 0 */
@@ -1502,7 +1501,7 @@ void roptimize_faces() {
 #endif
 #endif
 
-void free_faces() {
+void FreeGeometry() {
   set<class objVertex *, struct V>::iterator itv;
   vector<class objFace *>::iterator itf;
 

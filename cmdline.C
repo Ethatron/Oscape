@@ -124,7 +124,7 @@ static void usage(char *progname)
 }
 
 
-void parse_cmdline(int argc, char *argv[])
+void parseCommandline(int argc, char *argv[])
 {
     if( argc<2 ) usage(argv[0]);
     if( argv[1][0] == '-' ) usage(argv[0]);
