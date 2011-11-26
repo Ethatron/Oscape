@@ -81,23 +81,16 @@ class SimplField : public Subdivision  {
     void free();
     void init_cache();
     void select(Triangle *tri, int x, int y, Real cerr);
-    void select_datadep(Triangle *tri, FitPlane &fit);
+    void selectDatadep(Triangle *tri, FitPlane &fit);
     void update_cache(Edge *e);
     Real compute_choice(int x,int y);
     Real compute_choice_interp(Real x,Real y);
-    void check_swap(Edge *e, FitPlane &abd);
+    void checkSwap(Edge *e, FitPlane &abd);
     Edge *InsertSite(const Point2d& x, Triangle *tri);
 
-    void scan_triangle_dataindep(Triangle *tri);
-    void scan_triangle_datadep_normal
-	(const Point2d &p, const Point2d &q, const Point2d &r,
-	FitPlane *u, FitPlane *v);
-    void scan_triangle_datadep_supersample
-	(const Point2d &p, const Point2d &q, const Point2d &r,
-	FitPlane *u, FitPlane *v, int ss);
-    void scan_triangle_datadep
-	(const Point2d &p, const Point2d &q, const Point2d &r,
-	FitPlane *u, FitPlane *v);
+    void scanTriangleDataindep(Triangle *tri);
+    void scanTriangleDatadep(const Point2d &p, const Point2d &q, const Point2d &r, FitPlane *u, FitPlane *v);
+
     Real angle_between_all_normals(const FitPlane&, const FitPlane&);
 
 public:
@@ -110,12 +103,12 @@ public:
     Edge *select_new_point(int x, int y);
     Edge *select_fix_point(int x, int y);
     int select_new_points(Real limit);
-    int is_used_interp(Real x, Real y);	// for bilinear interpolation
+    int isUsedInterp(Real x, Real y);	// for bilinear interpolation
 
     Real rms_error();
     Real rms_error_supersample(int ss);
     Real rms_error_estimate();
-    Real max_error();
+    Real getCurrentError();
     HField *original() { return H; }
     Heap &get_heap() { return *heap; }
 };
@@ -124,7 +117,7 @@ public:
 
 class Heap {
     heap_node *node;
-    int size;
+    int extent;
 
     void swap(int i,int j);
 
@@ -136,16 +129,16 @@ class Heap {
     void downheap(int i);
 
 public:
-    Heap(int s) { size = 0; node = new heap_node[s]; if (!node)
+    Heap(int s) { extent = 0; node = new heap_node[s]; if (!node)
       throw runtime_error("Failed to allocate memory"); }
     ~Heap() { delete[] node; }
 
     heap_node& operator[](int i) { return node[i]; }
-    int heap_size() { return size; }
+    int size() { return extent; }
 
     void insert(Triangle *t, Real v);
     heap_node *extract();
-    heap_node *top() { return size < 1 ? 0 : &node[0]; };
+    heap_node *top() { return extent < 1 ? 0 : &node[0]; };
     heap_node *get(int i) { return &node[i]; };
     heap_node& kill(int i);
     void update(int, Real);

@@ -126,7 +126,7 @@ void ps_face(Triangle *t,void *closure)
     ostream& out = *(ostream *)closure;
     int x, y;
 
-    t->get_selection(&x, &y);
+    t->getSelection(&x, &y);
 
     out << x << " " << y << " C" << endl;
 }
@@ -136,8 +136,8 @@ void output_ps(SimplField& ter)
     ofstream out("tin.eps",ios::binary);
     out << "%!PS-Adobe-2.0 EPSF-2.0" << endl;
     out << "%%Creator: Scape" << endl;
-    out << "%%BoundingBox: 0 0 " << ter.original()->get_width()-1 << " ";
-    out << ter.original()->get_height()-1 << endl;
+    out << "%%BoundingBox: 0 0 " << ter.original()->getWidth()-1 << " ";
+    out << ter.original()->getHeight()-1 << endl;
     out << "%%EndComments" << endl;
     out << "/L {moveto lineto stroke} bind def" << endl;
     out << "/C {newpath 2.5 0 360 arc closepath fill} bind def" << endl;
@@ -163,13 +163,13 @@ void output_face(Triangle *t,void *closure)
     tin << "t ";
 
     tin << (p1.x * sizescale) << " " << (p1.y * sizescale) << " ";
-    tin << (ter->original()->eval(p1) * heightscale - heightshift) << "   ";
+    tin << (ter->original()->getZ(p1) * heightscale - heightshift) << "   ";
 
     tin << (p2.x * sizescale) << " " << (p2.y * sizescale) << " ";
-    tin << (ter->original()->eval(p2) * heightscale - heightshift) << "   ";
+    tin << (ter->original()->getZ(p2) * heightscale - heightshift) << "   ";
 
     tin << (p3.x * sizescale) << " " << (p3.y * sizescale) << " ";
-    tin << (ter->original()->eval(p3) * heightscale - heightshift) << endl;
+    tin << (ter->original()->getZ(p3) * heightscale - heightshift) << endl;
 }
 
 
@@ -232,8 +232,8 @@ void write_prolog(SimplField &ter) {
   tri_added = 0;
   tri_sectd = 0;
 
-  dimx = ter.original()->get_width();
-  dimy = ter.original()->get_height();
+  dimx = ter.original()->getWidth();
+  dimy = ter.original()->getHeight();
 
   if (limit) InitProgress(limit);
   ter.OverFaces(rcollect_face, ter.original());
@@ -262,8 +262,8 @@ void write_optimize() {
 
 #ifdef	MATCH_WITH_HIRES
 void read_pts(SimplField& ter, const char *name) {
-  int width  = ter.original()->get_width();
-  int height = ter.original()->get_height();
+  int width  = ter.original()->getWidth();
+  int height = ter.original()->getHeight();
 
   FILE *pts = fopen(name, "rb");
   if (!pts)
@@ -278,7 +278,7 @@ void read_pts(SimplField& ter, const char *name) {
   fseek(pts, 0, SEEK_SET);
   int p = (lines + 499) / 500;
   if (lines)
-    InitProgress(lines, ter.max_error());
+    InitProgress(lines, ter.getCurrentError());
 
   /* read in every point in the file and update progress */
   int x, y, bv = 0, cnt = 0;
@@ -302,7 +302,7 @@ void read_pts(SimplField& ter, const char *name) {
 
     /* advance progress */
     if ((cnt % p) == 0)
-      SetProgress(cnt, ter.max_error());
+      SetProgress(cnt, ter.getCurrentError());
 
     cnt++;
   }
@@ -316,8 +316,8 @@ void write_pts(SimplField& ter, const char *name) {
   if (!pts)
     return;
 
-  int gw = ter.original()->get_width();
-  int gh = ter.original()->get_height();
+  int gw = ter.original()->getWidth();
+  int gh = ter.original()->getHeight();
   int bv = 0;
 
   set<class objVertex *, struct V>::const_iterator itv;
@@ -1205,7 +1205,7 @@ void greedy_insert(SimplField& ter) {
   int p = (limit + 499) / 500;
   for (int i = 5; i <= limit && ter.select_new_point(); i++) {
     if ((i % p) == 0)
-      SetProgress(i, ter.max_error());
+      SetProgress(i, ter.getCurrentError());
   }
 }
 
@@ -1213,7 +1213,7 @@ void greedy_insert_error(SimplField& ter) {
   int p = (limit + 499) / 500;
   for (int i = 5; i <= limit && ter.select_new_points(5.0); i++) {
     if ((i % p) == 0)
-      SetProgress(i, ter.max_error());
+      SetProgress(i, ter.getCurrentError());
   }
 }
 
@@ -1256,8 +1256,8 @@ int main(int argc,char **argv) {
     HField H(mntns, texFile, greyFile);
     SimplField ter(&H);
 
-    width  = H.get_width();
-    height = H.get_height();
+    width  = H.getWidth();
+    height = H.getHeight();
 
     if (rasterx > width ) rasterx = width;
     if (rastery > height) rastery = height;

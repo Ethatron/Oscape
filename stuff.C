@@ -44,8 +44,7 @@ extern "C" {
 // finds the area of the oriented 2-D triangle (p, q, r), i.e., the
 // area is positive if the triangle is oriented counterclockwise.
 // also finds the approximate diameter
-void triarea(const Vector3d& p, const Vector3d& q, const Vector3d& r,
-	     Real &area, Real &diam) {
+void getArea(const Vector3d& p, const Vector3d& q, const Vector3d& r, Real &area, Real &diam) {
     Real ux = q.x - p.x, uy = q.y - p.y;
     Real vx = r.x - p.x, vy = r.y - p.y;
 
@@ -57,29 +56,30 @@ void triarea(const Vector3d& p, const Vector3d& q, const Vector3d& r,
     xmin = p.x; ymin = p.y;
     xmax = p.x; ymax = p.y;
 
-    if (q.x<xmin) xmin = q.x;  if (q.y<ymin) ymin = q.y;
-    if (q.x>xmax) xmax = q.x;  if (q.y>ymax) ymax = q.y;
-    if (r.x<xmin) xmin = r.x;  if (r.y<ymin) ymin = r.y;
-    if (r.x>xmax) xmax = r.x;  if (r.y>ymax) ymax = r.y;
+    if (q.x < xmin) xmin = q.x;  if (q.y < ymin) ymin = q.y;
+    if (q.x > xmax) xmax = q.x;  if (q.y > ymax) ymax = q.y;
+    if (r.x < xmin) xmin = r.x;  if (r.y < ymin) ymin = r.y;
+    if (r.x > xmax) xmax = r.x;  if (r.y > ymax) ymax = r.y;
 
-    diam = MAX(xmax-xmin, ymax-ymin);
-    assert(diam>0);//??
+    diam = MAX(xmax - xmin, ymax - ymin);
+    assert(diam > 0);//??
 }
 
-void Plane::init(const Vector3d& p,const Vector3d& q,const Vector3d& r)
 // find the plane z=ax+by+c passing through three points p,q,r
-{
+void Plane::init(const Vector3d& p, const Vector3d& q, const Vector3d& r) {
     // We explicitly declare these (rather than putting them in a
     // Vector) so that they can be allocated into registers.
-    Real ux = q.x-p.x, uy = q.y-p.y, uz = q.z-p.z;
-    Real vx = r.x-p.x, vy = r.y-p.y, vz = r.z-p.z;
-    Real den = ux*vy-uy*vx;
-    if (den==0)//??
-	cout << "Plane::init p=" << p << " q=" << q << " r=" << r << endl;
-    assert(den!=0);
-    a = (uz*vy-uy*vz)/den;
-    b = (ux*vz-uz*vx)/den;
-    c = p.z-a*p.x-b*p.y;
+    Real ux = q.x - p.x, uy = q.y - p.y, uz = q.z - p.z;
+    Real vx = r.x - p.x, vy = r.y - p.y, vz = r.z - p.z;
+    Real den = ux * vy - uy * vx;
+
+    if (den == 0)//??
+      cout << "Plane::init p=" << p << " q=" << q << " r=" << r << endl;
+    assert(den != 0);
+
+    a = (uz * vy - uy * vz) / den;
+    b = (ux * vz - uz * vx) / den;
+    c = p.z - a * p.x - b * p.y;
 }
 
 

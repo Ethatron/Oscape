@@ -122,8 +122,6 @@ extern int dotilex, dotiley;
 
 #define DEM_BAD 65535   // height value in DEM file of points to be ignored
 
-#include "views.H"
-
 #include "hfield.H"
 #include "cfield.H"
 #include "simplfield.H"

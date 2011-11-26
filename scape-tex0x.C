@@ -44,8 +44,8 @@ void write_nrmhgt0(bool fmaps, bool nmaps, bool hmaps, const HField& hf, const c
     int ww = rasterx + ADJUSTMENT, www = rasterx / 2 + ADJUSTMENT;
     int hh = rastery + ADJUSTMENT, hhh = rastery / 2 + ADJUSTMENT;
 
-    int gw = hf.get_width();
-    int gh = hf.get_height();
+    int gw = hf.getWidth();
+    int gh = hf.getHeight();
 
     /* allocate persistant output-buffer */
     LPDIRECT3DTEXTURE9 tnrm = NULL;
@@ -140,17 +140,17 @@ void write_nrmhgt0(bool fmaps, bool nmaps, bool hmaps, const HField& hf, const c
 	  for (int lw = 0; lw < ww; lw++) {
 	    const int w = (tx * rasterx) + lw;
 
-	    Real O = hf.eval(w, h);
+	    Real O = hf.getZ(w, h);
 
-	    Real A = (((w + 1) < gw) ? hf.eval(w + 1, h) : O);
-	    Real B = (((h - 1) >  0) ? hf.eval(w, h - 1) : O);
-	    Real C = (((w - 1) >  0) ? hf.eval(w - 1, h) : O);
-	    Real D = (((h + 1) < gh) ? hf.eval(w, h + 1) : O);
+	    Real A = (((w + 1) < gw) ? hf.getZ(w + 1, h) : O);
+	    Real B = (((h - 1) >  0) ? hf.getZ(w, h - 1) : O);
+	    Real C = (((w - 1) >  0) ? hf.getZ(w - 1, h) : O);
+	    Real D = (((h + 1) < gh) ? hf.getZ(w, h + 1) : O);
 
-	    Real X = (((w + 1) < gw && (h + 1) < gh) ? hf.eval(w + 1, h + 1) : O);
-	    Real Y = (((w - 1) >  0 && (h - 1) >  0) ? hf.eval(w - 1, h - 1) : O);
-	    Real Z = (((w - 1) >  0 && (h + 1) < gh) ? hf.eval(w - 1, h + 1) : O);
-	    Real W = (((w + 1) < gh && (h - 1) >  0) ? hf.eval(w + 1, h - 1) : O);
+	    Real X = (((w + 1) < gw && (h + 1) < gh) ? hf.getZ(w + 1, h + 1) : O);
+	    Real Y = (((w - 1) >  0 && (h - 1) >  0) ? hf.getZ(w - 1, h - 1) : O);
+	    Real Z = (((w - 1) >  0 && (h + 1) < gh) ? hf.getZ(w - 1, h + 1) : O);
+	    Real W = (((w + 1) < gh && (h - 1) >  0) ? hf.getZ(w + 1, h - 1) : O);
 
 	    Real dimH = 1.0f;
 	    Real dimV = 1.0f / sqrt(2.0f);
@@ -260,7 +260,7 @@ void write_nrmhgt0(bool fmaps, bool nmaps, bool hmaps, const HField& hf, const c
 	    float O  = hmap_o[(lh * hmap_w) + lw];
 
 	    /* write interpolated TNB height-map ----------------------- */
-	    float o = (float)hf.eval(w, h) - O;
+	    float o = (float)hf.getZ(w, h) - O;
 
 	    if (O > 0.0) {
 	      hdev_p = max(o, hdev_p);

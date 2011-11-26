@@ -53,8 +53,7 @@ inline ostream& operator<<(ostream& os, const Vector3d& p)
     return os;
 }
 
-void triarea(const Vector3d& p,const Vector3d& q,const Vector3d& r,
-    Real &area, Real &diam);
+void getArea(const Vector3d& p, const Vector3d& q, const Vector3d& r, Real &area, Real &diam);
 
 // A rectangular region defined by min and max points
 class Region {

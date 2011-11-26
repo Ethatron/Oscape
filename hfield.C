@@ -97,12 +97,12 @@ void HField::free() {
 // bilinear interpolation
 // Note: this code could access off edge of array, but such bogus samples
 // should be weighted by zero (fx=0 and/or fy=0).
-Real HField::eval_interp(Real x, Real y) const {
+Real HField::getZInterp(Real x, Real y) const {
   int ix = (int)x; Real fx = x - ix;
   int iy = (int)y; Real fy = y - iy;
 
-  Real zx0 = LERP(fx, eval(ix, iy    ), eval(ix + 1, iy    ));
-  Real zx1 = LERP(fx, eval(ix, iy + 1), eval(ix + 1, iy + 1));
+  Real zx0 = LERP(fx, getZ(ix, iy    ), getZ(ix + 1, iy    ));
+  Real zx1 = LERP(fx, getZ(ix, iy + 1), getZ(ix + 1, iy + 1));
 
   return LERP(fy, zx0, zx1);
 }
@@ -110,16 +110,16 @@ Real HField::eval_interp(Real x, Real y) const {
 // bilinear interpolation
 // Note: this code could access off edge of array, but such bogus samples
 // should be weighted by zero (fx=0 and/or fy=0).
-void HField::luma_interp(Real x, Real y, Real &l) const {
+void HField::getLumaInterp(Real x, Real y, Real &l) const {
   int ix = (int)x; Real fx = x - ix;
   int iy = (int)y; Real fy = y - iy;
   const Luma *luma;
   Luma lx0, lx1;
 
-  luma = &luma_val(ix, iy + 0);
+  luma = &getLumaVal(ix, iy + 0);
   lx0.l = LERP(fx, luma[0].l, luma[1].l);
 
-  luma = &luma_val(ix, iy + 1);
+  luma = &getLumaVal(ix, iy + 1);
   lx1.l = LERP(fx, luma[0].l, luma[1].l);
 
   l = LERP(fy, lx0.l, lx1.l);
@@ -128,18 +128,18 @@ void HField::luma_interp(Real x, Real y, Real &l) const {
 // bilinear interpolation
 // Note: this code could access off edge of array, but such bogus samples
 // should be weighted by zero (fx=0 and/or fy=0).
-void HField::color_interp(Real x, Real y, Real &r, Real &g, Real &b) const {
+void HField::getColorInterp(Real x, Real y, Real &r, Real &g, Real &b) const {
   int ix = (int)x; Real fx = x - ix;
   int iy = (int)y; Real fy = y - iy;
   const Color *color;
   Color cx0, cx1;
 
-  color = &color_val(ix, iy + 0);
+  color = &getColorVal(ix, iy + 0);
   cx0.r = LERP(fx, color[0].r, color[1].r);
   cx0.g = LERP(fx, color[0].g, color[1].g);
   cx0.b = LERP(fx, color[0].b, color[1].b);
 
-  color = &color_val(ix, iy + 1);
+  color = &getColorVal(ix, iy + 1);
   cx1.r = LERP(fx, color[0].r, color[1].r);
   cx1.g = LERP(fx, color[0].g, color[1].g);
   cx1.b = LERP(fx, color[0].b, color[1].b);

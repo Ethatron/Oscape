@@ -42,8 +42,8 @@ Real dmap_eval(int x,int y) {
 #ifdef	SPLIT_ON_INJECTION
 void write_nrmhgt2(bool fmaps, bool nmaps, bool hmaps, const HField& hf, const char *pattern) {
 #define ADJUSTMENT  0
-    int ww = hf.get_width () + ADJUSTMENT, www = ww + (ww - ADJUSTMENT);
-    int hh = hf.get_height() + ADJUSTMENT, hhh = hh + (hh - ADJUSTMENT);
+    int ww = hf.getWidth () + ADJUSTMENT, www = ww + (ww - ADJUSTMENT);
+    int hh = hf.getHeight() + ADJUSTMENT, hhh = hh + (hh - ADJUSTMENT);
 
     dmap = new float[www * hhh];
     dmap_zmin = (float)hf.zmin();
@@ -69,17 +69,17 @@ void write_nrmhgt2(bool fmaps, bool nmaps, bool hmaps, const HField& hf, const c
       }
 
       for (int w = 0; w < ww; w++) {
-	Real O = hf.eval(w, h);
+	Real O = hf.getZ(w, h);
 
-	Real A = (((w + 1) < ww) ? hf.eval(w + 1, h) : O);
-	Real B = (((h - 1) >  0) ? hf.eval(w, h - 1) : O);
-	Real C = (((w - 1) >  0) ? hf.eval(w - 1, h) : O);
-	Real D = (((h + 1) < hh) ? hf.eval(w, h + 1) : O);
+	Real A = (((w + 1) < ww) ? hf.getZ(w + 1, h) : O);
+	Real B = (((h - 1) >  0) ? hf.getZ(w, h - 1) : O);
+	Real C = (((w - 1) >  0) ? hf.getZ(w - 1, h) : O);
+	Real D = (((h + 1) < hh) ? hf.getZ(w, h + 1) : O);
 
-	Real X = (((w + 1) < ww && (h + 1) < hh) ? hf.eval(w + 1, h + 1) : O);
-	Real Y = (((w - 1) >  0 && (h - 1) >  0) ? hf.eval(w - 1, h - 1) : O);
-	Real Z = (((w - 1) >  0 && (h + 1) < hh) ? hf.eval(w - 1, h + 1) : O);
-	Real W = (((w + 1) < ww && (h - 1) >  0) ? hf.eval(w + 1, h - 1) : O);
+	Real X = (((w + 1) < ww && (h + 1) < hh) ? hf.getZ(w + 1, h + 1) : O);
+	Real Y = (((w - 1) >  0 && (h - 1) >  0) ? hf.getZ(w - 1, h - 1) : O);
+	Real Z = (((w - 1) >  0 && (h + 1) < hh) ? hf.getZ(w - 1, h + 1) : O);
+	Real W = (((w + 1) < ww && (h - 1) >  0) ? hf.getZ(w + 1, h - 1) : O);
 
 	/* build from all four surrounding samples
 	 *
@@ -124,7 +124,7 @@ void write_nrmhgt2(bool fmaps, bool nmaps, bool hmaps, const HField& hf, const c
       }
 
       for (int w = (h & 1 ? 0 : 1); w < www; w += 2) {
-	Real O = hf.eval(w / 2, h / 2);
+	Real O = hf.getZ(w / 2, h / 2);
 
 	Real A = (((w + 1) < www) ? dmap_eval(w + 1, h) : O);
 	Real B = (((h - 1) >   0) ? dmap_eval(w, h - 1) : O);
@@ -176,17 +176,17 @@ void write_nrmhgt2(bool fmaps, bool nmaps, bool hmaps, const HField& hf, const c
         logrf("%dx%d %f%%\r", www, hhh, (100.0f * h) / hh);
 
       for (int w = 0; w < ww; w++) {
-	Real O = hf.eval(w, h);
+	Real O = hf.getZ(w, h);
 
-	Real A = (((w + 1) < ww) ? hf.eval(w + 1, h) : O);
-	Real B = (((h - 1) >  0) ? hf.eval(w, h - 1) : O);
-	Real C = (((w - 1) >  0) ? hf.eval(w - 1, h) : O);
-	Real D = (((h + 1) < hh) ? hf.eval(w, h + 1) : O);
+	Real A = (((w + 1) < ww) ? hf.getZ(w + 1, h) : O);
+	Real B = (((h - 1) >  0) ? hf.getZ(w, h - 1) : O);
+	Real C = (((w - 1) >  0) ? hf.getZ(w - 1, h) : O);
+	Real D = (((h + 1) < hh) ? hf.getZ(w, h + 1) : O);
 
-	Real X = (((w + 1) < ww && (h + 1) < hh) ? hf.eval(w + 1, h + 1) : O);
-	Real Y = (((w - 1) >  0 && (h - 1) >  0) ? hf.eval(w - 1, h - 1) : O);
-	Real Z = (((w - 1) >  0 && (h + 1) < hh) ? hf.eval(w - 1, h + 1) : O);
-	Real W = (((w + 1) < ww && (h - 1) >  0) ? hf.eval(w + 1, h - 1) : O);
+	Real X = (((w + 1) < ww && (h + 1) < hh) ? hf.getZ(w + 1, h + 1) : O);
+	Real Y = (((w - 1) >  0 && (h - 1) >  0) ? hf.getZ(w - 1, h - 1) : O);
+	Real Z = (((w - 1) >  0 && (h + 1) < hh) ? hf.getZ(w - 1, h + 1) : O);
+	Real W = (((w + 1) < ww && (h - 1) >  0) ? hf.getZ(w + 1, h - 1) : O);
 
 #if 0
 	/* build from all four surrounding samples
@@ -354,28 +354,28 @@ void write_nrmhgt2(bool fmaps, bool nmaps, bool hmaps, const HField& hf, const c
 	    int oh = (ty * rastery) + (h / 2);
 	    switch (((h & 1) << 1) | ((w & 1) << 0)) {
 	      case 0:
-		p = (((ow - 1) >  0 && (oh - 1) >  0) ? hf.eval(ow - 1, oh - 1) : O);
-		o = (((ow - 0) >  0 && (oh - 0) >  0) ? hf.eval(ow - 0, oh - 0) : O);
-		r = (((ow - 0) >  0 && (oh - 1) >  0) ? hf.eval(ow - 0, oh - 1) : O);
-		q = (((ow - 1) >  0 && (oh - 0) >  0) ? hf.eval(ow - 1, oh - 0) : O);
+		p = (((ow - 1) >  0 && (oh - 1) >  0) ? hf.getZ(ow - 1, oh - 1) : O);
+		o = (((ow - 0) >  0 && (oh - 0) >  0) ? hf.getZ(ow - 0, oh - 0) : O);
+		r = (((ow - 0) >  0 && (oh - 1) >  0) ? hf.getZ(ow - 0, oh - 1) : O);
+		q = (((ow - 1) >  0 && (oh - 0) >  0) ? hf.getZ(ow - 1, oh - 0) : O);
 		break;
 	      case 1:
-		o = (((ow + 1) < ww && (oh - 0) >  0) ? hf.eval(ow + 1, oh - 0) : O);
-		p = (((ow + 0) >  0 && (oh - 1) < hh) ? hf.eval(ow + 0, oh - 1) : O);
-		q = (((ow + 0) >  0 && (oh - 0) >  0) ? hf.eval(ow + 0, oh - 0) : O);
-		r = (((ow + 1) < ww && (oh - 1) < hh) ? hf.eval(ow + 1, oh - 1) : O);
+		o = (((ow + 1) < ww && (oh - 0) >  0) ? hf.getZ(ow + 1, oh - 0) : O);
+		p = (((ow + 0) >  0 && (oh - 1) < hh) ? hf.getZ(ow + 0, oh - 1) : O);
+		q = (((ow + 0) >  0 && (oh - 0) >  0) ? hf.getZ(ow + 0, oh - 0) : O);
+		r = (((ow + 1) < ww && (oh - 1) < hh) ? hf.getZ(ow + 1, oh - 1) : O);
 		break;
 	      case 2:
-		p = (((ow - 1) >  0 && (oh + 0) >  0) ? hf.eval(ow - 1, oh + 0) : O);
-		o = (((ow - 0) >  0 && (oh + 1) < hh) ? hf.eval(ow - 0, oh + 1) : O);
-		r = (((ow - 0) >  0 && (oh + 0) >  0) ? hf.eval(ow - 0, oh + 0) : O);
-		q = (((ow - 1) >  0 && (oh + 1) >  0) ? hf.eval(ow - 1, oh + 1) : O);
+		p = (((ow - 1) >  0 && (oh + 0) >  0) ? hf.getZ(ow - 1, oh + 0) : O);
+		o = (((ow - 0) >  0 && (oh + 1) < hh) ? hf.getZ(ow - 0, oh + 1) : O);
+		r = (((ow - 0) >  0 && (oh + 0) >  0) ? hf.getZ(ow - 0, oh + 0) : O);
+		q = (((ow - 1) >  0 && (oh + 1) >  0) ? hf.getZ(ow - 1, oh + 1) : O);
 		break;
 	      case 3:
-		o = (((ow + 1) < ww && (oh + 1) < hh) ? hf.eval(ow + 1, oh + 1) : O);
-		p = (((ow + 0) < ww && (oh + 0) < hh) ? hf.eval(ow + 0, oh + 0) : O);
-		q = (((ow + 0) < ww && (oh + 1) < hh) ? hf.eval(ow + 0, oh + 1) : O);
-		r = (((ow + 1) < ww && (oh + 0) < hh) ? hf.eval(ow + 1, oh + 0) : O);
+		o = (((ow + 1) < ww && (oh + 1) < hh) ? hf.getZ(ow + 1, oh + 1) : O);
+		p = (((ow + 0) < ww && (oh + 0) < hh) ? hf.getZ(ow + 0, oh + 0) : O);
+		q = (((ow + 0) < ww && (oh + 1) < hh) ? hf.getZ(ow + 0, oh + 1) : O);
+		r = (((ow + 1) < ww && (oh + 0) < hh) ? hf.getZ(ow + 1, oh + 0) : O);
 		break;
 	    }
 

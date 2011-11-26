@@ -61,16 +61,16 @@ public:
     ~HField() { free(); }
 
     /* ------------------------------------------------------------------------- */
-    const unsigned short &z_val(int x, int y) const { return data->val(x, y); }
-    const Color &color_val(int i, int j) const { return tex->val(i, j); }
-    const Luma &luma_val(int i, int j) const { return map->val(i, j); }
+    const unsigned short &getZVal(int x, int y) const { return data->val(x, y); }
+    const Color &getColorVal(int i, int j) const { return tex->val(i, j); }
+    const Luma &getLumaVal(int i, int j) const { return map->val(i, j); }
 
-    unsigned short &z_ref(int x, int y) { return data->ref(x, y); }
-    Color &color_ref(int i, int j) { return tex->ref(i, j); }
-    Luma &luma_val(int i, int j) { return map->ref(i, j); }
+    unsigned short &getZRef(int x, int y) { return data->ref(x, y); }
+    Color &getColorRef(int i, int j) { return tex->ref(i, j); }
+    Luma &getLumaRef(int i, int j) { return map->ref(i, j); }
 
     /* ------------------------------------------------------------------------- */
-    Real eval(int x,int y) const {
+    Real getZ(int x,int y) const {
       if ((x >= 0) && (x < width) &&
 	  (y >= 0) && (y < height))
 	return data->eval(x, y);
@@ -78,13 +78,13 @@ public:
 	return data->zmin;
     }
 
-    Real eval(Real x, Real y) const { return eval((int)x, (int)y); }
-    Real eval(const Point2d& p) const { return eval((int)p.x, (int)p.y); }
+    Real getZ(Real x, Real y) const { return getZ((int)x, (int)y); }
+    Real getZ(const Point2d& p) const { return getZ((int)p.x, (int)p.y); }
     // bilinear interpolation
-    Real eval_interp(Real x, Real y) const;
+    Real getZInterp(Real x, Real y) const;
 
     /* ------------------------------------------------------------------------- */
-    void color(int x, int y, Real& r, Real& g, Real& b) const {
+    void getColor(int x, int y, Real& r, Real& g, Real& b) const {
       if ((x >= 0) && (x < width) &&
 	  (y >= 0) && (y < height)) {
 	r = tex->r(x, y);
@@ -95,14 +95,14 @@ public:
 	r = g = b = 0;
       }
     }
-    void color(const Point2d& p, Real& r, Real& g, Real& b) const {
-	color((int)p.x, (int)p.y, r, g, b);
+    void getColor(const Point2d& p, Real& r, Real& g, Real& b) const {
+	getColor((int)p.x, (int)p.y, r, g, b);
     }
     // bilinear interpolation
-    void color_interp(Real x, Real y, Real &r, Real &g, Real &b) const;
+    void getColorInterp(Real x, Real y, Real &r, Real &g, Real &b) const;
 
     /* ------------------------------------------------------------------------- */
-   void luma(int x, int y, Real& l) const {
+   void getLuma(int x, int y, Real& l) const {
       if ((x >= 0) && (x < width) &&
 	  (y >= 0) && (y < height)) {
 	l = map->l(x, y);
@@ -111,20 +111,20 @@ public:
 	l = 0;
       }
     }
-    void luma(const Point2d& p, Real& l) const {
-      luma((int)p.x, (int)p.y, l);
+    void getLuma(const Point2d& p, Real& l) const {
+      getLuma((int)p.x, (int)p.y, l);
     }
     // bilinear interpolation
-    void luma_interp(Real x, Real y, Real &l) const;
+    void getLumaInterp(Real x, Real y, Real &l) const;
 
     /* ------------------------------------------------------------------------- */
     Real zmax() const { return data->zmax; }
     Real zmin() const { return data->zmin; }
-    int get_width() const { return width; }
-    int get_height() const { return height; }
+    int getWidth() const { return width; }
+    int getHeight() const { return height; }
 
-    bool has_color() const { return (tex != NULL); }
-    bool has_luma() const { return (map != NULL); }
+    bool hasColor() const { return (tex != NULL); }
+    bool hasLuma() const { return (map != NULL); }
 };
 
 #endif

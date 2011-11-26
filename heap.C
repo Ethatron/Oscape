@@ -56,8 +56,8 @@ void Heap::swap(int i, int j) {
   node[i] = node[j];
   node[j] = tmp;
 
-  node[i].tri->set_location(i);
-  node[j].tri->set_location(j);
+  node[i].tri->setLocation(i);
+  node[j].tri->setLocation(j);
 
   heap_cost++;
 }
@@ -86,15 +86,15 @@ void Heap::upheap(int i) {
 //
 void Heap::downheap(int i) {
   // perhaps just extracted the last
-  if (i >= size)
+  if (i >= extent)
     return;
 
   int largest = i,
     l = left(i),
     r = right(i);
 
-  if (l < size && node[l].val > node[largest].val) largest = l;
-  if (r < size && node[r].val > node[largest].val) largest = r;
+  if (l < extent && node[l].val > node[largest].val) largest = l;
+  if (r < extent && node[r].val > node[largest].val) largest = r;
 
   if (largest != i) {
     swap(i, largest);
@@ -107,12 +107,12 @@ void Heap::downheap(int i) {
 // Insert the given triangle into the heap using the specified key value.
 //
 void Heap::insert(Triangle *t, Real v) {
-  int i = size++;
+  int i = extent++;
 
   node[i].tri = t;
   node[i].val = v;
 
-  node[i].tri->set_location(i);
+  node[i].tri->setLocation(i);
 
   upheap(i);
 }
@@ -122,17 +122,17 @@ void Heap::insert(Triangle *t, Real v) {
 // Extract the top element from the heap and return it.
 //
 heap_node *Heap::extract() {
-  if (size < 1)
+  if (extent < 1)
     return 0;
 
-  swap(0, size - 1);
-  size--;
+  swap(0, extent - 1);
+  extent--;
 
   downheap(0);
 
-  node[size].tri->set_location(NOT_IN_HEAP);
+  node[extent].tri->setLocation(NOT_IN_HEAP);
 
-  return &node[size];
+  return &node[extent];
 }
 
 // Heap::kill --
@@ -140,20 +140,20 @@ heap_node *Heap::extract() {
 // Kill a given node in the heap.
 //
 heap_node& Heap::kill(int i) {
-  if (i >= size)
+  if (i >= extent)
     cerr << "ATTEMPT TO DELETE OUTSIDE OF RANGE" << endl;
 
-  swap(i, size - 1);
-  size--;
+  swap(i, extent - 1);
+  extent--;
 
-  if (node[i].val < node[size].val)
+  if (node[i].val < node[extent].val)
     downheap(i);
   else
     upheap(i);
 
-  node[size].tri->set_location(NOT_IN_HEAP);
+  node[extent].tri->setLocation(NOT_IN_HEAP);
 
-  return node[size];
+  return node[extent];
 }
 
 
@@ -165,7 +165,7 @@ heap_node& Heap::kill(int i) {
 //
 void Heap::update(int i,Real v)
 {
-  assert(i < size);
+  assert(i < extent);
 
   Real old = node[i].val;
   node[i].val = v;

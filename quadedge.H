@@ -79,10 +79,10 @@ class Edge;
 typedef void (*edge_callback)(Edge *,void *);
 typedef void (*face_callback)(Triangle *,void *);
 
-#define NOT_IN_HEAP   -47
-    // value for Triangle->heap_index indicating no candidate in heap
-#define UNSCANNED -1
-    // value for Triangle->err indicating triangle hasn't been scan converted
+// value for Triangle->heap_index indicating no candidate in heap
+#define NOT_IN_HEAP	-47
+// value for Triangle->err indicating triangle hasn't been scan converted
+#define UNSCANNED	-1
 
 class Edge : public MemQueueable {
     friend class QuadEdge;
@@ -112,9 +112,10 @@ public:
     void EndPoints(Point2d*, Point2d*);
     QuadEdge* Qedge()           { return (QuadEdge *)(this - num); }
 
-    int CcwPerim();
-	// returns 1 if a counterclockwise perimeter edge,
-	// 0 if a clockwise perimeter edge or internal edge
+    // returns 1 if a counterclockwise perimeter edge,
+    // 0 if a clockwise perimeter edge or internal edge
+    bool isCCWPerim();
+
     Triangle *Lface() { return lface_data; }
     void set_Lface(Triangle *f) { lface_data = f; }
     void OverEdges(unsigned int,edge_callback,void *closure);
@@ -152,7 +153,7 @@ public:
     Edge *Spoke(const Point2d& x, Triangle *tri);
     Edge *InsertSite(const Point2d&, Triangle *tri);
 
-    int is_interior(Edge *);
+    bool isInterior(Edge *);
 
     void OverEdges(edge_callback,void *closure);
     void OverFaces(face_callback,void *closure);
@@ -298,20 +299,22 @@ public:
     Triangle *next;
 
     Triangle(Edge *e);
-    Edge *get_anchor() { return anchor; }
     int locate() { return heap_index; }
-    void set_location(int h) { heap_index = h; }
-    void set_selection(int  x, int  y) { sx =  x; sy =  y; }
-    void get_selection(int *x, int *y) { *x = sx; *y = sy; }
-    void set_err(Real error) { err = error; }
-    Real get_err() { return err; }
+    void setLocation(int h) { heap_index = h; }
+    void setSelection(int  x, int  y) { sx =  x; sy =  y; }
+    void getSelection(int *x, int *y) { *x = sx; *y = sy; }
+    void setError(Real error) { err = error; }
+    Real getError() { return err; }
 
     const Point2d& point1() const { return anchor->Org2d(); }
     const Point2d& point2() const { return anchor->Dest2d(); }
     const Point2d& point3() const { return anchor->Lnext()->Dest2d(); }
-    void reanchor(Edge *e) { anchor = e; }
+
+    Edge *getAnchor() { return anchor; }
+    void setAnchor(Edge *e) { anchor = e; }
+    void dontAnchor(Edge *e);
+
     void attach_face();
-    void dont_anchor(Edge *e);
 
     friend ostream& operator<<(ostream&,Triangle *);
 };
@@ -356,7 +359,7 @@ void Swap(Edge* e);
 
 // Returns twice the area of the oriented triangle (a, b, c), i.e., the
 // area is positive if the triangle is oriented counterclockwise.
-inline Real TriArea(const Point2d& a, const Point2d& b, const Point2d& c) {
+inline Real getArea2x(const Point2d& a, const Point2d& b, const Point2d& c) {
   return (b.x - a.x) * (c.y - a.y) -
 	 (b.y - a.y) * (c.x - a.x);
 }

@@ -162,13 +162,13 @@ void Subdivision::rebuild_face(Edge *e) {
 
   if (recycle1) {
     f = recycle1;
-    f->reanchor(e);
+    f->setAnchor(e);
     f->attach_face();
     recycle1 = NULL;
   }
   else if (recycle2) {
     f = recycle2;
-    f->reanchor(e);
+    f->setAnchor(e);
     f->attach_face();
     recycle2 = NULL;
   }
@@ -194,8 +194,8 @@ void Swap(Edge* e) {
   Splice(e->Sym(), b->Lnext());
   e->EndPoints(a->Dest(), b->Dest());
 
-  f1->reanchor(e);
-  f2->reanchor(e->Sym());
+  f1->setAnchor(e);
+  f2->setAnchor(e->Sym());
   f1->attach_face();
   f2->attach_face();
 }
@@ -204,56 +204,54 @@ void Swap(Edge* e) {
 
 // Returns TRUE if the point d is inside the circle defined by the
 // points a, b, c. See Guibas and Stolfi (1985) p.107.
-int InCircle(const Point2d& a, const Point2d& b,
-	     const Point2d& c, const Point2d& d) {
-  return (a.x*a.x + a.y*a.y) * TriArea(b, c, d) -
-	 (b.x*b.x + b.y*b.y) * TriArea(a, c, d) +
-	 (c.x*c.x + c.y*c.y) * TriArea(a, b, d) -
-	 (d.x*d.x + d.y*d.y) * TriArea(a, b, c) > 0;
+static inline bool isInCircle(const Point2d& a, const Point2d& b,
+			      const Point2d& c, const Point2d& d) {
+  return (a.x * a.x + a.y * a.y) * getArea2x(b, c, d) -
+	 (b.x * b.x + b.y * b.y) * getArea2x(a, c, d) +
+	 (c.x * c.x + c.y * c.y) * getArea2x(a, b, d) -
+	 (d.x * d.x + d.y * d.y) * getArea2x(a, b, c) > 0;
 }
 
 // Returns TRUE if the points a, b, c are in a counterclockwise order
-int ccw(const Point2d& a, const Point2d& b, const Point2d& c)
-{
-  return (TriArea(a, b, c) > 0);
+static inline bool isCCW(const Point2d& a, const Point2d& b, const Point2d& c) {
+  return (getArea2x(a, b, c) > 0);
 }
 
-int RightOf(const Point2d& x, Edge* e)
-{
-  return ccw(x, e->Dest2d(), e->Org2d());
+static inline bool isRightOf(const Point2d& x, const Edge* e) {
+  return isCCW(x, e->Dest2d(), e->Org2d());
 }
 
-int LeftOf(const Point2d& x, Edge* e)
-{
-  return ccw(x, e->Org2d(), e->Dest2d());
+static inline bool isLeftOf(const Point2d& x, const Edge* e) {
+  return isCCW(x, e->Org2d(), e->Dest2d());
 }
 
-int Edge::CcwPerim()
-{
-  return !RightOf(Oprev()->Dest2d(), this);
+bool Edge::isCCWPerim() {
+  return !isRightOf(Oprev()->Dest2d(), this);
 }
 
-int OnEdge(const Point2d& x, Edge* e)
 // A predicate that determines if the point x is on the edge e.
 // The point is considered on if it is in the EPS-neighborhood
 // of the edge.
-{
-	Real t1, t2, t3;
-	t1 = (x - e->Org2d()).norm();
-	t2 = (x - e->Dest2d()).norm();
-	if (t1 < EPS || t2 < EPS)
-	    return TRUE;
-	t3 = (e->Org2d() - e->Dest2d()).norm();
-	if (t1 > t3 || t2 > t3)
-	    return FALSE;
-	Line line(e->Org2d(), e->Dest2d());
-	return (fabs(line.eval(x)) < EPS);
+static inline bool isOnEdge(const Point2d& x, const Edge* e) {
+  Real t1, t2, t3;
+
+  t1 = (x - e->Org2d ()).norm();
+  t2 = (x - e->Dest2d()).norm();
+
+  if (t1 < EPS || t2 < EPS)
+    return true;
+
+  t3 = (e->Org2d() - e->Dest2d()).norm();
+  if (t1 > t3 || t2 > t3)
+    return false;
+
+  Line line(e->Org2d(), e->Dest2d());
+  return (fabs(line.eval(x)) < EPS);
 }
 
 /************* An Incremental Algorithm for the Construction of *************/
 /************************ Delaunay Diagrams *********************************/
 
-Edge *Subdivision::Locate(const Point2d& x, Edge *hintedge)
 // Returns an edge e, s.t. the triangle to the left of e is interior to the
 // subdivision and either x is on e (inclusive of endpoints) or x lies in the
 // interior of the triangle to the left of e.
@@ -267,14 +265,15 @@ Edge *Subdivision::Locate(const Point2d& x, Edge *hintedge)
 //	* Supports queries on perimeter of subdivision,
 //	  provided perimeter is convex.
 //	* Uses two area computations per step, not three.
-{
+Edge *Subdivision::Locate(const Point2d& x, Edge *hintedge) {
     Edge* e = hintedge ? hintedge : startingEdge, *eo, *ed;
     Real t, to, td;
 
-    t = TriArea(x, e->Dest2d(), e->Org2d());
-    if (t>0) {			// x is to the right of edge e
-	t = -t;
-	e = e->Sym();
+    t = getArea2x(x, e->Dest2d(), e->Org2d());
+    // x is to the right of edge e
+    if (t > 0) {
+      t = -t;
+      e = e->Sym();
     }
 
     // x is on e or to the left of e
@@ -294,9 +293,9 @@ Edge *Subdivision::Locate(const Point2d& x, Edge *hintedge)
 
     while (TRUE) {
 	eo = e->Onext();
-	to = TriArea(x, eo->Dest2d(), eo->Org2d());
+	to = getArea2x(x, eo->Dest2d(), eo->Org2d());
 	ed = e->Dprev();
-	td = TriArea(x, ed->Dest2d(), ed->Org2d());
+	td = getArea2x(x, ed->Dest2d(), ed->Org2d());
 	if (td>0)			// x is below ed
 	    if (to>0 || to==0 && t==0) {// x is interior, or origin endpoint
 		startingEdge = e;
@@ -317,7 +316,7 @@ Edge *Subdivision::Locate(const Point2d& x, Edge *hintedge)
 		    e = ed;
 		}
 	    else			// x is on or below eo
-		if (t==0 && !LeftOf(eo->Dest2d(), e))
+		if (t==0 && !isLeftOf(eo->Dest2d(), e))
 					// x on e but subdiv. is to right
 		    e = e->Sym();
 		else if (random()&1) {	// x is on or above ed and
@@ -331,73 +330,77 @@ Edge *Subdivision::Locate(const Point2d& x, Edge *hintedge)
     }
 }
 
-Edge *Subdivision::Spoke(const Point2d& x, Triangle *tri)
 // Inserts a new point x into triangle tri of a subdivision and
 // adds "spokes" connecting the point to the vertices of the surrounding
 // polygon.  Returns a pointer to one of the inward-pointing spokes.
 //
 // --- Tri can be NULL
-{
-    // Point x is inside the triangle tri or on its boundary.
-    // To make sure boundary cases are handled properly, we call Locate.
-    Edge* e = Locate(x, tri?tri->get_anchor():NULL);
+Edge *Subdivision::Spoke(const Point2d& x, Triangle *tri) {
+  // Point x is inside the triangle tri or on its boundary.
+  // To make sure boundary cases are handled properly, we call Locate.
+  Edge* e = Locate(x, tri ? tri->getAnchor() : NULL);
 
-    if ((x == e->Org2d()) ||
-        (x == e->Dest2d())) {
-      // point is already in the mesh
-      cout << "already in mesh: (" << x.x << "," << x.y << ")" << endl;
-      assert(0);
+  if ((x == e->Org2d ()) ||
+      (x == e->Dest2d())) {
+    // point is already in the mesh
+    cout << "already in mesh: (" << x.x << "," << x.y << ")" << endl;
+    assert(0);
+  }
+
+  Edge *pedge = 0;
+  if (isOnEdge(x, e)) {
+    if (e->isCCWPerim()) {
+      // if point x lies on a perimeter edge then add spokes
+      // before deleting it
+      recycle1 = e->Lface();
+      recycle1->dontAnchor(e);
+
+      // save pointer to old perimeter edge
+      pedge = e;		
     }
+    else {
+      // point is on an edge -- delete 2 faces
+      // unless the edge is a border edge and has no outer face
+      recycle1 = e->Lface();
+      recycle1->dontAnchor(e);
+      recycle2 = e->Sym()->Lface();
+      recycle2->dontAnchor(e->Sym());
 
-    Edge *pedge = 0;
-    if (OnEdge(x, e)) {
-	if (e->CcwPerim()) {
-	    // if point x lies on a perimeter edge then add spokes
-	    // before deleting it
-	    recycle1 = e->Lface();
-	    recycle1->dont_anchor(e);
-	    pedge = e;		// save pointer to old perimeter edge
-	}
-	else {
-	    // point is on an edge -- delete 2 faces
-	    // unless the edge is a border edge and has no outer face
-	    recycle1 = e->Lface();
-	    recycle1->dont_anchor(e);
-	    recycle2 = e->Sym()->Lface();
-	    recycle2->dont_anchor(e->Sym());
-	    e = e->Oprev();
-	    DeleteEdge(e->Onext());
-	}
-    } else {
-	// point is in triangle, delete that face only
-	recycle1 = e->Lface();
-	recycle1->dont_anchor(e);
+      e = e->Oprev();
+      DeleteEdge(e->Onext());
     }
+  } 
+  else {
+    // point is in triangle, delete that face only
+    recycle1 = e->Lface();
+    recycle1->dontAnchor(e);
+  }
 
-    // Add spokes: connect the new point to the vertices of the containing
-    // triangle (or quadrilateral, if the new point fell on an
-    // existing edge.)
-    Edge* base = MakeEdge();
-    base->EndPoints(e->Org(), new(&PPool) Point2d(x));
-    Splice(base, e);
-    startingEdge = base;
-    do {
-	base = Connect(e, base->Sym());
-	e = base->Oprev();
-    } while (e->Lnext() != startingEdge);
+  // Add spokes: connect the new point to the vertices of the containing
+  // triangle (or quadrilateral, if the new point fell on an
+  // existing edge.)
+  Edge* base = MakeEdge();
+  base->EndPoints(e->Org(), new(&PPool) Point2d(x));
+  Splice(base, e);
+  startingEdge = base;
+  do {
+    base = Connect(e, base->Sym());
+    e = base->Oprev();
+  } while (e->Lnext() != startingEdge);
 
-    if (pedge)		// delete old perimeter edge and mark new ones
-	DeleteEdge(pedge);
+  // delete old perimeter edge and mark new ones
+  if (pedge)		
+    DeleteEdge(pedge);
 
-    // Update all the faces in our new spoked polygon.
-    // If point x on perimeter, then don't add an exterior face
-    base = pedge ? startingEdge->Rprev() : startingEdge->Sym();
-    do {
-	rebuild_face(base);
-	base = base->Onext();
-    } while( base!=startingEdge->Sym() );
+  // Update all the faces in our new spoked polygon.
+  // If point x on perimeter, then don't add an exterior face
+  base = pedge ? startingEdge->Rprev() : startingEdge->Sym();
+  do {
+    rebuild_face(base);
+    base = base->Onext();
+  } while(base != startingEdge->Sym());
 
-    return startingEdge;
+  return startingEdge;
 }
 
 //
@@ -407,7 +410,7 @@ Edge *Subdivision::Spoke(const Point2d& x, Triangle *tri)
 //          a triangle.  This is not a problem in scape; the boundary is
 //          always a rectangle.  But if you try to adapt this code, please
 //          keep this in mind.
-int Subdivision::is_interior(Edge *e) {
+inline bool Subdivision::isInterior(Edge *e) {
   return ((e->Lnext()->Lnext()->Lnext() == e) &&
           (e->Rnext()->Rnext()->Rnext() == e));
 }
@@ -435,7 +438,7 @@ Edge *Subdivision::InsertSite(const Point2d& x, Triangle *tri) {
     Edge *e = s->Lnext();
     Edge *t = e->Oprev();
 
-    if (is_interior(e) && InCircle(e->Org2d(), t->Dest2d(), e->Dest2d(), x))
+    if (isInterior(e) && isInCircle(e->Org2d(), t->Dest2d(), e->Dest2d(), x))
       Swap(e);
     else {
       s = s->Onext();
@@ -515,7 +518,7 @@ void Triangle::attach_face() {
   anchor->Lprev()->set_Lface(this);
 }
 
-void Triangle::dont_anchor(Edge *e) {
+void Triangle::dontAnchor(Edge *e) {
   if (anchor == e) {
     if (e->Lnext()->Lface() == this)
       anchor = e->Lnext();
@@ -529,7 +532,6 @@ void Triangle::dont_anchor(Edge *e) {
 // intersect: point of intersection p of two lines k, l
 void intersect(const Line &k, const Line &l, Point2d &p) {
   Real den = k.a * l.b - k.b * l.a;
-
   assert(den != 0);
 
   p.x = (k.b * l.c - k.c * l.b) / den;
@@ -539,41 +541,48 @@ void intersect(const Line &k, const Line &l, Point2d &p) {
 
 // routines to compute the number of edges, vertices, and faces
 
-static int vert_degree(Edge *e) {
-  // returns number of triangles adjacent to vertex at e->Org
-  // (counts only interior faces, not exterior faces)
+// returns number of triangles adjacent to vertex at e->Org
+// (counts only interior faces, not exterior faces)
+static inline int vert_degree(Edge *e) {
   Edge *e0 = e;
   int deg = 0;
   do {
-      deg += e->Lface() != 0;
-      e = e->Onext();
-  } while (e!=e0);
+    deg += e->Lface() != 0;
+    e = e->Onext();
+  } while (e != e0);
+
   return deg;
 }
 
-static int edge_degree(Edge *e) {
-  // returns number of triangles adjacent to edge e
-  return (e->Lface() != 0) + (e->Sym()->Lface() != 0);
+// returns number of triangles adjacent to edge e
+static inline int edge_degree(Edge *e) {
+  return (e->       Lface() != 0) +
+         (e->Sym()->Lface() != 0);
 }
 
 static double dv, de;
 static int df;
 
-static void count_vef(Triangle *tri, void *) {
-  Edge *e1 = tri->get_anchor();
+static inline void count_vef(Triangle *tri, void *) {
+  Edge *e1 = tri->getAnchor();
   Edge *e2 = e1->Lnext();
   Edge *e3 = e2->Lnext();
-  dv += 1./vert_degree(e1) + 1./vert_degree(e2) + 1./vert_degree(e3);
-  de += 1./edge_degree(e1) + 1./edge_degree(e2) + 1./edge_degree(e3);
+
+  dv += 1. / vert_degree(e1) + 1. / vert_degree(e2) + 1. / vert_degree(e3);
+  de += 1. / edge_degree(e1) + 1. / edge_degree(e2) + 1. / edge_degree(e3);
+
   df++;
 }
 
+// returns number of vertices, edges, and faces in subdivision
 void Subdivision::vef(int &nv, int &ne, int &nf) {
-  // returns number of vertices, edges, and faces in subdivision
   dv = de = 0;
   df = 0;
+
   OverFaces(count_vef, 0);
-  nv = (int)(dv+.5);		// round, in case of roundoff error
-  ne = (int)(de+.5);
+
+  // round, in case of roundoff error
+  nv = (int)(dv + .5);		
+  ne = (int)(de + .5);
   nf = df;
 }

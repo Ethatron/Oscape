@@ -2370,7 +2370,7 @@ public:
 
 	      /* low resolutions read the points in */
 	      if (limit < target) {
-		prog->InitProgress("Resolution %d, generating mesh:", limit, "Placing hi-res points (current mesh error %f):", ter.max_error(), majordone++, 1);
+		prog->InitProgress("Resolution %d, generating mesh:", limit, "Placing hi-res points (current mesh error %f):", ter.getCurrentError(), majordone++, 1);
 
 		sprintf(temps, "%s\\LOD-%d\\%02d.pts", dataDir.data(), target, wdspace);
 		read_pts(ter, temps);
@@ -2378,7 +2378,7 @@ public:
 
 	      /* custom points are also read in */
 	      if (dataPts.length() > 0) {
-		prog->InitProgress("Resolution %d, generating mesh:", limit, "Placing custom points (current mesh error %f):", ter.max_error(), majordone++, 1);
+		prog->InitProgress("Resolution %d, generating mesh:", limit, "Placing custom points (current mesh error %f):", ter.getCurrentError(), majordone++, 1);
 
 		read_pts(ter, dataPts.data());
 	      }

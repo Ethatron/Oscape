@@ -214,9 +214,9 @@ int tri_sectd = 0;
 #endif
 
 #if	defined(SPLIT_ON_INJECTION) && !defined(SPLIT_ON_INJECTION_SNAP)
-#define zheight	eval_interp
+#define zheight	getZInterp
 #else
-#define zheight	eval
+#define zheight	getZ
 #endif
 
 /* ---------------------------------------------------- */
@@ -230,7 +230,7 @@ void register_checked_face(const Point2d& _p1,
     HField *H = (HField *)closure;
 
     /* orient CCW */
-    if (TriArea(_p1, _p2, _p3) < 0.0) {
+    if (getArea2x(_p1, _p2, _p3) < 0.0) {
       register_checked_face(_p1, _p3, _p2, closure); return; }
 
     Point2d p1, p2, p3;
@@ -315,8 +315,8 @@ void register_checked_face(const Point2d& _p1,
 	v1 = new(&VPool) class objVertex(); assert(v1);
 	v1->vtx = p1;
 
-    	v1->tx = 0.0f + p1.x / H->get_width();
-    	v1->ty = 0.0f + p1.y / H->get_height();
+    	v1->tx = 0.0f + p1.x / H->getWidth();
+    	v1->ty = 0.0f + p1.y / H->getHeight();
 
     	v1->x = (v1->op.x = p1.x) * sizescale;
     	v1->y = (v1->op.y = p1.y) * sizescale;
@@ -329,8 +329,8 @@ void register_checked_face(const Point2d& _p1,
 	v2 = new(&VPool) class objVertex(); assert(v2);
 	v2->vtx = p2;
 
-	v2->tx = 0.0f + p2.x / H->get_width();
-	v2->ty = 0.0f + p2.y / H->get_height();
+	v2->tx = 0.0f + p2.x / H->getWidth();
+	v2->ty = 0.0f + p2.y / H->getHeight();
 
     	v2->x = (v2->op.x = p2.x) * sizescale;
     	v2->y = (v2->op.y = p2.y) * sizescale;
@@ -343,8 +343,8 @@ void register_checked_face(const Point2d& _p1,
 	v3 = new(&VPool) class objVertex(); assert(v3);
 	v3->vtx = p3;
 
-	v3->tx = 0.0f + p3.x / H->get_width();
-	v3->ty = 0.0f + p3.y / H->get_height();
+	v3->tx = 0.0f + p3.x / H->getWidth();
+	v3->ty = 0.0f + p3.y / H->getHeight();
 
     	v3->x = (v3->op.x = p3.x) * sizescale;
     	v3->y = (v3->op.y = p3.y) * sizescale;

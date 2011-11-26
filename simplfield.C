@@ -57,13 +57,13 @@ FitPlane::FitPlane(SimplField &ter, Triangle *tri) {
   );
 
   // copy error of this triangle to FitPlane
-  err = tri->get_err();
+  err = tri->getError();
   // new triangle; need to compute err
   if (err == UNSCANNED)
     err = 0;	
   // old tri; get its err & candidate xy
   else {				
-    tri->get_selection(&cx, &cy);
+    tri->getSelection(&cx, &cy);
 
     // candidate's heap index
     int index = tri->locate();	
@@ -78,12 +78,12 @@ void FitPlane::init(HField *H, const Point2d &p1, const Point2d &p2, const Point
   done = 0;
 
   Vector3d
-    v1(p1, H->eval(p1)), 
-    v2(p2, H->eval(p2)), 
-    v3(p3, H->eval(p3));
+    v1(p1, H->getZ(p1)), 
+    v2(p2, H->getZ(p2)), 
+    v3(p3, H->getZ(p3));
 
   Real diam;
-  triarea(v1, v2, v3, area, diam);
+  getArea(v1, v2, v3, area, diam);
   quality = area / diam;
   assert(quality >= 0);//??
   if (area == 0)
@@ -94,22 +94,22 @@ void FitPlane::init(HField *H, const Point2d &p1, const Point2d &p2, const Point
   z.init(v1, v2, v3);
 
   if (emphasis != 0) {
-    /**/ if (H->has_luma()) {
+    /**/ if (H->hasLuma()) {
       Real l1, l2, l3;
 
-      H->luma(p1, l1);
-      H->luma(p2, l2);
-      H->luma(p3, l3);
+      H->getLuma(p1, l1);
+      H->getLuma(p2, l2);
+      H->getLuma(p3, l3);
 
       v1.z = l1; v2.z = l2; v3.z = l3; l.init(v1, v2, v3);
     }
 
-    else if (H->has_color()) {
+    else if (H->hasColor()) {
       Real r1, g1, b1, r2, g2, b2, r3, g3, b3;
 
-      H->color(p1, r1, g1, b1);
-      H->color(p2, r2, g2, b2);
-      H->color(p3, r3, g3, b3);
+      H->getColor(p1, r1, g1, b1);
+      H->getColor(p2, r2, g2, b2);
+      H->getColor(p3, r3, g3, b3);
 
       v1.z = r1; v2.z = r2; v3.z = r3; r.init(v1, v2, v3);
       v1.z = g1; v2.z = g2; v3.z = g3; g.init(v1, v2, v3);
@@ -144,8 +144,8 @@ void SimplField::init(HField *Hf) {
   int x, y, w, h;
 
   H = Hf;
-  w = Hf->get_width();
-  h = Hf->get_height();
+  w = Hf->getWidth();
+  h = Hf->getHeight();
 
   is_used.init(w, h);
 
@@ -153,7 +153,7 @@ void SimplField::init(HField *Hf) {
   int count = 0;
   for (x = 0; x < w; x++)
   for (y = 0; y < h; y++) {
-    if (H->eval(x,y) == DEM_BAD) {
+    if (H->getZ(x, y) == DEM_BAD) {
       count++;
 
       is_used(x,y) = 1;
@@ -183,7 +183,7 @@ void SimplField::init(HField *Hf) {
   init_cache();
 }
 
-int SimplField::is_used_interp(Real x, Real y) {
+int SimplField::isUsedInterp(Real x, Real y) {
 // for bilinear interpolation
     int ix = (int)x, intx = x==ix;
     int iy = (int)y, inty = y==iy;
@@ -196,13 +196,16 @@ int SimplField::is_used_interp(Real x, Real y) {
 }
 
 void check_for_diagonal(Triangle *tri, void *closure) {
-    Edge *e = tri->get_anchor();
-    if (!e) return;
-    do {
-	if (!e->CcwPerim() && !e->Sym()->CcwPerim())
-	    *(Edge **)closure = e;	// found internal edge, save ptr to it
-	e = e->Lnext();
-    } while (e!=tri->get_anchor());
+  Edge *e = tri->getAnchor();
+  if (!e)
+    return;
+
+  do {
+    // found internal edge, save ptr to it
+    if (!e->isCCWPerim() && !e->Sym()->isCCWPerim())
+      *(Edge **)closure = e;	
+    e = e->Lnext();
+  } while (e != tri->getAnchor());
 }
 
 Edge *find_diagonal(Subdivision &sub) {
@@ -218,11 +221,11 @@ void SimplField::init_cache() {
   if (datadep) {
     FitPlane fit;
 
-    check_swap(diag, fit);
+    checkSwap(diag, fit);
   }
   else {
-    scan_triangle_dataindep(diag->Lface());
-    scan_triangle_dataindep(diag->Sym()->Lface());
+    scanTriangleDataindep(diag->Lface());
+    scanTriangleDataindep(diag->Sym()->Lface());
   }
 }
 
@@ -233,7 +236,7 @@ void SimplField::select(Triangle *tri, int x, int y, Real cerr) {
   // triangle has valid candidate
   if (cerr > 1e-4) {
     assert(!is_used(x, y));
-    tri->set_selection(x, y);
+    tri->setSelection(x, y);
 
     // new triangle, so insert
     if (tri->locate() == NOT_IN_HEAP)
@@ -248,17 +251,17 @@ void SimplField::select(Triangle *tri, int x, int y, Real cerr) {
     if (tri->locate() != NOT_IN_HEAP) {
       heap->kill(tri->locate());
 
-      tri->set_location(NOT_IN_HEAP);
+      tri->setLocation(NOT_IN_HEAP);
     }
   }
 }
 
-void SimplField::select_datadep(Triangle *tri, FitPlane &fit) {
+void SimplField::selectDatadep(Triangle *tri, FitPlane &fit) {
   if (debug > 1)
     cout << "  select_datadep " << tri << "\n    candidate=" << fit;
 
   select(tri, fit.cx, fit.cy, fit.cerr);
-  tri->set_err(fit.err);
+  tri->setError(fit.err);
 }
 
 void SimplField::update_cache(Edge *e)
@@ -268,7 +271,7 @@ void SimplField::update_cache(Edge *e)
 
   scancount = 0;
   do {
-    scan_triangle_dataindep(t);
+    scanTriangleDataindep(t);
   } while((t = region.next()));
 
   if (debug)
@@ -277,7 +280,7 @@ void SimplField::update_cache(Edge *e)
 
 // returns pointer to an outward-pointing spoke
 Edge *SimplField::select_new_point() {
-  Real error = max_error();
+  Real error = getCurrentError();
   logrf("%f\r", error);
   if (error < termination)
     return NULL;
@@ -290,7 +293,7 @@ Edge *SimplField::select_new_point() {
 
   // mark point as selected
   int sx, sy;
-  n->tri->get_selection(&sx, &sy);
+  n->tri->getSelection(&sx, &sy);
   assert(!is_used(sx, sy));
   is_used(sx, sy) = TRUE;
   Point2d p(sx, sy);
@@ -315,7 +318,7 @@ Edge *SimplField::select_new_point() {
 
 // returns pointer to an outward-pointing spoke
 Edge *SimplField::select_new_point(int x, int y) {
-  Real error = max_error();
+  Real error = getCurrentError();
   logrf("%f\r", error);
   if (error < termination)
     return NULL;
@@ -329,7 +332,7 @@ Edge *SimplField::select_new_point(int x, int y) {
   Point2d P(x, y);
   heap_node *n = NULL;
   Heap *lheap = heap;
-  int lhsize = lheap->heap_size();
+  int lhsize = lheap->size();
 
  #pragma omp parallel for
   for (int h = 0; h < lhsize; h++) {
@@ -394,7 +397,7 @@ Edge *SimplField::select_new_point(int x, int y) {
 
 // returns pointer to an outward-pointing spoke
 Edge *SimplField::select_fix_point(int x, int y) {
-  Real error = max_error();
+  Real error = getCurrentError();
   logrf("%f\r", error);
   if (error < termination)
     return NULL;
@@ -430,13 +433,13 @@ int SimplField::select_new_points(Real limit) {
   buffer<int> xs;
   buffer<int> ys;
   int i, taken = 0;
-  Real error = max_error();
+  Real error = getCurrentError();
 
-  while ((error >= limit) && (heap->heap_size() > 0)) {
+  while ((error >= limit) && (heap->size() > 0)) {
     int x, y;
     heap_node *n = heap->extract();
 
-    n->tri->get_selection(&x, &y);
+    n->tri->getSelection(&x, &y);
 
     if (!is_used(x, y)) {
       taken++;
@@ -446,7 +449,7 @@ int SimplField::select_new_points(Real limit) {
       ys.insert(y);
     }
 
-    error = max_error();
+    error = getCurrentError();
   }
 
   if (!taken)
@@ -476,10 +479,7 @@ int SimplField::select_new_points(Real limit) {
 // put the intersection point in "isect".
 // Return 1 if abcd is convex, 0 if concave (if the intersection lies outside).
 // We already know that points a and c lie on opposite sides of line bd.
-int quadrilateral_diagonal_intersect
-    (const Point2d &a, const Point2d &b, const Point2d &c, const Point2d &d,
-    Point2d &isect) {
-
+int quadrilateral_diagonal_intersect(const Point2d &a, const Point2d &b, const Point2d &c, const Point2d &d, Point2d &isect) {
   // do points b and d lie on opposite sides of line ac?
   Line p(a, c);
   if (p.eval(b) < 0 || 
@@ -513,11 +513,11 @@ Real SimplField::angle_between_all_normals(const FitPlane &tri1,
 
   /**/ if (emphasis == 0)
     return a;
-  else if (H->has_luma())
+  else if (H->hasLuma())
     return (1 - emphasis) * a +
     emphasis * (H->zmax() / 1) *
     (angle_between_normals(tri1.l, tri2.l));
-  else if (H->has_color())
+  else if (H->hasColor())
     return (1 - emphasis) * a +
     emphasis * (H->zmax() / 3) *
     (angle_between_normals(tri1.r, tri2.r) +
@@ -548,7 +548,7 @@ Real SimplField::angle_between_all_normals(const FitPlane &tri1,
 //       \ | /
 //        \|/
 //       b o
-void SimplField::check_swap(Edge *e, FitPlane &abd) {
+void SimplField::checkSwap(Edge *e, FitPlane &abd) {
   if (debug > 1)
     cout << endl << "check_swap" << e << endl;
 
@@ -565,7 +565,7 @@ void SimplField::check_swap(Edge *e, FitPlane &abd) {
     abd.init(H, a, b, d);
 
   Point2d p;				// intersection of diagonals ac and bd
-  if (e->CcwPerim() ||
+  if (e->isCCWPerim() ||
     (
     /* tricheck(e->Sym()), */
     !quadrilateral_diagonal_intersect(a, b, c, d, p)
@@ -575,17 +575,17 @@ void SimplField::check_swap(Edge *e, FitPlane &abd) {
       // in either case we can't swap diagonals
       // but we still need to set selection
       if (debug > 1)
-	cout << (e->CcwPerim() ? "  on perimeter" : "  concave")
+	cout << (e->isCCWPerim() ? "  on perimeter" : "  concave")
 	<< ", abd: " << abd;
 
       if (!abd.done) {
-	scan_triangle_datadep(a, b, d, /*null fitplane*/ 0, &abd);
+	scanTriangleDatadep(a, b, d, /*null fitplane*/ 0, &abd);
 
 	if (debug > 1)
 	  cout << "  abd; " << abd;
       }
 
-      select_datadep(e->Lface(), abd);
+      selectDatadep(e->Lface(), abd);
 
       if (debug>1)
 	cout << "end1 check_swap" << endl;
@@ -609,10 +609,10 @@ void SimplField::check_swap(Edge *e, FitPlane &abd) {
 
   // scan convert the four sub-triangles of quadrilateral abcd,
   // collecting info about fit errors and candidates in abd, cdb, dac, bca
-  scan_triangle_datadep(p, d, a, &abd, &dac);
-  scan_triangle_datadep(p, a, b, &abd, &bca);
-  scan_triangle_datadep(p, b, c, &cdb, &bca);
-  scan_triangle_datadep(p, c, d, &cdb, &dac);
+  scanTriangleDatadep(p, d, a, &abd, &dac);
+  scanTriangleDatadep(p, a, b, &abd, &bca);
+  scanTriangleDatadep(p, b, c, &cdb, &bca);
+  scanTriangleDatadep(p, c, d, &cdb, &dac);
   if (debug > 1) {
     cout << "  abd; " << abd;
     cout << "  cdb; " << cdb;
@@ -678,9 +678,9 @@ void SimplField::check_swap(Edge *e, FitPlane &abd) {
       cout << "  not swapping " << e << endl;
 
     // set candidate for triangle abd
-    select_datadep(e->Lface(), abd);
+    selectDatadep(e->Lface(), abd);
     if (!cdb.done)			// first call to check_swap
-      select_datadep(e->Sym()->Lface(), cdb);
+      selectDatadep(e->Sym()->Lface(), cdb);
   }
   else {				// other diagonal (ac) is best
     if (debug > 1)
@@ -693,8 +693,8 @@ void SimplField::check_swap(Edge *e, FitPlane &abd) {
     bca.done = 1;
 
     // recurse on the new triangles
-    check_swap(e->Oprev(), dac);
-    check_swap(e->Lprev(), bca);
+    checkSwap(e->Oprev(), dac);
+    checkSwap(e->Lprev(), bca);
   }
 
   if (debug > 1)
@@ -718,8 +718,8 @@ Edge *SimplField::InsertSite(const Point2d& x, Triangle *tri) {
   do {
     diag = e->Lprev();
     e = e->Dprev();		// advance to next spoke
-    if (!e->CcwPerim())
-      check_swap(diag, fit);
+    if (!e->isCCWPerim())
+      checkSwap(diag, fit);
 
     // check quadrilateral with diagonal "diag"
     // and swap if that yields lower error
@@ -737,8 +737,8 @@ Edge *SimplField::InsertSite(const Point2d& x, Triangle *tri) {
 Real SimplField::rms_error() {
   int x,y;
   Real diff, err = 0;
-  int width = H->get_width(),
-     height = H->get_height();
+  int width = H->getWidth(),
+     height = H->getHeight();
 
   for (x = 0; x < width ; x++)
   for (y = 0; y < height; y++) {
@@ -753,8 +753,8 @@ Real SimplField::rms_error() {
 Real SimplField::rms_error_supersample(int ss) {
   int x, y;
   Real diff, err = 0;
-  int width = H->get_width(),
-     height = H->get_height();
+  int width = H->getWidth(),
+     height = H->getHeight();
 
   for (x = 0; x <= (width  - 1) * ss; x++)
   for (y = 0; y <= (height - 1) * ss; y++) {
@@ -766,9 +766,8 @@ Real SimplField::rms_error_supersample(int ss) {
 }
 
 static Real sqerr;
-
-static void sum_err(Triangle *tri, void *) {
-  sqerr += tri->get_err();
+static void sumErrors(Triangle *tri, void *) {
+  sqerr += tri->getError();
 }
 
 Real SimplField::rms_error_estimate()
@@ -781,12 +780,12 @@ Real SimplField::rms_error_estimate()
     return -1;
 
   sqerr = 0;
-  OverFaces(sum_err, 0);
+  OverFaces(sumErrors, 0);
 
-  return sqrt(sqerr / (H->get_width() * H->get_height()));
+  return sqrt(sqerr / (H->getWidth() * H->getHeight()));
 }
 
-Real SimplField::max_error() {
+Real SimplField::getCurrentError() {
   return heap->top() ? heap->top()->val : 0.0f;
 }
 
@@ -809,29 +808,29 @@ Real SimplField::compute_choice(int x, int y) {
     const Point2d& p3 = tri->point3();
 
     Vector3d 
-      v1(p1, H->eval(p1)),
-      v2(p2, H->eval(p2)),
-      v3(p3, H->eval(p3));
+      v1(p1, H->getZ(p1)),
+      v2(p2, H->getZ(p2)),
+      v3(p3, H->getZ(p3));
 
     z_plane.init(v1, v2, v3);
 
     if (emphasis != 0) {
-      /**/ if (H->has_luma()) {
+      /**/ if (H->hasLuma()) {
 	Real l1, l2, l3;
 
-	H->luma(p1, l1);
-	H->luma(p2, l2);
-	H->luma(p3, l3);
+	H->getLuma(p1, l1);
+	H->getLuma(p2, l2);
+	H->getLuma(p3, l3);
 
 	v1.z = l1; v2.z = l2; v3.z = l3; l_plane.init(v1, v2, v3);
       }
 
-      else if (H->has_color()) {
+      else if (H->hasColor()) {
 	Real r1, g1, b1, r2, g2, b2, r3, g3, b3;
 
-	H->color(p1, r1, g1, b1);
-	H->color(p2, r2, g2, b2);
-	H->color(p3, r3, g3, b3);
+	H->getColor(p1, r1, g1, b1);
+	H->getColor(p2, r2, g2, b2);
+	H->getColor(p3, r3, g3, b3);
 
 	v1.z = r1; v2.z = r2; v3.z = r3; r_plane.init(v1, v2, v3);
 	v1.z = g1; v2.z = g2; v3.z = g3; g_plane.init(v1, v2, v3);
@@ -841,23 +840,23 @@ Real SimplField::compute_choice(int x, int y) {
   }
 
   // evaluate the plane equations
-  Real diff = fabs(z_plane(x, y) - H->eval(x, y));
+  Real diff = fabs(z_plane(x, y) - H->getZ(x, y));
 
   if (emphasis != 0) {
-    /**/ if (H->has_luma()) {
+    /**/ if (H->hasLuma()) {
       Real l0;
 
-      H->luma(x ,y, l0);
+      H->getLuma(x, y, l0);
 
       diff = (1 - emphasis) * diff +
 	emphasis * (H->zmax() / 1) * (
 	fabs(l_plane(x, y) - l0));
     }
 
-    else if (H->has_color()) {
+    else if (H->hasColor()) {
       Real r0, g0, b0;
 
-      H->color(x ,y, r0, g0, b0);
+      H->getColor(x, y, r0, g0, b0);
 
       diff = (1 - emphasis) * diff +
 	emphasis * (H->zmax() / 3) * (
@@ -893,29 +892,29 @@ Real SimplField::compute_choice_interp(Real x, Real y) {
     const Point2d& p3 = tri->point3();
 
     Vector3d 
-      v1(p1, H->eval(p1)),
-      v2(p2, H->eval(p2)),
-      v3(p3, H->eval(p3));
+      v1(p1, H->getZ(p1)),
+      v2(p2, H->getZ(p2)),
+      v3(p3, H->getZ(p3));
 
     z_plane.init(v1, v2, v3);
 
     if (emphasis != 0) {
-      /**/ if (H->has_luma()) {
+      /**/ if (H->hasLuma()) {
 	Real l1, l2, l3;
 
-	H->luma(p1, l1);
-	H->luma(p2, l2);
-	H->luma(p3, l3);
+	H->getLuma(p1, l1);
+	H->getLuma(p2, l2);
+	H->getLuma(p3, l3);
 
 	v1.z = l1; v2.z = l2; v3.z = l3; l_plane.init(v1, v2, v3);
       }
 
-      else if (H->has_color()) {
+      else if (H->hasColor()) {
 	Real r1, g1, b1, r2, g2, b2, r3, g3, b3;
 
-	H->color(p1, r1, g1, b1);
-	H->color(p2, r2, g2, b2);
-	H->color(p3, r3, g3, b3);
+	H->getColor(p1, r1, g1, b1);
+	H->getColor(p2, r2, g2, b2);
+	H->getColor(p3, r3, g3, b3);
 
 	v1.z = r1; v2.z = r2; v3.z = r3; r_plane.init(v1, v2, v3);
 	v1.z = g1; v2.z = g2; v3.z = g3; g_plane.init(v1, v2, v3);
@@ -925,23 +924,23 @@ Real SimplField::compute_choice_interp(Real x, Real y) {
   }
 
   // evaluate the plane equations
-  Real diff = fabs(z_plane(x,y) - H->eval_interp(x,y));
+  Real diff = fabs(z_plane(x,y) - H->getZInterp(x,y));
 
   if (emphasis != 0) {
-    /**/ if (H->has_luma()) {
+    /**/ if (H->hasLuma()) {
       Real l0;
 
-      H->luma_interp(x, y, l0);
+      H->getLumaInterp(x, y, l0);
 
       diff = (1 - emphasis) * diff +
 	emphasis * (H->zmax() / 1) * (
 	fabs(l_plane(x, y) - l0));
     }
 
-    else if (H->has_color()) {
+    else if (H->hasColor()) {
       Real r0, g0, b0;
 
-      H->color_interp(x, y, r0, g0, b0);
+      H->getColorInterp(x, y, r0, g0, b0);
 
       diff = (1 - emphasis) * diff +
 	emphasis * (H->zmax() / 3) * (

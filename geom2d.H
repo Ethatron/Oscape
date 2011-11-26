@@ -42,6 +42,7 @@
 // in Graphics Gems IV
 ////////////////////////////////////////////////////////////////////////
 
+#include <assert.h>
 #include <math.h>
 #include <iostream>
 #include "libmemory.hpp"
@@ -50,7 +51,7 @@ extern class MemQueue<4> PPool;
 extern class MemQueue<4> LPool;
 
 #ifndef ABS
-#define ABS(a)	((a) >= 0 ? (a) : -(a))
+#define ABS(a)		((a) >= 0 ? (a) : -(a))
 #endif
 
 #ifndef MAX
@@ -184,21 +185,20 @@ inline ostream& operator<<(ostream& os, const Point2d& p)
 
 // Line:
 
-inline Line::Line(const Point2d& p, const Point2d& q)
 // Computes the normalized line equation through the
 // points p and q.
-{
-	Point2d t = q - p;
-	Real len = t.norm();
-	assert(len!=0);
-	a =   t.y / len;
-	b = - t.x / len;
-	c = -(a*p.x + b*p.y);
+inline Line::Line(const Point2d& p, const Point2d& q) {
+  Point2d t = q - p;
+  Real len = t.norm();
+  assert(len != 0);
+  a =   t.y / len;
+  b = - t.x / len;
+  c = -(a * p.x + b * p.y);
 }
 
 // Plugs point p into the line equation.
 inline Real Line::eval(const Point2d& p) const {
-  return (a * p.x + b* p.y + c);
+  return (a * p.x + b * p.y + c);
 }
 
 // Returns -1, 0, or 1, if p is to the left of, on,

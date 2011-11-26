@@ -73,17 +73,6 @@ using namespace std;
 
 #define Nil NULL
 
-
-#define fatal_error(s)  report_error(s,__FILE__,__LINE__)
-
-#ifdef assert
-#undef assert
-#endif
-#define  assert(i)  (i)?((void)NULL):assert_failed(# i,__FILE__,__LINE__)
-
-extern void assert_failed(char *,char *,int);
-extern void report_error(char *,char *,int);
-
 
 
 // Basic array classes
