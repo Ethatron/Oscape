@@ -46,11 +46,8 @@
 // two separate entities.
 
 
-class HField : public Model {
+class HField {
     int width, height;
-
-    int render_with_color;
-    int render_as_surface;
 
     DEMdata *data;
     RealColorTexture *tex;
@@ -58,9 +55,6 @@ class HField : public Model {
 
     void init(ifstream& mntns, const char *colfile, const char *lmafile);
     void free();
-
-    void draw_from_point(int x, int y);
-    void emit(Real, Real);
 
 public:
     HField(ifstream& in, const char *colfile, const char *lmafile) { init(in, colfile, lmafile); }
@@ -131,10 +125,6 @@ public:
 
     bool has_color() const { return (tex != NULL); }
     bool has_luma() const { return (map != NULL); }
-
-    virtual void process_key(model_key, long value = 0);
-    virtual long eval_key(model_key);
-    virtual void just_render();
 };
 
 #endif

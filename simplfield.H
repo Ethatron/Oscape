@@ -66,32 +66,16 @@ struct FitPlane {	// a set of planes for fitting a surface
 	// set all FitPlane info by copying from Triangle
     FitPlane(HField *H, const Point2d &p1, const Point2d &p2, const Point2d &p3)
 	{init(H, p1, p2, p3);};
-    void init
-	(HField *H, const Point2d &p1, const Point2d &p2, const Point2d &p3);
+    void init(HField *H, const Point2d &p1, const Point2d &p2, const Point2d &p3);
 	// initialize planes in FitPlane to pass through p,q,r and
 	// initialize error sum and candidate for subsequent accumulation
     friend ostream& operator<<(ostream &, const FitPlane &);
 };
 
-class SimplField : public Subdivision, public Model  {
+class SimplField : public Subdivision  {
 
     HField *H;          // The height field being approximated
     Heap *heap;         // Heap of candidate points
-
-    // Some variables to hold random rendering options
-    int render_with_color;
-    int render_with_mesh;
-    int render_with_texture;
-    int render_as_surface;
-    int render_with_dem;
-    int dem_step;
-
-    void emit(Real x,Real y,Real z);
-//  void emit(Real x,Real y);
-
-    void emit_origin(Edge *e);
-    void render_face(Triangle *);
-    friend void face_iterator(Triangle *,void *);
 
     void init(HField *);
     void free();
@@ -134,10 +118,6 @@ public:
     Real max_error();
     HField *original() { return H; }
     Heap &get_heap() { return *heap; }
-
-    virtual long eval_key(model_key);
-    virtual void process_key(model_key,long);
-    virtual void just_render();
 };
 
 

@@ -204,13 +204,8 @@ struct V {
   }
 };
 
-std::set<class objVertex *, struct V> Vertices;
-std::vector<class objFace *> Faces;
-
 class MemQueue<4> VPool(sizeof(objVertex), 0x7FFFFFFF);
 class MemQueue<4> FPool(sizeof(objFace  ), 0x7FFFFFFF);
-
-/* ---------------------------------------------------- */
 
 #ifdef	SPLIT_ON_INJECTION
 int tri_procd = 0;
@@ -223,6 +218,11 @@ int tri_sectd = 0;
 #else
 #define zheight	eval
 #endif
+
+/* ---------------------------------------------------- */
+
+std::set<class objVertex *, struct V> Vertices;
+std::vector<class objFace *> Faces;
 
 void register_checked_face(const Point2d& _p1,
 			   const Point2d& _p2,

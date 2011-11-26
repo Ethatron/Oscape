@@ -45,16 +45,12 @@ class CField {
     void init(ifstream& mntns);
     void free();
 
-    void draw_from_point(int x, int y);
-    void emit(unsigned long, unsigned long);
-
 public:
     CField(ifstream& in) { init(in); }
     ~CField() { free(); }
 
     /* ------------------------------------------------------------------------- */
     const unsigned long &c_val(int x, int y) const { return data->val(x, y); }
-
     unsigned long &c_ref(int x, int y) { return data->ref(x, y); }
 
     /* ------------------------------------------------------------------------- */

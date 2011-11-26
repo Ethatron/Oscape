@@ -147,15 +147,6 @@ void SimplField::init(HField *Hf) {
   w = Hf->get_width();
   h = Hf->get_height();
 
-  model_center = H->center();
-  bound_volume = H->bounds();
-  render_with_color = 0;
-  render_with_mesh = 0;
-  render_with_texture = 0;
-  render_as_surface = 0;
-  render_with_dem = 0;
-  dem_step = w / 50;
-
   is_used.init(w, h);
 
   // mark points with invalid data as "used", but mark others "unused"

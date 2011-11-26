@@ -81,21 +81,6 @@ void HField::init(ifstream& dataStream, const char *texFile, const char *greyFil
     tex = NULL;
     map = NULL;
   }
-
-  render_with_color = 0;
-  render_as_surface = 0;
-
-  model_center.x = 0.5f * width;
-  model_center.y = 0.5f * height;
-  model_center.z = 0.5f * (zmax() - zmin()) + zmin();
-
-  bound_volume.min.x = 0;
-  bound_volume.min.y = 0;
-  bound_volume.min.z = zmin();
-
-  bound_volume.max.x = width  - 1;
-  bound_volume.max.y = height - 1;
-  bound_volume.max.z = zmax();
 }
 
 
