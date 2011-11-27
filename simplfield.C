@@ -182,7 +182,7 @@ void SimplField::init(HField *Hf) {
   init_cache();
 }
 
-int SimplField::isUsedInterp(Real x, Real y) {
+int SimplField::isUsedInterp(Real x, Real y) const {
 // for bilinear interpolation
     int ix = (int)x, intx = x == ix;
     int iy = (int)y, inty = y == iy;

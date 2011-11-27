@@ -49,7 +49,7 @@ class Heap;
 class SimplField;
 
 struct FitPlane {	// a set of planes for fitting a surface
-			    // a temp. data struc for data-dep. triangulation
+			// a temp. data struc for data-dep. triangulation
     Plane z, r,g,b, l;	// plane equations for z, r, g, b as functions of (x,y)
     Real area;		// area of the triangle
     Real quality;	// area/diameter of triangle: large is good, 0 is bad
@@ -62,13 +62,13 @@ struct FitPlane {	// a set of planes for fitting a surface
     int done;		// is all of the above information final? (1=yes, 0=no)
 
     FitPlane() {done = 0;};
+    // set all FitPlane info by copying from Triangle
     FitPlane(SimplField &ter, Triangle *tri);
-	// set all FitPlane info by copying from Triangle
-    FitPlane(HField *H, const Point2d &p1, const Point2d &p2, const Point2d &p3)
-	{init(H, p1, p2, p3);};
+    // initialize planes in FitPlane to pass through p,q,r and
+    // initialize error sum and candidate for subsequent accumulation
+    FitPlane(HField *H, const Point2d &p1, const Point2d &p2, const Point2d &p3) { init(H, p1, p2, p3); };
     void init(HField *H, const Point2d &p1, const Point2d &p2, const Point2d &p3);
-	// initialize planes in FitPlane to pass through p,q,r and
-	// initialize error sum and candidate for subsequent accumulation
+
     friend ostream& operator<<(ostream &, const FitPlane &);
 };
 
@@ -97,17 +97,17 @@ public:
 #ifdef BITFIELD2
     bitarray2<> is_used;
 
-    bool check_used(int i, int j) { return is_used.check(i, j); }
-    void  mark_used(int i, int j) {        is_used.mark (i, j); }
-    void clear_used(int i, int j) {        is_used.clear(i, j); }
-    bool  skip_used(int i, int j) { return is_used.skip (i, j); }
+    bool check_used(int i, int j) const { return is_used.check(i, j); }
+    void  mark_used(int i, int j)	{        is_used.mark (i, j); }
+    void clear_used(int i, int j)	{        is_used.clear(i, j); }
+    bool  skip_used(int i, int j)       { return is_used.skip (i, j); }
 #else
     array2<char> is_used;
 
-    bool check_used(int i, int j) { if (is_used(i, j)) return true;                    return false; }
-    void  mark_used(int i, int j) {                                 is_used(i, j) = 1;               }
-    void clear_used(int i, int j) {                                 is_used(i, j) = 0;               }
-    bool  skip_used(int i, int j) { if (is_used(i, j)) return true; is_used(i, j) = 1; return false; }
+    bool check_used(int i, int j) const { if (is_used(i, j)) return true;                    return false; }
+    void  mark_used(int i, int j)	{                                 is_used(i, j) = 1;               }
+    void clear_used(int i, int j)	{                                 is_used(i, j) = 0;               }
+    bool  skip_used(int i, int j)	{ if (is_used(i, j)) return true; is_used(i, j) = 1; return false; }
 #endif
 
     SimplField(HField *h) { init(h); }
@@ -118,7 +118,8 @@ public:
     Edge *select_fix_point(int x, int y);
     int select_new_points(Real limit);
 
-    int isUsedInterp(Real x, Real y);	// for bilinear interpolation
+    // for bilinear interpolation
+    int isUsedInterp(Real x, Real y) const;	
 
     Real rms_error();
     Real rms_error_supersample(int ss);

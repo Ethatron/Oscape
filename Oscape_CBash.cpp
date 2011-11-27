@@ -270,7 +270,6 @@ string weoutm; bool calcm = false;
 string wename; int weid;
 
 /* flip y */
-#define rpos(realx, realy) ((/*(sizey - 1) -*/ realy) * sizex) + (realx)
 #define rofx  0
 #define rofy  1			// why, oh, why?
 #define lofx  (     -1)		// first column is previous cell
@@ -494,11 +493,58 @@ unsigned char ClassifyTexture(FORMID t) {
   return ltex[t].classification;
 }
 
-class ExtractNWorldOp : public RecordOp {
+class WindowedWorldOp : public RecordOp {
+  /* the window the memory represents */
+  long begin, range;
+
+public:
+  WindowedWorldOp(long b, long r) : RecordOp() {
+    begin = b;
+    range = r;
+
+    /* don't straddle cells */
+    assert((begin % 32) == 0);
+    assert((range % 32) == 0);
+  }
+
+  /* cell range check (relative to memory) */
+  inline bool cchk(int cellx, int celly) {
+    celly -= begin;
+
+//  if ((cellx < 0) || (cellx >= sizex))
+//    return false;
+    if ((celly < 0) || (celly >= range))
+      return false;
+
+    return true;
+  }
+
+  /* real range check (relative to memory) */
+  inline bool rchk(int realx, int realy) {
+    realy -= begin;
+
+    if ((realx < 0) || (realx >= sizex))
+      return false;
+    if ((realy < 0) || (realy >= range))
+      return false;
+
+    return true;
+  }
+
+//#define rpos(realx, realy) ((/*(sizey - 1) -*/ realy) * sizex) + (realx)
+  /* real position (relative to memory) */
+  inline unsigned long rpos(int realx, int realy) {
+    realy -= begin;
+
+    return ((realy) * sizex) + (realx);
+  }
+};
+
+class ExtractNWorldOp : public WindowedWorldOp {
   unsigned char *nm;
 
 public:
-  ExtractNWorldOp(void *mnm) : RecordOp() {
+  ExtractNWorldOp(void *mnm, long b, long r) : WindowedWorldOp(b, r) {
     nm = (unsigned char *)mnm;
   }
 
@@ -519,6 +565,10 @@ public:
 	  long leftc = (offsx + leftx) * 32;
 	  long topc  = (offsy + topy ) * 32;
 
+	  /* check cell-center against range, no problems with the overlap that way */
+	  if (!cchk(leftc + 16 + lofx, topc + 16 + lofy)) {
+	    /* next */ walk++; continue; }
+
 	  SetTopic("Extracting normals from cell {%d,%d}", leftx, topy);
 	  SetProgress(dells++);
 
@@ -529,8 +579,7 @@ public:
 	      int realx = leftc + x + lofx;
 	      int realy = topc  + y + lofy;
 
-	      if ((realx >= 0) && (realx < sizex) &&
-		  (realy >= 0) && (realy < sizey)) {
+	      if (rchk(realx, realy)) {
 		/* flip y */
 		unsigned long realpos = rpos(realx, realy);
 
@@ -551,11 +600,11 @@ public:
   }
 };
 
-class ExtractHWorldOp : public RecordOp {
+class ExtractHWorldOp : public WindowedWorldOp {
   unsigned short *hf;
 
 public:
-  ExtractHWorldOp(void *mhf = NULL) : RecordOp() {
+  ExtractHWorldOp(void *mhf, long b, long r) : WindowedWorldOp(b, r) {
     hf = (unsigned short *)mhf;
   }
 
@@ -576,6 +625,10 @@ public:
 	  long leftc = (offsx + leftx) * 32;
 	  long topc  = (offsy + topy ) * 32;
 
+	  /* check cell-center against range, no problems with the overlap that way */
+	  if (!cchk(leftc + 16 + lofx, topc + 16 + lofy)) {
+	    /* next */ walk++; continue; }
+
 	  SetTopic("Extracting heights from cell {%d,%d}", leftx, topy);
 	  SetProgress(dells++);
 
@@ -586,8 +639,7 @@ public:
 	      int realx = leftc + x + lofx;
 	      int realy = topc  + y + lofy;
 
-	      if ((realx >= 0) && (realx < sizex) &&
-		  (realy >= 0) && (realy < sizey)) {
+	      if (rchk(realx, realy)) {
 		/* flip y */
 		unsigned long realpos = rpos(realx, realy);
 
@@ -622,11 +674,11 @@ public:
 #define EXTRACT_BLENDLAYER	1
 #define EXTRACT_OVERLAYER	1
 
-class ExtractMWorldOp : public RecordOp {
+class ExtractMWorldOp : public WindowedWorldOp {
   unsigned char *tx;
 
 public:
-  ExtractMWorldOp(void *mtx) : RecordOp() {
+  ExtractMWorldOp(void *mtx, long b, long r) : WindowedWorldOp(b, r) {
     tx = (unsigned char *)mtx;
   }
 
@@ -647,6 +699,10 @@ public:
 	  long leftc = (offsx + leftx) * 32;
 	  long topc  = (offsy + topy ) * 32;
 	  float bbuf[33][33] = {0};
+
+	  /* check cell-center against range, no problems with the overlap that way */
+	  if (!cchk(leftc + 16 + lofx, topc + 16 + lofy)) {
+	    /* next */ walk++; continue; }
 
 	  SetTopic("Extracting importance from cell {%d,%d}", leftx, topy);
 	  SetProgress(dells++);
@@ -797,8 +853,7 @@ public:
 	    int realx = leftc + x + lofx;
 	    int realy = topc  + y + lofy;
 
-	    if ((realx >= 0) && (realx < sizex) &&
-		(realy >= 0) && (realy < sizey)) {
+	    if (rchk(realx, realy)) {
 	      unsigned long realpos = rpos(realx, realy);
 
 #define round(clr)	min((unsigned long)floor(clr + 0.5), 0xFF)
@@ -824,11 +879,11 @@ public:
   }
 };
 
-class ExtractCWorldOp : public RecordOp {
+class ExtractCWorldOp : public WindowedWorldOp {
   unsigned long *tx;
 
 public:
-  ExtractCWorldOp(void *mtx) : RecordOp() {
+  ExtractCWorldOp(void *mtx, long b, long r) : WindowedWorldOp(b, r) {
     tx = (unsigned long *)mtx;
   }
 
@@ -849,6 +904,10 @@ public:
 	  long leftc = (offsx + leftx) * 32;
 	  long topc  = (offsy + topy ) * 32;
 	  float bbuf[33][33][4] = {0};
+
+	  /* check cell-center against range, no problems with the overlap that way */
+	  if (!cchk(leftc + 16 + lofx, topc + 16 + lofy)) {
+	    /* next */ walk++; continue; }
 
 	  SetTopic("Extracting surfaces from cell {%d,%d}", leftx, topy);
 	  SetProgress(dells++);
@@ -1038,8 +1097,7 @@ public:
 	    int realx = leftc + x + lofx;
 	    int realy = topc  + y + lofy;
 
-	    if ((realx >= 0) && (realx < sizex) &&
-		(realy >= 0) && (realy < sizey)) {
+	    if (rchk(realx, realy)) {
 	      unsigned long realpos = rpos(realx, realy);
 
 #define round(clr, pos)	(min((unsigned long)floor(clr + 0.5), 0xFF) << pos)
@@ -1068,6 +1126,14 @@ public:
   }
 };
 
+/* besides enabling much less memory-consumption it also allows us to access
+ * >2GB files on 32bit operating systems
+ */
+#define PARTITION_ROWS	(1024)
+#define PARTITION_SIZE	(1024 * str)
+#define PARTITION_OFFSh	(((size_t)sy * str) >> 32)
+#define PARTITION_OFFSl	(((size_t)sy * str) >>  0)
+
 /* ---------------------------------------------------------------------------- */
 void NExtract(SINT32 num) {
   /* create output file */
@@ -1080,7 +1146,8 @@ void NExtract(SINT32 num) {
   s = DeviceIoControl(oh, FSCTL_SET_SPARSE, NULL, 0, NULL, 0, &ss, NULL);
 
 //DWORD lenh = GetFileSize(oh, NULL);
-  DWORD len = sizex * sizey * sizeof(unsigned char) * 3;
+  DWORD str =         sizex * sizeof(unsigned char) * 3;
+  DWORD len = sizey * sizex * sizeof(unsigned char) * 3;
 
   FILE_ZERO_DATA_INFORMATION z;
   z.FileOffset.QuadPart = 0;
@@ -1095,25 +1162,30 @@ void NExtract(SINT32 num) {
   HANDLE mh = CreateFileMapping(oh, NULL, PAGE_READWRITE, 0, 0, NULL);
   if (!mh) throw runtime_error("Failed to map output file");
 
-  char *mem = (char *)MapViewOfFile(mh, FILE_MAP_ALL_ACCESS, 0, 0, 0);
-  if (!mem) throw runtime_error("Failed to allocate output file");
+  for (int sy = 0; sy < sizey; sy += PARTITION_ROWS) {
+    char *mem = (char *)MapViewOfFile(mh, FILE_MAP_ALL_ACCESS, PARTITION_OFFSh, PARTITION_OFFSl, PARTITION_SIZE);
+    if (!mem) throw runtime_error("Failed to allocate output file");
 
-  /* this may be 65535 if we want to mark them invalid */
-  memset(mem, 0x00000000, len);
+    /* this may be 65535 if we want to mark them invalid
+    memset(mem, 0x00000000, len); */
 
-  {
     SetTopic("Extracting normals from cells:");
     SetStatus("Extracting normals ...");
 
-    ExtractNWorldOp ewo(mem);
-    for (SINT32 n = 0; n < num; ++n) {
-      ModFile *mf = GetModIDByLoadOrder(col, n);
+//  try {
+      ExtractNWorldOp ewo(mem, sy, PARTITION_ROWS);
+      for (SINT32 n = 0; n < num; ++n) {
+	ModFile *mf = GetModIDByLoadOrder(col, n);
 
-      mf->VisitRecords(REV32(WRLD), ewo);
-    }
+	mf->VisitRecords(REV32(WRLD), ewo);
+      }
+//  }
+//  catch() {
+//  }
+
+    UnmapViewOfFile(mem);
   }
 
-  UnmapViewOfFile(mem);
   CloseHandle(mh);
   CloseHandle(oh);
 }
@@ -1129,7 +1201,8 @@ void HExtract(SINT32 num) {
   s = DeviceIoControl(oh, FSCTL_SET_SPARSE, NULL, 0, NULL, 0, &ss, NULL);
 
 //DWORD lenh = GetFileSize(oh, NULL);
-  DWORD len = sizex * sizey * sizeof(unsigned short) * 1;
+  DWORD str =         sizex * sizeof(unsigned short) * 1;
+  DWORD len = sizey * sizex * sizeof(unsigned short) * 1;
 
   FILE_ZERO_DATA_INFORMATION z;
   z.FileOffset.QuadPart = 0;
@@ -1144,25 +1217,30 @@ void HExtract(SINT32 num) {
   HANDLE mh = CreateFileMapping(oh, NULL, PAGE_READWRITE, 0, 0, NULL);
   if (!mh) throw runtime_error("Failed to map output file");
 
-  char *mem = (char *)MapViewOfFile(mh, FILE_MAP_ALL_ACCESS, 0, 0, 0);
-  if (!mem) throw runtime_error("Failed to allocate output file");
+  for (int sy = 0; sy < sizey; sy += PARTITION_ROWS) {
+    char *mem = (char *)MapViewOfFile(mh, FILE_MAP_ALL_ACCESS, PARTITION_OFFSh, PARTITION_OFFSl, PARTITION_SIZE);
+    if (!mem) throw runtime_error("Failed to allocate output file");
 
-  /* this may be 65535 if we want to mark them invalid */
-  memset(mem, 0x00000000, len);
+    /* this may be 65535 if we want to mark them invalid
+    memset(mem, 0x00000000, len); */
 
-  {
     SetTopic("Extracting heights from cells:");
     SetStatus("Extracting heights ...");
 
-    ExtractHWorldOp ewo(mem);
-    for (SINT32 n = 0; n < num; ++n) {
-      ModFile *mf = GetModIDByLoadOrder(col, n);
+//  try {
+      ExtractHWorldOp ewo(mem, sy, PARTITION_ROWS);
+      for (SINT32 n = 0; n < num; ++n) {
+	ModFile *mf = GetModIDByLoadOrder(col, n);
 
-      mf->VisitRecords(REV32(WRLD), ewo);
-    }
+	mf->VisitRecords(REV32(WRLD), ewo);
+      }
+//  }
+//  catch() {
+//  }
+
+    UnmapViewOfFile(mem);
   }
 
-  UnmapViewOfFile(mem);
   CloseHandle(mh);
   CloseHandle(oh);
 }
@@ -1178,7 +1256,8 @@ void MExtract(SINT32 num) {
   s = DeviceIoControl(oh, FSCTL_SET_SPARSE, NULL, 0, NULL, 0, &ss, NULL);
 
 //DWORD lenh = GetFileSize(oh, NULL);
-  DWORD len = sizex * sizey * sizeof(unsigned char) * 1;
+  DWORD str =         sizex * sizeof(unsigned char) * 1;
+  DWORD len = sizey * sizex * sizeof(unsigned char) * 1;
 
   FILE_ZERO_DATA_INFORMATION z;
   z.FileOffset.QuadPart = 0;
@@ -1193,30 +1272,40 @@ void MExtract(SINT32 num) {
   HANDLE mh = CreateFileMapping(oh, NULL, PAGE_READWRITE, 0, 0, NULL);
   if (!mh) throw runtime_error("Failed to map output file");
 
-  char *mem = (char *)MapViewOfFile(mh, FILE_MAP_ALL_ACCESS, 0, 0, 0);
-  if (!mem) throw runtime_error("Failed to allocate output file");
+  for (int sy = 0; sy < sizey; sy += PARTITION_ROWS) {
+    char *mem = (char *)MapViewOfFile(mh, FILE_MAP_ALL_ACCESS, PARTITION_OFFSh, PARTITION_OFFSl, PARTITION_SIZE);
+    if (!mem) throw runtime_error("Failed to allocate output file");
 
-  /* this may be 65535 if we want to mark them invalid */
-  memset(mem, 0x00000000, len);
+    /* this may be 65535 if we want to mark them invalid
+    memset(mem, 0x00000000, len); */
 
-  {
     SetTopic("Extracting importance from cells:");
     SetStatus("Extracting importance ...");
 
-    ExtractMWorldOp ewo(mem);
-    for (SINT32 n = 0; n < num; ++n) {
-      ModFile *mf = GetModIDByLoadOrder(col, n);
+//  try {
+      ExtractMWorldOp ewo(mem, sy, PARTITION_ROWS);
+      for (SINT32 n = 0; n < num; ++n) {
+	ModFile *mf = GetModIDByLoadOrder(col, n);
 
-      mf->VisitRecords(REV32(WRLD), ewo);
-    }
+	mf->VisitRecords(REV32(WRLD), ewo);
+      }
+//  }
+//  catch() {
+//  }
+
+    UnmapViewOfFile(mem);
   }
 
-  UnmapViewOfFile(mem);
   CloseHandle(mh);
   CloseHandle(oh);
 }
 
 void CExtract(SINT32 num) {
+  SetTopic("Building search-db:");
+  SetStatus("Building search-db ...");
+
+  TextureDBInit();
+
   /* create output file */
 //OFSTRUCT of; HANDLE ohx = (HANDLE)OpenFile(weoutx.data(), &of, OF_READWRITE);
   HANDLE oh = CreateFile(weoutx.data(), GENERIC_READ | GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
@@ -1227,7 +1316,8 @@ void CExtract(SINT32 num) {
   s = DeviceIoControl(oh, FSCTL_SET_SPARSE, NULL, 0, NULL, 0, &ss, NULL);
 
 //DWORD lenh = GetFileSize(oh, NULL);
-  DWORD len = sizex * sizey * sizeof(unsigned long) * 1;
+  DWORD str =         sizex * sizeof(unsigned long) * 1;
+  DWORD len = sizey * sizex * sizeof(unsigned long) * 1;
 
   FILE_ZERO_DATA_INFORMATION z;
   z.FileOffset.QuadPart = 0;
@@ -1242,34 +1332,34 @@ void CExtract(SINT32 num) {
   HANDLE mh = CreateFileMapping(oh, NULL, PAGE_READWRITE, 0, 0, NULL);
   if (!mh) throw runtime_error("Failed to map output file");
 
-  char *mem = (char *)MapViewOfFile(mh, FILE_MAP_ALL_ACCESS, 0, 0, 0);
-  if (!mem) throw runtime_error("Failed to allocate output file");
+  for (int sy = 0; sy < sizey; sy += PARTITION_ROWS) {
+    char *mem = (char *)MapViewOfFile(mh, FILE_MAP_ALL_ACCESS, PARTITION_OFFSh, PARTITION_OFFSl, PARTITION_SIZE);
+    if (!mem) throw runtime_error("Failed to allocate output file");
 
-  /* this may be 65535 if we want to mark them invalid */
-  memset(mem, 0x00000000, len);
-
-  {
-    SetTopic("Building search-db:");
-    SetStatus("Building search-db ...");
-
-    TextureDBInit();
+    /* this may be 65535 if we want to mark them invalid
+    memset(mem, 0x00000000, len); */
 
     SetTopic("Extracting surfaces from cells:");
     SetStatus("Extracting surfaces ...");
 
-    ExtractCWorldOp ewo(mem);
-    for (SINT32 n = 0; n < num; ++n) {
-      ModFile *mf = GetModIDByLoadOrder(col, n);
+//  try {
+      ExtractCWorldOp ewo(mem, sy, PARTITION_ROWS);
+      for (SINT32 n = 0; n < num; ++n) {
+	ModFile *mf = GetModIDByLoadOrder(col, n);
 
-      mf->VisitRecords(REV32(WRLD), ewo);
-    }
+	mf->VisitRecords(REV32(WRLD), ewo);
+      }
+//  }
+//  catch() {
+//  }
 
-    TextureDBExit();
+    UnmapViewOfFile(mem);
   }
 
-  UnmapViewOfFile(mem);
   CloseHandle(mh);
   CloseHandle(oh);
+
+  TextureDBExit();
 }
 
 /* ---------------------------------------------------------------------------- */

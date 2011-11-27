@@ -212,7 +212,7 @@ void scanLineDataindep(int y, HField *H, SimplField *S,
   Real l0 = l_plane(startx, y), dl = l_plane.a;
 
   for (x = startx; x <= endx; x++) {
-    if (!S->is_used(x, y)) {
+    if (!S->check_used(x, y)) {
       z = 
       H->getZ(x, y);
       H->getLuma(x, y, l);
@@ -253,7 +253,7 @@ void scanLineDataindep(int y, HField *H, SimplField *S,
   Real b0 = b_plane(startx,y), db = b_plane.a;
 
   for (x = startx; x <= endx; x++) {
-    if (!S->is_used(x, y)) {
+    if (!S->check_used(x, y)) {
       z = 
       H->getZ(x, y);
       H->getColor(x, y, r, g, b);
@@ -391,9 +391,10 @@ void SimplField::scanTriangleDataindep(Triangle *tri) {
 //
 // plane u's error already computed iff u==0,
 // plane v always needs to be computed
-void scan_line_datadep_z(int y, HField *H, SimplField *S,
-			 FitPlane *u, FitPlane *v,
-			 Real& x1, Real& x2) {
+static
+void scanLineDatadep_z(int y, HField *H, SimplField *S,
+		       FitPlane *u, FitPlane *v,
+		       Real& x1, Real& x2) {
   int x;
   int startx = (int) ceil(MIN(x1, x2));
   int endx   = (int)floor(MAX(x1, x2));
@@ -402,6 +403,7 @@ void scan_line_datadep_z(int y, HField *H, SimplField *S,
     return;
 
   Real diff, uz;
+
   if (u) uz = u->z(startx, y);
   Real   vz = v->z(startx, y);
 
@@ -421,6 +423,7 @@ void scan_line_datadep_z(int y, HField *H, SimplField *S,
 	  diff = -diff;
 
 	// update candidate for u
+	// OMP: atomic
 	if (diff > u->cerr) {
 	  u->cx = x;
 	  u->cy = y;
@@ -446,6 +449,7 @@ void scan_line_datadep_z(int y, HField *H, SimplField *S,
 	diff = -diff;
 
       // update candidate for v
+      // OMP: atomic
       if (diff > v->cerr) {
 	v->cx = x;
 	v->cy = y;
@@ -486,9 +490,10 @@ void scan_line_datadep_z(int y, HField *H, SimplField *S,
 // This version does z,r,g,b.
 // plane u's error already computed iff u==0,
 // plane v always needs to be computed
-void scan_line_datadep_zl(int y, HField *H, SimplField *S,
-			  FitPlane *u, FitPlane *v, 
-			  Real& x1, Real& x2) {
+static
+void scanLineDatadep_zl(int y, HField *H, SimplField *S,
+			FitPlane *u, FitPlane *v, 
+			Real& x1, Real& x2) {
   int x;
   int startx = (int) ceil(MIN(x1, x2));
   int endx   = (int)floor(MAX(x1, x2));
@@ -496,7 +501,10 @@ void scan_line_datadep_zl(int y, HField *H, SimplField *S,
   if (startx > endx)
     return;
 
-  Real diff, z, l, uz, ul;
+  Real diff,
+     z,  l,
+    uz, ul;
+
   if (u) {
     uz = u->z(startx, y);
     ul = u->l(startx, y);
@@ -506,7 +514,7 @@ void scan_line_datadep_zl(int y, HField *H, SimplField *S,
   Real vl = v->l(startx, y);
 
   for (x = startx; x <= endx; x++) {
-    if (!S->is_used(x, y)) {
+    if (!S->check_used(x, y)) {
       z = 
       H->getZ(x, y);
       H->getLuma(x, y, l);
@@ -516,6 +524,7 @@ void scan_line_datadep_zl(int y, HField *H, SimplField *S,
 	diff = w1 * ABS(z - uz) + w2 * (ABS(l - ul));
 
 	// update candidate for u
+	// OMP: atomic
 	if (diff > u->cerr) {	
 	  u->cx = x;
 	  u->cy = y;
@@ -534,6 +543,7 @@ void scan_line_datadep_zl(int y, HField *H, SimplField *S,
       diff = w1 * ABS(z - vz) + w2 * (ABS(l - vl));
 
       // update candidate for v
+      // OMP: atomic
       if (diff > v->cerr) {	
 	v->cx = x;
 	v->cy = y;
@@ -568,9 +578,10 @@ void scan_line_datadep_zl(int y, HField *H, SimplField *S,
 // This version does z,r,g,b.
 // plane u's error already computed iff u==0,
 // plane v always needs to be computed
-void scan_line_datadep_zrgb(int y, HField *H, SimplField *S,
-			    FitPlane *u, FitPlane *v,
-			    Real& x1, Real& x2) {
+static
+void scanLineDatadep_zrgb(int y, HField *H, SimplField *S,
+			  FitPlane *u, FitPlane *v,
+			  Real& x1, Real& x2) {
   int x;
   int startx = (int) ceil(MIN(x1, x2));
   int endx   = (int)floor(MAX(x1, x2));
@@ -578,7 +589,10 @@ void scan_line_datadep_zrgb(int y, HField *H, SimplField *S,
   if (startx > endx)
     return;
 
-  Real diff, z, r, g, b, uz, ur, ug, ub;
+  Real diff,
+     z,  r,  g,  b,
+    uz, ur, ug, ub;
+
   if (u) {
     uz = u->z(startx, y);
     ur = u->r(startx, y);
@@ -592,7 +606,7 @@ void scan_line_datadep_zrgb(int y, HField *H, SimplField *S,
   Real vb = v->b(startx, y);
 
   for (x = startx; x <= endx; x++) {
-    if (!S->is_used(x, y)) {
+    if (!S->check_used(x, y)) {
       z = 
       H->getZ(x, y);
       H->getColor(x, y, r, g, b);
@@ -602,6 +616,7 @@ void scan_line_datadep_zrgb(int y, HField *H, SimplField *S,
 	diff = w1 * ABS(z - uz) + w2 * (ABS(r - ur) + ABS(g - ug) + ABS(b - ub));
 
 	// update candidate for u
+	// OMP: atomic
 	if (diff > u->cerr) {	
 	  u->cx = x;
 	  u->cy = y;
@@ -620,6 +635,7 @@ void scan_line_datadep_zrgb(int y, HField *H, SimplField *S,
       diff = w1 * ABS(z - vz) + w2 * (ABS(r - vr) + ABS(g - vg) + ABS(b - vb));
 
       // update candidate for v
+      // OMP: atomic
       if (diff > v->cerr) {
 	v->cx = x;
 	v->cy = y;
@@ -703,21 +719,21 @@ void scanTriangleDatadep(HField *H, SimplField *S,
 
   /**/ if (emphasis == 0)
     for (; y < by_y[1].y; y++) {
-      scan_line_datadep_z   (y, H, S, u, v, x1, x2);
-
-      x1 += dx1;
-      x2 += dx2;
-    }
-  else if (H->hasColor())
-    for (; y < by_y[1].y; y++) {
-      scan_line_datadep_zrgb(y, H, S, u, v, x1, x2);
+      scanLineDatadep_z   (y, H, S, u, v, x1, x2);
 
       x1 += dx1;
       x2 += dx2;
     }
   else if (H->hasLuma())
     for (; y < by_y[1].y; y++) {
-      scan_line_datadep_zl  (y, H, S, u, v, x1, x2);
+      scanLineDatadep_zl  (y, H, S, u, v, x1, x2);
+
+      x1 += dx1;
+      x2 += dx2;
+    }
+  else if (H->hasColor())
+    for (; y < by_y[1].y; y++) {
+      scanLineDatadep_zrgb(y, H, S, u, v, x1, x2);
 
       x1 += dx1;
       x2 += dx2;
@@ -729,21 +745,21 @@ void scanTriangleDatadep(HField *H, SimplField *S,
 
   /**/ if (emphasis == 0)
     for (; y <= (int)by_y[2].y; y++) {
-      scan_line_datadep_z   (y, H, S, u, v, x1, x2);
-
-      x1 += dx1;
-      x2 += dx2;
-    }
-  else if (H->hasColor())
-    for (; y <= (int)by_y[2].y; y++) {
-      scan_line_datadep_zrgb(y, H, S, u, v, x1, x2);
+      scanLineDatadep_z   (y, H, S, u, v, x1, x2);
 
       x1 += dx1;
       x2 += dx2;
     }
   else if (H->hasLuma())
     for (; y <= (int)by_y[2].y; y++) {
-      scan_line_datadep_zl  (y, H, S, u, v, x1, x2);
+      scanLineDatadep_zl  (y, H, S, u, v, x1, x2);
+
+      x1 += dx1;
+      x2 += dx2;
+    }
+  else if (H->hasColor())
+    for (; y <= (int)by_y[2].y; y++) {
+      scanLineDatadep_zrgb(y, H, S, u, v, x1, x2);
 
       x1 += dx1;
       x2 += dx2;
@@ -764,9 +780,9 @@ void scanTriangleDatadep(HField *H, SimplField *S,
 // plane u's error already computed iff u==0,
 // plane v always needs to be computed
 static
-void scanLineDatadep(int y, HField *H, SimplField *S,
-		     FitPlane *u, FitPlane *v,
-		     Real& x1, Real& x2, int ss) {
+void scanLineDatadep_z(int y, HField *H, SimplField *S,
+		       FitPlane *u, FitPlane *v,
+		       Real& x1, Real& x2, int ss) {
   int x;
   int startx = (int) ceil(MIN(x1,x2));
   int endx   = (int)floor(MAX(x1,x2));
@@ -775,65 +791,33 @@ void scanLineDatadep(int y, HField *H, SimplField *S,
     return;
 
   Real diff, 
-    z,   r,  g,  b,  l, 
-    uz, ur, ug, ub, ul, 
-        vr, vg, vb, vl;
+     z, 
+    uz;
 
-  if (u) {
+  if (u)
     uz = u->z(startx, y);
-    if (emphasis != 0) {
-      /**/ if (H->hasLuma()) {
-	ul = u->l(startx, y);
-      }
-
-      else if (H->hasColor()) {
-	ur = u->r(startx, y);
-	ug = u->g(startx, y);
-	ub = u->b(startx, y);
-      }
-    }
-  }
 
   Real vz = v->z(startx, y);
-  if (emphasis != 0) {
-    /**/ if (H->hasLuma()) {
-      vl = v->l(startx, y);
-    }
-
-    else if (H->hasColor()) {
-      vr = v->r(startx, y);
-      vg = v->g(startx, y);
-      vb = v->b(startx, y);
-    }
-  }
 
   Real rx, ry = (Real)y / ss;
   for (x = startx; x <= endx; x++) {
     rx = (Real)x / ss;
     if (!S->isUsedInterp(rx, ry)) {
       z = H->getZInterp(rx, ry);
-      if (emphasis != 0) {
-	/**/ if (H->hasLuma())
-	  H->getLumaInterp(rx ,ry, l);
-	else if (H->hasColor())
-	  H->getColorInterp(rx, ry, r, g, b);
-      }
 
       if (u) {
 	// test against plane u
-	if (emphasis == 0)
-	  diff =      ABS(z - uz);
-	else if (H->hasLuma())
-	  diff = w1 * ABS(z - uz) + w2 * (ABS(l - ul));
-	else if (H->hasColor())
-	  diff = w1 * ABS(z - uz) + w2 * (ABS(r - ur) + ABS(g - ug) + ABS(b - ub));
+	diff = ABS(z - uz);
 
-	if (x % ss == 0 && y % ss == 0 && diff > u->cerr) {
-	  // update candidate for u
-	  // (only when x/ss and y/ss are integers)
-	  u->cx = (int)floor(rx);
-	  u->cy = (int)floor(ry);
-	  u->cerr = diff;
+	// update candidate for u
+	// (only when x/ss and y/ss are integers)
+	if (x % ss == 0 && y % ss == 0) {
+	  // OMP: atomic
+	  if (diff > u->cerr) {
+	    u->cx = (int)floor(rx);
+	    u->cy = (int)floor(ry);
+	    u->cerr = diff;
+	  }
 	}
 
 	// update squared error for u
@@ -850,19 +834,122 @@ void scanLineDatadep(int y, HField *H, SimplField *S,
 	cout << "       ";//??
 
       // test against plane v
-      if (emphasis == 0)
-	diff =      ABS(z - vz);
-      else if (H->hasLuma())
-	diff = w1 * ABS(z - vz) + w2 * (ABS(l - vl));
-      else if (H->hasColor())
-	diff = w1 * ABS(z - vz) + w2 * (ABS(r - vr) + ABS(g - vg) + ABS(b - vb));
+      diff = ABS(z - vz);
 
-      if (x % ss == 0 && y % ss == 0 && diff > v->cerr) {
-	// update candidate for v
+      // update candidate for v
+      // (only when x/ss and y/ss are integers)
+      if (x % ss == 0 && y % ss == 0) {
+	// OMP: atomic
+	if (diff > v->cerr) {
+	  v->cx = x / ss;
+	  v->cy = y / ss;
+	  v->cerr = diff;
+	}
+      }
+
+      // update squared error for v
+      if (criterion == SUM2)
+	v->err += diff * diff;	
+      // update max error for v
+      else if (diff > v->err)	
+	v->err = diff;
+
+      if (debug > 2)//??
+	cout << "(" << x << "," << y << ")" << diff << endl;
+
+      update_cost++;
+    }
+
+    if (u)
+
+    uz += u->z.a;
+    vz += v->z.a;
+  }
+
+  if (debug > 2)
+    cout << endl;
+
+  scancount += endx - startx + 1;
+}
+
+// With supersample factor ss,
+// scan a horizonal line between (x1,y) and (x2,y) computing error between
+// data in height field H and the planes u and v, updating for each
+// plane the sum of squared errors and the candidate point with highest error.
+// This version does z,r,g,b.
+// plane u's error already computed iff u==0,
+// plane v always needs to be computed
+static
+void scanLineDatadep_zl(int y, HField *H, SimplField *S,
+			FitPlane *u, FitPlane *v,
+			Real& x1, Real& x2, int ss) {
+  int x;
+  int startx = (int) ceil(MIN(x1,x2));
+  int endx   = (int)floor(MAX(x1,x2));
+
+  if (startx > endx)
+    return;
+
+  Real diff, 
+     z,  l, 
+    uz, ul, 
+	vl;
+
+  if (u) {
+    uz = u->z(startx, y);
+    ul = u->l(startx, y);
+  }
+
+  Real vz = v->z(startx, y);
+       vl = v->l(startx, y);
+
+  Real rx, ry = (Real)y / ss;
+  for (x = startx; x <= endx; x++) {
+    rx = (Real)x / ss;
+    if (!S->isUsedInterp(rx, ry)) {
+      z = H->getZInterp(rx, ry);
+	  H->getLumaInterp(rx ,ry, l);
+
+      if (u) {
+	// test against plane u
+	diff = w1 * ABS(z - uz) + w2 * (ABS(l - ul));
+
+	// update candidate for u
 	// (only when x/ss and y/ss are integers)
-	v->cx = x / ss;
-	v->cy = y / ss;
-	v->cerr = diff;
+	if (x % ss == 0 && y % ss == 0) {
+	  // OMP: atomic
+	  if (diff > u->cerr) {
+	    u->cx = (int)floor(rx);
+	    u->cy = (int)floor(ry);
+	    u->cerr = diff;
+	  }
+	}
+
+	// update squared error for u
+	if (criterion == SUM2)
+	  u->err += diff * diff;
+	// update max error for u
+	else if (diff > u->err)	
+	  u->err = diff;
+
+	if (debug > 2)//??
+	  cout << "(" << x << "," << y << ")" << diff << "  ";
+      }
+      else if (debug > 2)
+	cout << "       ";//??
+
+      // test against plane v
+      diff = w1 * ABS(z - vz) + w2 * (ABS(l - vl));
+
+      // update candidate for v
+      // (only when x/ss and y/ss are integers)
+      if (x % ss == 0 && y % ss == 0) {
+	// OMP: atomic
+	if (diff > v->cerr) {
+	  v->cx = x / ss;
+	  v->cy = y / ss;
+	  v->cerr = diff;
+	}
       }
 
       // update squared error for v
@@ -880,31 +967,127 @@ void scanLineDatadep(int y, HField *H, SimplField *S,
 
     if (u) {
       uz += u->z.a;
-      if (emphasis != 0) {
-	/**/ if (H->hasLuma()) {
-	  ul += u->l.a;
-	}
-
-	else if (H->hasColor()) {
-	  ur += u->r.a;
-	  ug += u->g.a;
-	  ub += u->b.a;
-	}
-      }
+      ul += u->l.a;
     }
 
     vz += v->z.a;
-    if (emphasis != 0) {
-      /**/ if (H->hasLuma()) {
-	vl += v->l.a;
+    vl += v->l.a;
+  }
+
+  if (debug > 2)
+    cout << endl;
+
+  scancount += endx - startx + 1;
+}
+
+// With supersample factor ss,
+// scan a horizonal line between (x1,y) and (x2,y) computing error between
+// data in height field H and the planes u and v, updating for each
+// plane the sum of squared errors and the candidate point with highest error.
+// This version does z,r,g,b.
+// plane u's error already computed iff u==0,
+// plane v always needs to be computed
+static
+void scanLineDatadep_zrgb(int y, HField *H, SimplField *S,
+			  FitPlane *u, FitPlane *v,
+			  Real& x1, Real& x2, int ss) {
+  int x;
+  int startx = (int) ceil(MIN(x1,x2));
+  int endx   = (int)floor(MAX(x1,x2));
+
+  if (startx > endx)
+    return;
+
+  Real diff, 
+    z,   r,  g,  b, 
+    uz, ur, ug, ub, 
+        vr, vg, vb;
+
+  if (u) {
+    uz = u->z(startx, y);
+    ur = u->r(startx, y);
+    ug = u->g(startx, y);
+    ub = u->b(startx, y);
+  }
+
+  Real vz = v->z(startx, y);
+       vr = v->r(startx, y);
+       vg = v->g(startx, y);
+       vb = v->b(startx, y);
+
+  Real rx, ry = (Real)y / ss;
+  for (x = startx; x <= endx; x++) {
+    rx = (Real)x / ss;
+    if (!S->isUsedInterp(rx, ry)) {
+      z = H->getZInterp(rx, ry);
+	  H->getColorInterp(rx, ry, r, g, b);
+
+      if (u) {
+	// test against plane u
+	diff = w1 * ABS(z - uz) + w2 * (ABS(r - ur) + ABS(g - ug) + ABS(b - ub));
+
+	// update candidate for u
+	// (only when x/ss and y/ss are integers)
+	if (x % ss == 0 && y % ss == 0) {
+	  // OMP: atomic
+	  if (diff > u->cerr) {
+	    u->cx = (int)floor(rx);
+	    u->cy = (int)floor(ry);
+	    u->cerr = diff;
+	  }
+	}
+
+	// update squared error for u
+	if (criterion == SUM2)
+	  u->err += diff * diff;
+	// update max error for u
+	else if (diff > u->err)	
+	  u->err = diff;
+
+	if (debug > 2)//??
+	  cout << "(" << x << "," << y << ")" << diff << "  ";
+      }
+      else if (debug > 2)
+	cout << "       ";//??
+
+      // test against plane v
+      diff = w1 * ABS(z - vz) + w2 * (ABS(r - vr) + ABS(g - vg) + ABS(b - vb));
+
+      // update candidate for v
+      // (only when x/ss and y/ss are integers)
+      if (x % ss == 0 && y % ss == 0) {
+	// OMP: atomic
+	if (diff > v->cerr) {
+	  v->cx = x / ss;
+	  v->cy = y / ss;
+	  v->cerr = diff;
+	}
       }
 
-      else if (H->hasColor()) {
-	vr += v->r.a;
-	vg += v->g.a;
-	vb += v->b.a;
-      }
+      // update squared error for v
+      if (criterion == SUM2)
+	v->err += diff * diff;	
+      // update max error for v
+      else if (diff > v->err)	
+	v->err = diff;
+
+      if (debug > 2)//??
+	cout << "(" << x << "," << y << ")" << diff << endl;
+
+      update_cost++;
     }
+
+    if (u) {
+      uz += u->z.a;
+      ur += u->r.a;
+      ug += u->g.a;
+      ub += u->b.a;
+    }
+
+    vz += v->z.a;
+    vr += v->r.a;
+    vg += v->g.a;
+    vb += v->b.a;
   }
 
   if (debug > 2)
@@ -1036,25 +1219,55 @@ void scanTriangleDatadep(HField *H, SimplField *S,
   Real x2 = by_y[0].x + dx2 * frac;
   int scancount0 = scancount;
 
-  for (; y < by_y[1].y; y++) {
-    scanLineDatadep(y, H, S, u, v, x1, x2, ss);
+  /**/ if (emphasis == 0)
+    for (; y < by_y[1].y; y++) {
+      scanLineDatadep_z   (y, H, S, u, v, x1, x2, ss);
 
-    x1 += dx1;
-    x2 += dx2;
-  }
+      x1 += dx1;
+      x2 += dx2;
+    }
+  else if (H->hasLuma())
+    for (; y < by_y[1].y; y++) {
+      scanLineDatadep_zl  (y, H, S, u, v, x1, x2, ss);
+
+      x1 += dx1;
+      x2 += dx2;
+    }
+  else if (H->hasColor())
+    for (; y < by_y[1].y; y++) {
+      scanLineDatadep_zrgb(y, H, S, u, v, x1, x2, ss);
+
+      x1 += dx1;
+      x2 += dx2;
+    }
 
   dx1 = divide_safe(by_y[2].x - by_y[1].x, by_y[2].y - by_y[1].y);
   frac = y - by_y[1].y;
   x1 = by_y[1].x + dx1*frac;
 
-  for(; y <= (int)by_y[2].y; y++) {
-    scanLineDatadep(y, H, S, u, v, x1, x2, ss);
+  /**/ if (emphasis == 0)
+    for(; y <= (int)by_y[2].y; y++) {
+      scanLineDatadep_z   (y, H, S, u, v, x1, x2, ss);
 
-    x1 += dx1;
-    x2 += dx2;
-  }
+      x1 += dx1;
+      x2 += dx2;
+    }
+  else if (H->hasLuma())
+    for(; y <= (int)by_y[2].y; y++) {
+      scanLineDatadep_zl  (y, H, S, u, v, x1, x2, ss);
 
-  if (debug>1)
+      x1 += dx1;
+      x2 += dx2;
+    }
+  else if (H->hasColor())
+    for(; y <= (int)by_y[2].y; y++) {
+      scanLineDatadep_zrgb(y, H, S, u, v, x1, x2, ss);
+
+      x1 += dx1;
+      x2 += dx2;
+    }
+
+  if (debug > 1)
     cout << ", " << scancount - scancount0 << " pixels" << endl;
 
   if (criterion == SUM2) {

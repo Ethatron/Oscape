@@ -269,10 +269,11 @@ public:
   class bit2 {
     friend class bitarray2;
 
-    bitfield *data, smp;
+    const bitfield *data;
+    bitfield smp;
     unsigned char hp, lp;
 
-    bit2(bitfield *d, unsigned char pos) {
+    bit2(const bitfield *d, unsigned char pos) {
       data = d;
 
       hp = pos & (hmask << wshift);

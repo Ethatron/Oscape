@@ -1072,10 +1072,11 @@ public:
 
     /* configure filtering */
     col->SetFilterMode(true);
-    col->AddFilter(REV32(WRLD));
-    col->AddFilter(REV32(CELL));
-    col->AddFilter(REV32(LTEX));
-    col->AddFilter(REV32(LAND));
+    col->AddRecordFilter(REV32(WRLD));
+    col->AddRecordFilter(REV32(CELL));
+    col->AddRecordFilter(REV32(LTEX));
+    col->AddRecordFilter(REV32(LAND));
+    col->AddWSpaceFilter(weid);
 
     try {
       prog->InitProgress("Initializing:", 0, "Reading plugins:", 0.0, 0, 1);
@@ -4010,6 +4011,8 @@ void SetProgress(int dne) {
 }
 
 void SetStatus(const char *status) {
+  if (prg)
+    prg->PollProgress();
   if (gui)
     gui->SetStatus(status);
 }
