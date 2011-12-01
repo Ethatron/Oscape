@@ -31,8 +31,7 @@
 
 int hmap_w;
 int hmap_h;
-
-float *hmap_o;
+float *hmap_o = NULL;
 
 #define EPSILON	(1.0 / 1024)
 

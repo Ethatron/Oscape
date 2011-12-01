@@ -1088,7 +1088,7 @@ public:
       prog->InitProgress("Cleanup:", 0, "Freeing plugins:", 0.0, 2, 1);
       DeleteCollection(col);
     }
-    catch(exception &e) {
+    catch (exception &e) {
       DeleteCollection(col);
 
       if (strcmp(e.what(), "ExitThread")) {
@@ -2436,10 +2436,10 @@ public:
 	      }
 
 	      /* done */
-	      FreeGeometry();
+	      freeGeometry();
 	    }
-	    catch(exception &e) {
-	      FreeGeometry();
+	    catch (exception &e) {
+	      freeGeometry();
 
 	      if (strcmp(e.what(), "ExitThread")) {
 		wxMessageDialog d(prog, e.what(), "Oscape error");
@@ -2481,7 +2481,7 @@ public:
 	    strcat(temps, "\\%02d.%02d.%02d.%02d");
 
 	    prog->InitProgress("Resolution %d, calculating normal-maps:", 512, "Tiling normals:", 0.0, majordone++, 1);
-	    write_nrmhgt0(false, OSNormalLow    ->GetValue(), false, H, temps);
+	    wrteNormals0(false, OSNormalLow    ->GetValue(), false, H, temps);
 	  }
 
 	  if (OSNormalRegular->GetValue()) {
@@ -2493,7 +2493,7 @@ public:
 	    strcat(temps, "\\%02d.%02d.%02d.%02d");
 
 	    prog->InitProgress("Resolution %d, calculating normal-maps:", 1024, "Tiling normals:", 0.0, majordone++, 1);
-	    write_nrmhgt1(false, OSNormalRegular->GetValue(), false, H, temps);
+	    wrteNormals1(false, OSNormalRegular->GetValue(), false, H, temps);
 	  }
 
 	  if (OSNormalHigh   ->GetValue()) {
@@ -2505,13 +2505,13 @@ public:
 	    strcat(temps, "\\%02d.%02d.%02d.%02d");
 
 	    prog->InitProgress("Resolution %d, calculating normal-maps:", 2048, "Tiling normals:", 0.0, majordone++, 1);
-	    write_nrmhgt2(false, OSNormalHigh   ->GetValue(), false, H, temps);
+	    wrteNormals2(false, OSNormalHigh   ->GetValue(), false, H, temps);
 	  }
 
-	  FreeTextures();
+	  freeTexture();
 	}
-	catch(exception &e) {
-	  FreeTextures();
+	catch (exception &e) {
+	  freeTexture();
 
 	  if (strcmp(e.what(), "ExitThread")) {
 	    wxMessageDialog d(prog, e.what(), "Oscape error");
@@ -2550,7 +2550,7 @@ public:
 	    strcat(temps, "\\%02d.%02d.%02d.%02d");
 
 	    prog->InitProgress("Resolution %d, calculating color-maps:", 512, "Tiling colors:", 0.0, majordone++, 1);
-	    write_col0(OSColorLow    ->GetValue(), C, temps);
+	    wrteColors0(OSColorLow    ->GetValue(), C, temps);
 	  }
 
 	  if (OSColorRegular->GetValue()) {
@@ -2562,7 +2562,7 @@ public:
 	    strcat(temps, "\\%02d.%02d.%02d.%02d");
 
 	    prog->InitProgress("Resolution %d, calculating color-maps:", 1024, "Tiling colors:", 0.0, majordone++, 1);
-	    write_col1(OSColorRegular->GetValue(), C, temps);
+	    wrteColors1(OSColorRegular->GetValue(), C, temps);
 	  }
 
 	  if (OSColorHigh   ->GetValue()) {
@@ -2574,7 +2574,7 @@ public:
 	    strcat(temps, "\\%02d.%02d.%02d.%02d");
 
 	    prog->InitProgress("Resolution %d, calculating color-maps:", 2048, "Tiling colors:", 0.0, majordone++, 1);
-	    write_col2(OSColorHigh   ->GetValue(), C, temps);
+	    wrteColors2(OSColorHigh   ->GetValue(), C, temps);
 	  }
 
 	  if (OSColorUltra  ->GetValue()) {
@@ -2586,13 +2586,13 @@ public:
 	    strcat(temps, "\\%02d.%02d.%02d.%02d");
 
 	    prog->InitProgress("Resolution %d, calculating color-maps:", 4096, "Tiling colors:", 0.0, majordone++, 1);
-	    write_col3(OSColorUltra  ->GetValue(), C, temps);
+	    wrteColors3(OSColorUltra  ->GetValue(), C, temps);
 	  }
 
-	  FreeTextures();
+	  freeTexture();
 	}
-	catch(exception &e) {
-	  FreeTextures();
+	catch (exception &e) {
+	  freeTexture();
 
 	  if (strcmp(e.what(), "ExitThread")) {
 	    wxMessageDialog d(prog, e.what(), "Oscape error");
@@ -2887,22 +2887,28 @@ private:
 
     set<unsigned long int>::const_iterator walk = config->seed.begin();
     while (walk != config->seed.end()) {
+      divm = 1, addm = 0;
+
       res_ = *walk;
       while (res_ > 1024) {
 	if ((numN = config->mesh_nu_n[res_]) > 0) {
-	  sprintf(buf, "1/%d: %d points, no UVs, %d tiles", divm, res_, numN); resm = max(resm, res_);
+	  sprintf(buf, "1/%d: %d points, no UVs, %d tiles", divm, res_, numN);
 
 	  OSInstallLevel0MeshRes->Append(buf, (void *)-((int)res_));
-	  if ((ackm == 0))
+	  if ((ackm == 0) || ((ackm == 1) && (res_ > resm)))
 	    OSInstallLevel0MeshRes->SetSelection(OSInstallLevel0MeshRes->GetCount() - 1), ackm = 1;
+
+	   resm = max(resm, res_);
 	}
 
 	if ((numY = config->mesh_yu_n[res_]) > 0) {
-	  sprintf(buf, "1/%d: %d points, UVs, %d tiles", divm, res_, numY); resm = max(resm, res_);
+	  sprintf(buf, "1/%d: %d points, UVs, %d tiles", divm, res_, numY);
 
 	  OSInstallLevel0MeshRes->Append(buf, (void *) ((int)res_));
-	  if ((ackm == 0))
+	  if ((ackm == 0) || ((ackm == 1) && (res_ > resm)))
 	    OSInstallLevel0MeshRes->SetSelection(OSInstallLevel0MeshRes->GetCount() - 1), ackm = 1;
+
+	   resm = max(resm, res_);
 	}
 
 	addm += (numN || numY) ? 1 : 0;
@@ -2921,11 +2927,13 @@ private:
 
 	/* if there are resolution, all lower ones are available as well */
 	if ((numN + numY + fndn) > 0) {
-	  sprintf(buf, "%dx%d normals, %d tiles", res_, res_, max(numN, numY)); resn = max(resn, res_);
+	  sprintf(buf, "%dx%d normals, %d tiles", res_, res_, max(numN, numY));
 
 	  OSInstallLevel0TextResN->Append(buf, (void *) ((int)res_));
-	  if ((tckn == 0))
+	  if ((tckn == 0) || ((tckn == 1) && (res_ > resn)))
 	    OSInstallLevel0TextResN->SetSelection(OSInstallLevel0TextResN->GetCount() - 1), tckn = 1;
+
+	  resn = max(resn, res_);
 	}
 
 	texn += (numN || numY || fndn) ? 1 : 0;
@@ -2940,11 +2948,13 @@ private:
 
 	/* if there are resolution, all lower ones are available as well */
 	if ((numN + numY + fndc) > 0) {
-	  sprintf(buf, "%dx%d colors, %d tiles", res_, res_, max(numN, numY)); resc = max(resc, res_);
+	  sprintf(buf, "%dx%d colors, %d tiles", res_, res_, max(numN, numY));
 
 	  OSInstallLevel0TextResC->Append(buf, (void *) ((int)res_));
-	  if ((tckc == 0))
+	  if ((tckc == 0) || ((tckc == 1) && (res_ > resc)))
 	    OSInstallLevel0TextResC->SetSelection(OSInstallLevel0TextResC->GetCount() - 1), tckc = 1;
+
+	  resc = max(resc, res_);
 	}
 
 	texc += (numN || numY || fndc) ? 1 : 0;
@@ -2962,6 +2972,8 @@ private:
 
     walk = config->seed.begin();
     while (walk != config->seed.end()) {
+      divm = 1, addm = 0;
+
       res_ = *walk;
       while (res_ > 1024) {
 	if ((numN = config->mesh_nu_x[res_]) > 0) {
@@ -3134,82 +3146,88 @@ private:
 
 	if ((file == stristr(file, "LOD-"))) {
 	  if (sscanf(file + 4, "%d", &res) == 1) {
-	    sprintf(temp, "%s\\LOD-%d\\*.pts", ph.data(), res);
-	    if ((RFiles = FindFirstFileEx(temp, FindExInfoBasic, &RFound, FindExSearchNameMatch, NULL, 0)) != INVALID_HANDLE_VALUE) {
-	      do {
-		const char *subfile = RFound.cFileName;
-		if (sscanf(subfile, "%d.pts", &ws) == 1) {
-		  struct sset *match = &wsset[ws];
-		  match->seed.insert(res);
-		}
-	      } while (FindNextFile(RFiles, &RFound));
+	    sprintf(temp, "LOD-%d", res);
+	    if (!stricmp(file, temp)) {
+	      sprintf(temp, "%s\\LOD-%d\\*.pts", ph.data(), res);
+	      if ((RFiles = FindFirstFileEx(temp, FindExInfoBasic, &RFound, FindExSearchNameMatch, NULL, 0)) != INVALID_HANDLE_VALUE) {
+		do {
+		  const char *subfile = RFound.cFileName;
+		  if (sscanf(subfile, "%d.pts", &ws) == 1) {
+		    struct sset *match = &wsset[ws];
+		    match->seed.insert(res);
+		  }
+		} while (FindNextFile(RFiles, &RFound));
 
-	      FindClose(RFiles);
+		FindClose(RFiles);
+	      }
+
+	      sprintf(temp, "%s\\LOD-%d\\UVon\\*", ph.data(), res);
+	      if ((RFiles = FindFirstFileEx(temp, FindExInfoBasic, &RFound, FindExSearchNameMatch, NULL, 0)) != INVALID_HANDLE_VALUE) {
+		do {
+		  const char *subfile = RFound.cFileName;
+		  if (sscanf(subfile, "%d.%d.%d.%d", &ws, &cx, &xy, &rs) == 4) {
+		    struct sset *match = &wsset[ws];
+		    if (stristr(subfile, ".x"  )) match->mesh_yu_x[res]++;
+		    if (stristr(subfile, ".nif")) match->mesh_yu_n[res]++;
+		  }
+		} while (FindNextFile(RFiles, &RFound));
+
+		FindClose(RFiles);
+	      }
+
+	      sprintf(temp, "%s\\LOD-%d\\UVoff\\*", ph.data(), res);
+	      if ((RFiles = FindFirstFileEx(temp, FindExInfoBasic, &RFound, FindExSearchNameMatch, NULL, 0)) != INVALID_HANDLE_VALUE) {
+		do {
+		  const char *subfile = RFound.cFileName;
+		  if (sscanf(subfile, "%d.%d.%d.%d", &ws, &cx, &xy, &rs) == 4) {
+		    struct sset *match = &wsset[ws];
+		    if (stristr(subfile, ".x"  )) match->mesh_nu_x[res]++;
+		    if (stristr(subfile, ".nif")) match->mesh_nu_n[res]++;
+		  }
+		} while (FindNextFile(RFiles, &RFound));
+
+		FindClose(RFiles);
+	      }
+
+//	      wsset.push_back(res);
 	    }
-
-	    sprintf(temp, "%s\\LOD-%d\\UVon\\*", ph.data(), res);
-	    if ((RFiles = FindFirstFileEx(temp, FindExInfoBasic, &RFound, FindExSearchNameMatch, NULL, 0)) != INVALID_HANDLE_VALUE) {
-	      do {
-		const char *subfile = RFound.cFileName;
-		if (sscanf(subfile, "%d.%d.%d.%d", &ws, &cx, &xy, &rs) == 4) {
-		  struct sset *match = &wsset[ws];
-		  if (stristr(subfile, ".x"  )) match->mesh_yu_x[res]++;
-		  if (stristr(subfile, ".nif")) match->mesh_yu_n[res]++;
-		}
-	      } while (FindNextFile(RFiles, &RFound));
-
-	      FindClose(RFiles);
-	    }
-
-	    sprintf(temp, "%s\\LOD-%d\\UVoff\\*", ph.data(), res);
-	    if ((RFiles = FindFirstFileEx(temp, FindExInfoBasic, &RFound, FindExSearchNameMatch, NULL, 0)) != INVALID_HANDLE_VALUE) {
-	      do {
-		const char *subfile = RFound.cFileName;
-		if (sscanf(subfile, "%d.%d.%d.%d", &ws, &cx, &xy, &rs) == 4) {
-		  struct sset *match = &wsset[ws];
-		  if (stristr(subfile, ".x"  )) match->mesh_nu_x[res]++;
-		  if (stristr(subfile, ".nif")) match->mesh_nu_n[res]++;
-		}
-	      } while (FindNextFile(RFiles, &RFound));
-
-	      FindClose(RFiles);
-	    }
-
-//	    wsset.push_back(res);
 	  }
 	}
 
 	if ((file == stristr(file, "TEX-"))) {
 	  if (sscanf(file + 4, "%d", &res) == 1) {
-	    sprintf(temp, "%s\\TEX-%d\\*", ph.data(), res);
-	    if ((RFiles = FindFirstFileEx(temp, FindExInfoBasic, &RFound, FindExSearchNameMatch, NULL, 0)) != INVALID_HANDLE_VALUE) {
-	      do {
-		const char *subfile = RFound.cFileName;
-		if (sscanf(subfile, "%d.%d.%d.%d", &ws, &cx, &xy, &rs) == 4) {
-		  struct sset *match = &wsset[ws];
+	    sprintf(temp, "TEX-%d", res);
+	    if (!stricmp(file, temp)) {
+	      sprintf(temp, "%s\\TEX-%d\\*", ph.data(), res);
+	      if ((RFiles = FindFirstFileEx(temp, FindExInfoBasic, &RFound, FindExSearchNameMatch, NULL, 0)) != INVALID_HANDLE_VALUE) {
+		do {
+		  const char *subfile = RFound.cFileName;
+		  if (sscanf(subfile, "%d.%d.%d.%d", &ws, &cx, &xy, &rs) == 4) {
+		    struct sset *match = &wsset[ws];
 
-		  /* a bit weak, but works */
-		  if (stristr(subfile, ".dds")) {
-		    if (stristr(subfile, "_fn"))
-		      match->textn_d[res]++;
-		    else
-		      match->textc_d[res]++;
+		    /* a bit weak, but works */
+		    if (stristr(subfile, ".dds")) {
+		      if (stristr(subfile, "_fn"))
+			match->textn_d[res]++;
+		      else
+			match->textc_d[res]++;
+		    }
+
+		    /* a bit weak, but works */
+		    if (stristr(subfile, ".png")) {
+		      if (stristr(subfile, "_fn"))
+			match->textn_p[res]++;
+		      else
+			match->textc_p[res]++;
+		    }
 		  }
+		} while (FindNextFile(RFiles, &RFound));
 
-		  /* a bit weak, but works */
-		  if (stristr(subfile, ".png")) {
-		    if (stristr(subfile, "_fn"))
-		      match->textn_p[res]++;
-		    else
-		      match->textc_p[res]++;
-		  }
-		}
-	      } while (FindNextFile(RFiles, &RFound));
+		FindClose(RFiles);
+	      }
 
-	      FindClose(RFiles);
+//	      wsset.push_back(res);
 	    }
-
-//	    wsset.push_back(res);
 	  }
 	}
 
@@ -3286,8 +3304,8 @@ public:
     strcat(trgm, "\\");
 
     /* look for all the directories */
-    sprintf(temp, "%s\\LOD-%d\\%s\\"          , ph.data(), abs(res), res > 0 ? "UVon" : "UVoff"     );
-    sprintf(base, "%s\\LOD-%d\\%s\\%02d.*.nif", ph.data(), abs(res), res > 0 ? "UVon" : "UVoff", wsv);
+    sprintf(temp, "%s\\LOD-%d\\%s\\"         , ph.data(), abs(res), res > 0 ? "UVon" : "UVoff"                           );
+    sprintf(base, "%s\\LOD-%d\\%s\\%02d.*.%s", ph.data(), abs(res), res > 0 ? "UVon" : "UVoff", wsv, subdir ? "x" : "nif");
 
     copy.clear();
     if ((RFiles = FindFirstFileEx(base, FindExInfoBasic, &RFound, FindExSearchNameMatch, NULL, 0)) != INVALID_HANDLE_VALUE) {
@@ -3729,10 +3747,10 @@ terminal_error: {
 	    if (!SynchronizeInstall(wsv, mres3, tres3, cres3, "farinf", "three"))
 	      break;
 
-	  FreeTextures();
+	  freeTexture();
 	}
-	catch(exception &e) {
-	  FreeTextures();
+	catch (exception &e) {
+	  freeTexture();
 
 	  if (strcmp(e.what(), "ExitThread")) {
 	    wxMessageDialog d(prog, e.what(), "Oscape error");

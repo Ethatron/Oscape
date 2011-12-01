@@ -29,8 +29,10 @@
  * version of this file under either the MPL or the LGPL License."
  */
 
-float *dmap; float dmap_zmin;
-int dmap_w, dmap_h;
+int dmap_w;
+int dmap_h;
+float dmap_zmin;
+float *dmap = NULL;
 
 Real dmap_eval(int x,int y) {
   if( x>=0 && x<dmap_w && y>=0 && y<dmap_h )
@@ -40,7 +42,7 @@ Real dmap_eval(int x,int y) {
 }
 
 #ifdef	SPLIT_ON_INJECTION
-void write_nrmhgt2(bool fmaps, bool nmaps, bool hmaps, const HField& hf, const char *pattern) {
+void wrteNormals2(bool fmaps, bool nmaps, bool hmaps, const HField& hf, const char *pattern) {
 #define ADJUSTMENT  0
     int ww = hf.getWidth () + ADJUSTMENT, www = ww + (ww - ADJUSTMENT);
     int hh = hf.getHeight() + ADJUSTMENT, hhh = hh + (hh - ADJUSTMENT);
@@ -273,9 +275,6 @@ void write_nrmhgt2(bool fmaps, bool nmaps, bool hmaps, const HField& hf, const c
     int rrastery = rastery * 2;
 
     /* allocate persistant output-buffer */
-    LPDIRECT3DTEXTURE9 tnrm = NULL;
-    LPDIRECT3DTEXTURE9 thgt = NULL;
-
     if (nmaps) {
       pD3DDevice->CreateTexture(www, hhh, 0, 0, D3DFMT_A16B16G16R16, D3DPOOL_MANAGED, &tnrm, NULL);
       if (!tnrm) throw runtime_error("Failed to allocate texture");
@@ -447,7 +446,7 @@ void write_nrmhgt2(bool fmaps, bool nmaps, bool hmaps, const HField& hf, const c
 	SetTopic("Writing tile {%d,%d} normals:", coordx, coordy);
 
 	/* flush persistant output-buffer to disk */
-	wrteDXTexture(tnrm, pattern, "_fn", coordx, coordy, min(resx, resy), true);
+	wrteTexture(tnrm, pattern, "_fn", coordx, coordy, min(resx, resy), true);
       } /* nmaps */
 
       if (hmaps && !skipTexture(pattern, "_fh", coordx, coordy, min(resx, resy), false)) {
@@ -521,7 +520,7 @@ void write_nrmhgt2(bool fmaps, bool nmaps, bool hmaps, const HField& hf, const c
 	  }
 	}
 
-	delete[] hmap_o;
+	delete[] hmap_o; hmap_o = NULL;
 
 	logpf("%02dx%02d: Heightmap deviation is [%f,%f]\n", ty, tx, hdev_n, hdev_p);
 
@@ -530,7 +529,7 @@ void write_nrmhgt2(bool fmaps, bool nmaps, bool hmaps, const HField& hf, const c
 	SetTopic("Writing tile {%d,%d} deviations:", coordx, coordy);
 
 	/* flush persistant output-buffer to disk */
-	wrteDXTexture(thgt, pattern, "_fh", coordx, coordy, min(resx, resy), false);
+	wrteTexture(thgt, pattern, "_fh", coordx, coordy, min(resx, resy), false);
       } /* fmaps */
 
       /* advance progress */
@@ -538,27 +537,27 @@ void write_nrmhgt2(bool fmaps, bool nmaps, bool hmaps, const HField& hf, const c
   }
   }
 
-  delete[] dmap;
+  delete[] dmap; dmap = NULL;
 
-  if (nmaps) tnrm->Release();
-  if (hmaps) thgt->Release();
+  if (nmaps) tnrm->Release(); tnrm = NULL;
+  if (hmaps) thgt->Release(); thgt = NULL;
 }
 
-void write_nrmhgt2(bool fmaps, bool nmaps, bool hmaps, const HField& hf) {
-  write_nrmhgt2(fmaps, nmaps, hmaps, hf, "%02d.%02d.%02d.%02d");
+void wrteNormals2(bool fmaps, bool nmaps, bool hmaps, const HField& hf) {
+  wrteNormals2(fmaps, nmaps, hmaps, hf, "%02d.%02d.%02d.%02d");
 }
 #endif
 
-void write_col2(bool cmaps, const CField& cf, const char *pattern) {
+void wrteColors2(bool cmaps, const CField& cf, const char *pattern) {
 }
 
-void write_col3(bool cmaps, const CField& cf, const char *pattern) {
+void wrteColors3(bool cmaps, const CField& cf, const char *pattern) {
 }
 
-void write_col2(bool cmaps, const CField& cf) {
+void wrteColors2(bool cmaps, const CField& cf) {
 //write_col2(cmaps, hf, "%02d.%02d.%02d.%02d");
 }
 
-void write_col3(bool cmaps, const CField& cf) {
+void wrteColors3(bool cmaps, const CField& cf) {
 //write_col3(cmaps, hf, "%02d.%02d.%02d.%02d");
 }

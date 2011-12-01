@@ -138,8 +138,6 @@ void wrtePointsFile(SimplField& ter);
 void greedy_insert(SimplField& ter);
 void greedy_insert_error(SimplField& ter);
 
-void FreeGeometry();
-
 void TransferGeometry(SimplField &ter);
 void TransferGeometry();
 void RevisitGeometry();
@@ -154,7 +152,7 @@ extern bool writenif;
 
 bool skipTile(int coordx, int coordy, int reso);
 
-void write_mesh(SimplField& ter);
+void wrteTIN(SimplField& ter);
 
 void wrteWavefront(const char *name);
 void wrteWavefront(SimplField& ter, const char *pattern);
@@ -168,10 +166,9 @@ void wrteDXMesh(const char *name);
 void wrteDXMesh(SimplField& ter, const char *pattern);
 void wrteDXMesh(SimplField& ter);
 
-bool skipmsh(const char *pattern, const char *pfx, int coordx, int coordy, int reso, bool uvs);
+bool skipGeometry(const char *pattern, const char *pfx, int coordx, int coordy, int reso, bool uvs);
 void wrteGeometry(SimplField& ter, const char *pattern);
-
-void FreeTextures();
+void freeGeometry();
 
 #include "scape-tex.h"
 
@@ -181,24 +178,25 @@ extern bool writeppm;
 extern bool writepng;
 extern bool writedds;
 
-void write_nrmhgt0(bool fmaps, bool nmaps, bool hmaps, const HField& hf, const char *pattern);
-void write_nrmhgt0(bool fmaps, bool nmaps, bool hmaps, const HField& hf);
-void write_nrmhgt1(bool fmaps, bool nmaps, bool hmaps, const HField& hf, const char *pattern);
-void write_nrmhgt1(bool fmaps, bool nmaps, bool hmaps, const HField& hf);
-void write_nrmhgt2(bool fmaps, bool nmaps, bool hmaps, const HField& hf, const char *pattern);
-void write_nrmhgt2(bool fmaps, bool nmaps, bool hmaps, const HField& hf);
+void wrteNormals0(bool fmaps, bool nmaps, bool hmaps, const HField& hf, const char *pattern);
+void wrteNormals0(bool fmaps, bool nmaps, bool hmaps, const HField& hf);
+void wrteNormals1(bool fmaps, bool nmaps, bool hmaps, const HField& hf, const char *pattern);
+void wrteNormals1(bool fmaps, bool nmaps, bool hmaps, const HField& hf);
+void wrteNormals2(bool fmaps, bool nmaps, bool hmaps, const HField& hf, const char *pattern);
+void wrteNormals2(bool fmaps, bool nmaps, bool hmaps, const HField& hf);
 
-void write_col0(bool cmaps, const CField& cf, const char *pattern);
-void write_col0(bool cmaps, const CField& cf);
-void write_col1(bool cmaps, const CField& cf, const char *pattern);
-void write_col1(bool cmaps, const CField& cf);
-void write_col2(bool cmaps, const CField& cf, const char *pattern);
-void write_col2(bool cmaps, const CField& cf);
-void write_col3(bool cmaps, const CField& cf, const char *pattern);
-void write_col3(bool cmaps, const CField& cf);
+void wrteColors0(bool cmaps, const CField& cf, const char *pattern);
+void wrteColors0(bool cmaps, const CField& cf);
+void wrteColors1(bool cmaps, const CField& cf, const char *pattern);
+void wrteColors1(bool cmaps, const CField& cf);
+void wrteColors2(bool cmaps, const CField& cf, const char *pattern);
+void wrteColors2(bool cmaps, const CField& cf);
+void wrteColors3(bool cmaps, const CField& cf, const char *pattern);
+void wrteColors3(bool cmaps, const CField& cf);
 
 bool skipTexture(const char *pattern, const char *pfx, int coordx, int coordy, int reso, bool xyz);
-void wrteDXTexture(LPDIRECT3DTEXTURE9 tex, const char *pattern, const char *pfx, int coordx, int coordy, int reso, bool xyz);
+void wrteTexture(LPDIRECT3DTEXTURE9 tex, const char *pattern, const char *pfx, int coordx, int coordy, int reso, bool xyz);
+void freeTexture();
 
 /* ---------------------------------------------------- */
 

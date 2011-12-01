@@ -203,9 +203,9 @@ public:
 public:
   mutable struct OBBSAFileInfo iinfo;
   mutable struct OBBSAFileInfo oinfo;
-  
+
   void GenHash() const {
-//  iinfo.hash = 
+//  iinfo.hash =
     oinfo.hash = ::GenHash("", *this);
   }
 
@@ -233,9 +233,9 @@ public:
 public:
   mutable struct OBBSAFolderInfo iinfo;
   mutable struct OBBSAFolderInfo oinfo;
-  
+
   void GenHash() const {
-//  iinfo.hash = 
+//  iinfo.hash =
     oinfo.hash = ::GenHash(*this, "");
   }
 
@@ -390,7 +390,7 @@ public:
 	  	header.FolderCount * sizeof(char) +
 	  	header.FolderNameLength +
 		header.FileCount   * sizeof(OBBSAFileInfo);
-	  size_t EndOfDirectory = 
+	  size_t EndOfDirectory =
 		header.FolderCount * sizeof(OBBSAFolderInfo) +
 		       FolderFileBlob +
 		header.FileNameLength;
@@ -479,6 +479,9 @@ public:
 	      file.iinfo = *f;
 	      file.filetype = filetype(&file);
 
+	      /* flip the compressed flag (easier to handle on each file individually) */
+	      file.iinfo.sizeFlags ^= (header.ArchiveFlags & OB_BSAARCHIVE_COMPRESSFILES ? OB_BSAFILE_FLAG_COMPRESS : 0);
+
 	      /* clear the rest */
 	      memset(&file.oinfo, 0, sizeof(file.oinfo));
 
@@ -520,6 +523,9 @@ public:
 
 	  sizehead = ftell(ibsa);
 	  sizebody = sizefile - sizehead;
+
+	  /* remove compressed flag (it's on each individual file now) */
+	  header.ArchiveFlags &= ~OB_BSAARCHIVE_COMPRESSFILES;
 	}
       }
     }
@@ -530,7 +536,7 @@ public:
   bool changed() {
     return (changedhead || changedbody);
   }
-  
+
   bool close() {
 //#pragma omp barrier
     if (changed()) {
@@ -608,7 +614,7 @@ public:
 	  _header.FolderCount * sizeof(char) +
 	  _header.FolderNameLength +
 	  _header.FileCount   * sizeof(OBBSAFileInfo);
-	size_t EndOfDirectory = 
+	size_t EndOfDirectory =
 	  _header.FolderCount * sizeof(OBBSAFolderInfo) +
 	          FolderFileBlob +
 	  _header.FileNameLength;
@@ -663,8 +669,8 @@ public:
 	      /* fill folder structure */
 	      dir.hash = (*dt)->oinfo.hash;
 	      dir.fileCount = (unsigned int)num;
-	      dir.offset = 
-		_header.FolderRecordOffset + 
+	      dir.offset =
+		_header.FolderRecordOffset +
 		_header.FolderCount * sizeof(OBBSAFolderInfo) +
 		_header.FileNameLength +
 		(dfmix - &dfblob[0]);
@@ -1059,7 +1065,7 @@ public:
 	bsfile sch; sch.assign(pathname);
 	std::transform(sch.begin(), sch.end(), sch.begin(), ::tolower);
 	std::replace(sch.begin(), sch.end(), '/', '\\');
-	
+
 	/* go find it, or add it */
 	bsfileset::iterator ft = (*dt).files.find(sch);
 	if (ft != (*dt).files.end()) {
@@ -1264,9 +1270,9 @@ public:
 
 	realsze += 1024;
 	res = uncompress(
-	  (Bytef *)file->inp + 0, 
-	  (uLongf *)&realsze, 
-	  (Bytef *)backbuffer + sizeof(int), 
+	  (Bytef *)file->inp + 0,
+	  (uLongf *)&realsze,
+	  (Bytef *)backbuffer + sizeof(int),
 	  (uLongf)sze
 	);
 
@@ -1329,7 +1335,7 @@ public:
       if (!file->oup)
 	return 0;
     }
-    
+
     /* don't limit writing */
     if ((file->oua + length) > file->ous) {
       file->ouc = file->oua + length;
@@ -1429,9 +1435,9 @@ public:
 		packsze = file->ous;
 
 		res = compress2(
-		  (Bytef *)frntbuffer + sizeof(int), 
-		  (uLongf *)&packsze, 
-		  (Bytef *)backbuffer, 
+		  (Bytef *)frntbuffer + sizeof(int),
+		  (uLongf *)&packsze,
+		  (Bytef *)backbuffer,
 		  (uLongf)realsze,
 		  compresslevel,
 		  Z_DEFLATED,
@@ -1468,15 +1474,15 @@ public:
 		packsze = file->ous;
 
 		if (compress_rfc1950_7z(
-		      (const unsigned char *)backbuffer, realsze, 
+		      (const unsigned char *)backbuffer, realsze,
 		      (unsigned char *)frntbuffer + sizeof(int), packsze,
 		      passes, fastbytes)) {
 
 #if 0
 		  res = uncompress(
-		    (Bytef *)backbuffer + 0, 
-		    (uLongf *)&realsze, 
-		    (Bytef *)frntbuffer + sizeof(int), 
+		    (Bytef *)backbuffer + 0,
+		    (uLongf *)&realsze,
+		    (Bytef *)frntbuffer + sizeof(int),
 		    (uLongf)packsze
 		  );
 
@@ -1537,9 +1543,9 @@ public:
 		packsze = file->ous;
 
 		res = compress2(
-		  (Bytef *)frntbuffer + sizeof(int), 
-		  (uLongf *)&packsze, 
-		  (Bytef *)backbuffer, 
+		  (Bytef *)frntbuffer + sizeof(int),
+		  (uLongf *)&packsze,
+		  (Bytef *)backbuffer,
 		  (uLongf)realsze,
 		  compresslevel,
 		  Z_DEFLATED,
@@ -1554,9 +1560,9 @@ public:
 
 #if 0
 		res = uncompress(
-		  (Bytef *)backbuffer + 0, 
-		  (uLongf *)&realsze, 
-		  (Bytef *)frntbuffer + sizeof(int), 
+		  (Bytef *)backbuffer + 0,
+		  (uLongf *)&realsze,
+		  (Bytef *)frntbuffer + sizeof(int),
 		  (uLongf)*((unsigned int *)frntbuffer)
 		);
 
@@ -1585,8 +1591,8 @@ public:
 
 	    if (strategy > -2) {
 	      /* write compressed size out */
-	      file->ous = 
-		((unsigned char *)frntbuffer - (unsigned char *)file->oup) + 
+	      file->ous =
+		((unsigned char *)frntbuffer - (unsigned char *)file->oup) +
 		sizeof(int) + packsze;
 
 	      /* and put original size in */
@@ -1679,7 +1685,7 @@ public:
       file->ina = 0;
     }
   }
-  
+
   bool eof(const bsfile *file) const {
     /* points to the end */
     return (file->ina == file->ins);
@@ -2140,7 +2146,7 @@ public:
 istream *openistream_arc(const char *pathname) {
   istream_arc *r = NULL;
   class it_file_arc *iface;
-  
+
   iface = (class it_file_arc *)fopen_arc(pathname, "rb");
   if (iface) {
     r = new istream_arc;
@@ -2187,7 +2193,7 @@ void closeostream_arc(ostream *ost) {
   /* nowait asynchronous (write-queue) */
 //#pragma omp single nowait
   {
-    size_t written = 
+    size_t written =
 
     /* copy-over the string ... */
     fwrite_arc(r->str().data(), 1, r->str().length(), r->iface);

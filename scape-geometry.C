@@ -1501,7 +1501,7 @@ void OptimizeGeometry() {
 #endif
 #endif
 
-void FreeGeometry() {
+void freeGeometry() {
   set<class objVertex *, struct V>::iterator itv;
   vector<class objFace *>::iterator itf;
 

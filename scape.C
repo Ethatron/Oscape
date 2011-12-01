@@ -173,7 +173,7 @@ void output_face(Triangle *t,void *closure)
 }
 
 
-void write_mesh(SimplField& ter)
+void wrteTIN(SimplField& ter)
 {
     ofstream tin("out.tin",ios::binary);
     tin_out = &tin;
@@ -1054,22 +1054,37 @@ bool skipTexture(const char *pattern, const char *pfx, int coordx, int coordy, i
   return skip;
 }
 
-#include "scape-rasterize.C"
-
 #define	addnote
 #define	verbose		0
 #define	optimizequick	0
 #define	normalsteepness	2
 
-void FreeTextures() {
+LPDIRECT3DTEXTURE9 tnrm = NULL;
+LPDIRECT3DTEXTURE9 thgt = NULL;
+LPDIRECT3DTEXTURE9 tcol = NULL;
+
+#include "scape-rasterize.C"
+#include "scape-tex.cpp"
+
+#define	PROGRESS	63
+#include "scape-tex0x.C"
+#include "scape-tex1x.C"
+#include "scape-tex2x.C"
+
+void freeTexture() {
+  if (hmap_o) delete[] hmap_o; hmap_o = NULL;
+  if (dmap  ) delete[] dmap  ; dmap   = NULL;
+
+  if (tnrm) tnrm->Release(); tnrm = NULL;
+  if (thgt) thgt->Release(); thgt = NULL;
+  if (tcol) tcol->Release(); tcol = NULL;
 }
 
-#include "scape-tex.cpp"
 bool writeppm = false;
 bool writepng = false;
 bool writedds = false;
 
-void wrteDXTexture(LPDIRECT3DTEXTURE9 tex, const char *pattern, const char *pfx, int coordx, int coordy, int reso, bool xyz) {
+void wrteTexture(LPDIRECT3DTEXTURE9 tex, const char *pattern, const char *pfx, int coordx, int coordy, int reso, bool xyz) {
   if (writeppm || writepng || writedds) {
     HRESULT res;
     char nbase[256], name[256];
@@ -1122,11 +1137,6 @@ void wrteDXTexture(LPDIRECT3DTEXTURE9 tex, const char *pattern, const char *pfx,
     }
   }
 }
-
-#define	PROGRESS	63
-#include "scape-tex0x.C"
-#include "scape-tex1x.C"
-#include "scape-tex2x.C"
 
 
 
@@ -1224,7 +1234,7 @@ int main(int argc,char **argv) {
     wrtePointsFile(ter);
 #endif
 
-    write_mesh(ter);
+    wrteTIN(ter);
     wrteWavefront(ter);
     wrteNIF(ter);
     wrteDXMesh(ter);
@@ -1233,11 +1243,11 @@ int main(int argc,char **argv) {
 #ifdef	SPLIT_ON_INJECTION
   if (writeobjmaps || writefcemaps) {
     if ( writeloresmaps)
-      write_nrmhgt0(writefcemaps, true, true, H);
+      wrteNormals0(writefcemaps, true, true, H);
     if (!writenoresmaps)
-      write_nrmhgt1(writefcemaps, true, true, H);
+      wrteNormals1(writefcemaps, true, true, H);
     if ( writehiresmaps)
-      write_nrmhgt2(writefcemaps, true, true, H);
+      wrteNormals2(writefcemaps, true, true, H);
   }
 #else
   if (writeobjmaps || writefcemaps) {

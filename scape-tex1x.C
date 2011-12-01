@@ -30,7 +30,7 @@
  */
 
 #ifdef	SPLIT_ON_INJECTION
-void write_nrmhgt1(bool fmaps, bool nmaps, bool hmaps, const HField& hf, const char *pattern) {
+void wrteNormals1(bool fmaps, bool nmaps, bool hmaps, const HField& hf, const char *pattern) {
     // 1k == 32, 3k == 96, 512 == 16 */
     int resx = rasterx / 32;
     int resy = rastery / 32;
@@ -48,9 +48,6 @@ void write_nrmhgt1(bool fmaps, bool nmaps, bool hmaps, const HField& hf, const c
     int gh = hf.getHeight();
 
     /* allocate persistant output-buffer */
-    LPDIRECT3DTEXTURE9 tnrm = NULL;
-    LPDIRECT3DTEXTURE9 thgt = NULL;
-
     if (nmaps) {
       pD3DDevice->CreateTexture(ww, hh, 0, 0, D3DFMT_A16B16G16R16, D3DPOOL_MANAGED, &tnrm, NULL);
       if (!tnrm) throw runtime_error("Failed to allocate texture");
@@ -202,7 +199,7 @@ void write_nrmhgt1(bool fmaps, bool nmaps, bool hmaps, const HField& hf, const c
 	SetTopic("Writing tile {%d,%d} normals:", coordx, coordy);
 
 	/* flush persistant output-buffer to disk */
-	wrteDXTexture(tnrm, pattern, "_fn", coordx, coordy, min(resx, resy), true);
+	wrteTexture(tnrm, pattern, "_fn", coordx, coordy, min(resx, resy), true);
       } /* nmaps */
 
       if (hmaps && !skipTexture(pattern, "_fh", coordx, coordy, min(resx, resy), false)) {
@@ -276,7 +273,7 @@ void write_nrmhgt1(bool fmaps, bool nmaps, bool hmaps, const HField& hf, const c
 	  }
 	}
 
-	delete[] hmap_o;
+	delete[] hmap_o; hmap_o = NULL;
 
 	logpf("%02dx%02d: Heightmap deviation is [%f,%f]\n", ty, tx, hdev_n, hdev_p);
 
@@ -285,7 +282,7 @@ void write_nrmhgt1(bool fmaps, bool nmaps, bool hmaps, const HField& hf, const c
 	SetTopic("Writing tile {%d,%d} deviations:", coordx, coordy);
 
 	/* flush persistant output-buffer to disk */
-	wrteDXTexture(thgt, pattern, "_fh", coordx, coordy, min(resx, resy), false);
+	wrteTexture(thgt, pattern, "_fh", coordx, coordy, min(resx, resy), false);
       } /* fmaps */
 
       /* advance progress */
@@ -293,16 +290,16 @@ void write_nrmhgt1(bool fmaps, bool nmaps, bool hmaps, const HField& hf, const c
     }
     }
 
-    if (nmaps) tnrm->Release();
-    if (hmaps) thgt->Release();
+    if (nmaps) tnrm->Release(); tnrm = NULL;
+    if (hmaps) thgt->Release(); thgt = NULL;
 }
 
-void write_nrmhgt1(bool fmaps, bool nmaps, bool hmaps, const HField& hf) {
-    write_nrmhgt1(fmaps, nmaps, hmaps, hf, "%02d.%02d.%02d.%02d");
+void wrteNormals1(bool fmaps, bool nmaps, bool hmaps, const HField& hf) {
+    wrteNormals1(fmaps, nmaps, hmaps, hf, "%02d.%02d.%02d.%02d");
 }
 #endif
 
-void write_col1(bool cmaps, const CField& cf, const char *pattern) {
+void wrteColors1(bool cmaps, const CField& cf, const char *pattern) {
     // 1k == 32, 3k == 96, 512 == 16 */
     int resx = rasterx / 32;
     int resy = rastery / 32;
@@ -320,8 +317,6 @@ void write_col1(bool cmaps, const CField& cf, const char *pattern) {
     int gh = cf.get_height();
 
     /* allocate persistant output-buffer */
-    LPDIRECT3DTEXTURE9 tcol = NULL;
-
     if (cmaps) {
       pD3DDevice->CreateTexture(ww, hh, 0, 0, D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, &tcol, NULL);
       if (!tcol) throw runtime_error("Failed to allocate texture");
@@ -387,7 +382,7 @@ void write_col1(bool cmaps, const CField& cf, const char *pattern) {
 	SetTopic("Writing tile {%d,%d} colors:", coordx, coordy);
 
 	/* flush persistant output-buffer to disk */
-	wrteDXTexture(tcol, pattern, "", coordx, coordy, min(resx, resy), false);
+	wrteTexture(tcol, pattern, "", coordx, coordy, min(resx, resy), false);
       } /* cmaps */
 
       /* advance progress */
@@ -395,9 +390,9 @@ void write_col1(bool cmaps, const CField& cf, const char *pattern) {
     }
     }
 
-    if (cmaps) tcol->Release();
+    if (cmaps) tcol->Release(); tcol = NULL;
 }
 
-void write_col1(bool cmaps, const CField& cf) {
-    write_col1(cmaps, cf, "%02d.%02d.%02d.%02d");
+void wrteColors1(bool cmaps, const CField& cf) {
+    wrteColors1(cmaps, cf, "%02d.%02d.%02d.%02d");
 }

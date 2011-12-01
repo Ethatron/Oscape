@@ -580,7 +580,6 @@ public:
 	      int realy = topc  + y + lofy;
 
 	      if (rchk(realx, realy)) {
-		/* flip y */
 		unsigned long realpos = rpos(realx, realy);
 
 		nm[realpos * 3 + 0] = (unsigned char)land->VNML->VNML[y][x].x;
@@ -640,7 +639,6 @@ public:
 	      int realy = topc  + y + lofy;
 
 	      if (rchk(realx, realy)) {
-		/* flip y */
 		unsigned long realpos = rpos(realx, realy);
 
 #define scale 1.0f  // 8.0f
@@ -1129,13 +1127,16 @@ public:
 /* besides enabling much less memory-consumption it also allows us to access
  * >2GB files on 32bit operating systems
  */
-#define PARTITION_ROWS	(1024)
-#define PARTITION_SIZE	(1024 * str)
-#define PARTITION_OFFSh	(((size_t)sy * str) >> 32)
-#define PARTITION_OFFSl	(((size_t)sy * str) >>  0)
+#define PARTITION_ROWS	(1024UL)
+#define PARTITION_SIZE	(1024UL * str)
+#define PARTITION_OFFSh	(DWORD)(((unsigned __int64)sy * str) >> 32)
+#define PARTITION_OFFSl	(DWORD)(((unsigned __int64)sy * str) >>  0)
 
 /* ---------------------------------------------------------------------------- */
 void NExtract(SINT32 num) {
+  bool rethrow = false;
+  char rethrowing[256];
+
   /* create output file */
 //OFSTRUCT of; HANDLE ohx = (HANDLE)OpenFile(weoutx.data(), &of, OF_READWRITE);
   HANDLE oh = CreateFile(weoutn.data(), GENERIC_READ | GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
@@ -1162,7 +1163,7 @@ void NExtract(SINT32 num) {
   HANDLE mh = CreateFileMapping(oh, NULL, PAGE_READWRITE, 0, 0, NULL);
   if (!mh) throw runtime_error("Failed to map output file");
 
-  for (int sy = 0; sy < sizey; sy += PARTITION_ROWS) {
+  for (unsigned long sy = 0; sy < sizey; sy += PARTITION_ROWS) {
     char *mem = (char *)MapViewOfFile(mh, FILE_MAP_ALL_ACCESS, PARTITION_OFFSh, PARTITION_OFFSl, PARTITION_SIZE);
     if (!mem) throw runtime_error("Failed to allocate output file");
 
@@ -1172,25 +1173,40 @@ void NExtract(SINT32 num) {
     SetTopic("Extracting normals from cells:");
     SetStatus("Extracting normals ...");
 
-//  try {
+    /* intercept for clean-up */
+    try {
       ExtractNWorldOp ewo(mem, sy, PARTITION_ROWS);
       for (SINT32 n = 0; n < num; ++n) {
 	ModFile *mf = GetModIDByLoadOrder(col, n);
 
 	mf->VisitRecords(REV32(WRLD), ewo);
       }
-//  }
-//  catch() {
-//  }
+    }
+    catch (exception &e) {
+      strcpy(rethrowing, e.what());
+      rethrow = true;
+
+      /* force loop-finish (allow clean-up) */
+      sy = sizey;
+    }
 
     UnmapViewOfFile(mem);
   }
 
   CloseHandle(mh);
   CloseHandle(oh);
+
+  /* after total cleanup, pass the error down */
+  if (rethrow) {
+    DeleteFile(weoutn.data());
+    throw runtime_error(rethrowing);
+  }
 }
 
 void HExtract(SINT32 num) {
+  bool rethrow = false;
+  char rethrowing[256];
+
   /* create output file */
 //OFSTRUCT of; HANDLE ohx = (HANDLE)OpenFile(weoutx.data(), &of, OF_READWRITE);
   HANDLE oh = CreateFile(weouth.data(), GENERIC_READ | GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
@@ -1217,7 +1233,7 @@ void HExtract(SINT32 num) {
   HANDLE mh = CreateFileMapping(oh, NULL, PAGE_READWRITE, 0, 0, NULL);
   if (!mh) throw runtime_error("Failed to map output file");
 
-  for (int sy = 0; sy < sizey; sy += PARTITION_ROWS) {
+  for (unsigned long sy = 0; sy < sizey; sy += PARTITION_ROWS) {
     char *mem = (char *)MapViewOfFile(mh, FILE_MAP_ALL_ACCESS, PARTITION_OFFSh, PARTITION_OFFSl, PARTITION_SIZE);
     if (!mem) throw runtime_error("Failed to allocate output file");
 
@@ -1227,25 +1243,40 @@ void HExtract(SINT32 num) {
     SetTopic("Extracting heights from cells:");
     SetStatus("Extracting heights ...");
 
-//  try {
+    /* intercept for clean-up */
+    try {
       ExtractHWorldOp ewo(mem, sy, PARTITION_ROWS);
       for (SINT32 n = 0; n < num; ++n) {
 	ModFile *mf = GetModIDByLoadOrder(col, n);
 
 	mf->VisitRecords(REV32(WRLD), ewo);
       }
-//  }
-//  catch() {
-//  }
+    }
+    catch (exception &e) {
+      strcpy(rethrowing, e.what());
+      rethrow = true;
+
+      /* force loop-finish (allow clean-up) */
+      sy = sizey;
+    }
 
     UnmapViewOfFile(mem);
   }
 
   CloseHandle(mh);
   CloseHandle(oh);
+
+  /* after total cleanup, pass the error down */
+  if (rethrow) {
+    DeleteFile(weouth.data());
+    throw runtime_error(rethrowing);
+  }
 }
 
 void MExtract(SINT32 num) {
+  bool rethrow = false;
+  char rethrowing[256];
+
   /* create output file */
 //OFSTRUCT of; HANDLE ohx = (HANDLE)OpenFile(weoutx.data(), &of, OF_READWRITE);
   HANDLE oh = CreateFile(weoutm.data(), GENERIC_READ | GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
@@ -1272,7 +1303,7 @@ void MExtract(SINT32 num) {
   HANDLE mh = CreateFileMapping(oh, NULL, PAGE_READWRITE, 0, 0, NULL);
   if (!mh) throw runtime_error("Failed to map output file");
 
-  for (int sy = 0; sy < sizey; sy += PARTITION_ROWS) {
+  for (unsigned long sy = 0; sy < sizey; sy += PARTITION_ROWS) {
     char *mem = (char *)MapViewOfFile(mh, FILE_MAP_ALL_ACCESS, PARTITION_OFFSh, PARTITION_OFFSl, PARTITION_SIZE);
     if (!mem) throw runtime_error("Failed to allocate output file");
 
@@ -1282,29 +1313,52 @@ void MExtract(SINT32 num) {
     SetTopic("Extracting importance from cells:");
     SetStatus("Extracting importance ...");
 
-//  try {
+    /* intercept for clean-up */
+    try {
       ExtractMWorldOp ewo(mem, sy, PARTITION_ROWS);
       for (SINT32 n = 0; n < num; ++n) {
 	ModFile *mf = GetModIDByLoadOrder(col, n);
 
 	mf->VisitRecords(REV32(WRLD), ewo);
       }
-//  }
-//  catch() {
-//  }
+    }
+    catch (exception &e) {
+      strcpy(rethrowing, e.what());
+      rethrow = true;
+
+      /* force loop-finish (allow clean-up) */
+      sy = sizey;
+    }
 
     UnmapViewOfFile(mem);
   }
 
   CloseHandle(mh);
   CloseHandle(oh);
+
+  /* after total cleanup, pass the error down */
+  if (rethrow) {
+    DeleteFile(weoutm.data());
+    throw runtime_error(rethrowing);
+  }
 }
 
 void CExtract(SINT32 num) {
+  bool rethrow = false;
+  char rethrowing[256];
+
   SetTopic("Building search-db:");
   SetStatus("Building search-db ...");
 
-  TextureDBInit();
+  /* intercept for clean-up */
+  try {
+    TextureDBInit();
+  }
+  catch (exception &e) {
+    TextureDBExit();
+
+    throw runtime_error(e.what());
+  }
 
   /* create output file */
 //OFSTRUCT of; HANDLE ohx = (HANDLE)OpenFile(weoutx.data(), &of, OF_READWRITE);
@@ -1332,7 +1386,7 @@ void CExtract(SINT32 num) {
   HANDLE mh = CreateFileMapping(oh, NULL, PAGE_READWRITE, 0, 0, NULL);
   if (!mh) throw runtime_error("Failed to map output file");
 
-  for (int sy = 0; sy < sizey; sy += PARTITION_ROWS) {
+  for (unsigned long sy = 0; sy < sizey; sy += PARTITION_ROWS) {
     char *mem = (char *)MapViewOfFile(mh, FILE_MAP_ALL_ACCESS, PARTITION_OFFSh, PARTITION_OFFSl, PARTITION_SIZE);
     if (!mem) throw runtime_error("Failed to allocate output file");
 
@@ -1342,16 +1396,22 @@ void CExtract(SINT32 num) {
     SetTopic("Extracting surfaces from cells:");
     SetStatus("Extracting surfaces ...");
 
-//  try {
+    /* intercept for clean-up */
+    try {
       ExtractCWorldOp ewo(mem, sy, PARTITION_ROWS);
       for (SINT32 n = 0; n < num; ++n) {
 	ModFile *mf = GetModIDByLoadOrder(col, n);
 
 	mf->VisitRecords(REV32(WRLD), ewo);
       }
-//  }
-//  catch() {
-//  }
+    }
+    catch (exception &e) {
+      strcpy(rethrowing, e.what());
+      rethrow = true;
+
+      /* force loop-finish (allow clean-up) */
+      sy = sizey;
+    }
 
     UnmapViewOfFile(mem);
   }
@@ -1360,6 +1420,12 @@ void CExtract(SINT32 num) {
   CloseHandle(oh);
 
   TextureDBExit();
+
+  /* after total cleanup, pass the error down */
+  if (rethrow) {
+    DeleteFile(weoutx.data());
+    throw runtime_error(rethrowing);
+  }
 }
 
 /* ---------------------------------------------------------------------------- */
@@ -1415,6 +1481,7 @@ DWORD __stdcall ExtractFromCollection(LPVOID lp) {
   sizey *= 32;
 
   int numpasses = 0;
+
   numpasses += calcn ? 1 : 0;
   numpasses += calch ? 1 : 0;
   numpasses += calcx ? 1 : 0;
