@@ -493,6 +493,48 @@ private:
     OSWorldspaceFill->Enable((actives != 0));
     OSPluginExtract->Enable((actives != 0) && (OSFileHeightfieldOut->GetPath() != "") && (OSWorldspace->GetValue() != ""));
     OSHeightfieldInstall->Enable((OSBaseDirIn->GetPath() != "") && (OSPlugoutDir->GetPath() != ""));
+    OSPointsClear1->Enable(OSFilePoints1->GetPath() != "");
+    OSPointsClear1->Enable(OSFilePoints1->GetPath() != "");
+  }
+
+  /* ---------------------------------------------------------------------------- */
+  void LoadWSpaceList() {
+    wspaces.clear();
+    wspacef.clear();
+
+    HKEY WSs = 0;
+    if (RegOpenKey(Settings, "Worldspaces", &WSs) == ERROR_SUCCESS) {
+      char p[256]; DWORD pl = 64; DWORD pos = 0;
+      char s[256]; DWORD sl = 32;
+
+      while (RegEnumValue(WSs, pos, p, &pl, NULL, NULL, (LPBYTE)s, &sl) != ERROR_NO_MORE_ITEMS) {
+	int fid = 0;
+	if (sscanf(s, "%d", &fid) == 1)
+	  wspacef[fid] = wspaces.insert(p).first;
+
+	p[0] = '\0'; pl = 64; pos++;
+	s[0] = '\0'; sl = 32;
+      }
+
+      RegCloseKey(WSs);
+    }
+    else {
+      wspacef[60] = wspaces.insert("Tamriel").first;
+      wspacef[40728] = wspaces.insert("SEWorld").first;
+    }
+  }
+
+  void SaveWSpaceList() {
+    map<int, worldset::iterator >::iterator srch = wspacef.begin();
+    while (srch != wspacef.end()) {
+      char s[256];
+      const char *p = (srch->second)->data();
+      sprintf(s, "%d", srch->first);
+
+      RegSetKeyValue(Settings, "Worldspaces", p, RRF_RT_REG_SZ, s, (DWORD)strlen(s) + 1);
+
+      srch++;
+    }
   }
 
   /* ---------------------------------------------------------------------------- */
@@ -523,11 +565,8 @@ private:
     actives = 0;
     plugins.clear();
     psorted.clear();
-    wspaces.clear();
-    wspacef.clear();
 
-    wspacef[60] = wspaces.insert("Tamriel").first;
-    wspacef[40728] = wspaces.insert("SEWorld").first;
+    LoadWSpaceList();
 
     char PPath[1024];
     strcpy(PPath, IPath);
@@ -689,8 +728,8 @@ private:
 
   /* ---------------------------------------------------------------------------- */
   void WorldspacesFromPlugins(wxCommandEvent& event) {
-    wspaces.clear();
-    wspacef.clear();
+//  wspaces.clear();
+//  wspacef.clear();
 
     wxBusyCursor wait;
     int num = OSPluginList->GetCount();
@@ -745,6 +784,8 @@ private:
 	}
       }
     }
+
+    SaveWSpaceList();
 
 #if 0
     Collection *col = CreateCollection(IPath, 0);
@@ -1030,7 +1071,7 @@ public:
     wxFileName fnn(ph); fnn.ClearExt(); fnn.SetExt("nrm");
     wxFileName fnh(ph); fnh.ClearExt(); fnh.SetExt("raw");
     wxFileName fnx(ph); fnx.ClearExt(); fnx.SetExt("land");
-    wxFileName fnm(ph); fnm.ClearExt(); fnm.SetExt("map");
+    wxFileName fnm(ph); fnm.ClearExt(); fnm.SetExt("fmap");
 
     wedata = OSPluginDir->GetPath();
     weoutn = fnn.GetFullPath(); calcn = false;
@@ -1173,7 +1214,7 @@ private:
     wxFileName fnn(ph); fnn.ClearExt(); fnn.SetExt("nrm");
     wxFileName fnh(ph); fnh.ClearExt(); fnh.SetExt("raw");
     wxFileName fnx(ph); fnx.ClearExt(); fnx.SetExt("land");
-    wxFileName fnm(ph); fnm.ClearExt(); fnm.SetExt("map");
+    wxFileName fnm(ph); fnm.ClearExt(); fnm.SetExt("fmap");
 
     /**/ if (pw == "Heightfield") ph = fnh.GetFullPath();
     else if (pw == "Normals"    ) ph = fnn.GetFullPath();
@@ -1388,7 +1429,7 @@ private:
     wxFileName fnn(ph); fnn.ClearExt(); fnn.SetExt("nrm");
     wxFileName fnh(ph); fnh.ClearExt(); fnh.SetExt("raw");
     wxFileName fnx(ph); fnx.ClearExt(); fnx.SetExt("land");
-    wxFileName fnm(ph); fnm.ClearExt(); fnm.SetExt("map");
+    wxFileName fnm(ph); fnm.ClearExt(); fnm.SetExt("fmap");
 
     wxString snn = fnn.GetFullPath();
     wxString snh = fnh.GetFullPath();
@@ -1432,8 +1473,21 @@ private:
       srch++;
     }
 
-    /* then check against the file-name */
+    /* then check against a file-fragment */
     wxFileName fn(ph); fn.ClearExt();
+    wxString wsf = fn.GetName();
+    srch = wspacef.begin();
+    while (srch != wspacef.end()) {
+      wxString mtch = *(srch->second);
+      if (wsf.First(mtch) != wxNOT_FOUND) {
+	wdscape = srch->first;
+	break;
+      }
+
+      srch++;
+    }
+
+    /* then check against the file-name */
     wsn = fn.GetName();
     srch = wspacef.begin();
     while (srch != wspacef.end()) {
@@ -1659,7 +1713,7 @@ private:
     wxFileName fnn(ph); fnn.ClearExt(); fnn.SetExt("nrm");
     wxFileName fnh(ph); fnh.ClearExt(); fnh.SetExt("raw");
     wxFileName fnx(ph); fnx.ClearExt(); fnx.SetExt("land");
-    wxFileName fnm(ph); fnm.ClearExt(); fnm.SetExt("map");
+    wxFileName fnm(ph); fnm.ClearExt(); fnm.SetExt("fmap");
 
     wxString snn = fnn.GetFullPath();
     wxString snh = fnh.GetFullPath();
@@ -2181,7 +2235,7 @@ public:
     wxFileName fnn(dataPth); fnn.ClearExt(); fnn.SetExt("nrm");
     wxFileName fnh(dataPth); fnh.ClearExt(); fnh.SetExt("raw");
     wxFileName fnx(dataPth); fnx.ClearExt(); fnx.SetExt("land");
-    wxFileName fnm(dataPth); fnm.ClearExt(); fnm.SetExt("map");
+    wxFileName fnm(dataPth); fnm.ClearExt(); fnm.SetExt("fmap");
 
     wxString greyFPth = fnm.GetFullPath();
     wxString dataFPth = fnh.GetFullPath();
@@ -2289,16 +2343,16 @@ public:
 	writenif = OSMeshNIF->GetValue();
 	writedx9 = OSMeshDX ->GetValue();
 
-	vector< pair<int, float> > ress; size_t r = 0;
+	vector< pair<int, Real> > ress; size_t r = 0;
 
-	if (OSRes1->GetValue()) ress.push_back(pair<int, float>(limit / 1, termination * 1));
-	if (OSRes2->GetValue()) ress.push_back(pair<int, float>(limit / 2, termination * 2));
-	if (OSRes3->GetValue()) ress.push_back(pair<int, float>(limit / 4, termination * 4));
-	if (OSRes4->GetValue()) ress.push_back(pair<int, float>(limit / 8, termination * 8));
-	if (OSRes5->GetValue()) ress.push_back(pair<int, float>(limit / 16, termination * 16));
-	if (OSRes6->GetValue()) ress.push_back(pair<int, float>(limit / 32, termination * 32));
-	if (OSRes7->GetValue()) ress.push_back(pair<int, float>(limit / 64, termination * 64));
-	if (OSRes8->GetValue()) ress.push_back(pair<int, float>(limit / 128, termination * 128));
+	if (OSRes1->GetValue()) ress.push_back(pair<int, Real>(limit / 1, termination * 1));
+	if (OSRes2->GetValue()) ress.push_back(pair<int, Real>(limit / 2, termination * 2));
+	if (OSRes3->GetValue()) ress.push_back(pair<int, Real>(limit / 4, termination * 4));
+	if (OSRes4->GetValue()) ress.push_back(pair<int, Real>(limit / 8, termination * 8));
+	if (OSRes5->GetValue()) ress.push_back(pair<int, Real>(limit / 16, termination * 16));
+	if (OSRes6->GetValue()) ress.push_back(pair<int, Real>(limit / 32, termination * 32));
+	if (OSRes7->GetValue()) ress.push_back(pair<int, Real>(limit / 64, termination * 64));
+	if (OSRes8->GetValue()) ress.push_back(pair<int, Real>(limit / 128, termination * 128));
 
 	if ((r = ress.size()) > 0) {
 	  char temps[256], base[1024];
@@ -3903,6 +3957,12 @@ public:
     if (!ph.IsNull()) {
       ChangeHeightfieldIn1(ph);
       ChangeHeightfieldIn2(ph);
+    }
+
+    ph = OSFilePoints1->GetPath();
+    if (!ph.IsNull()) {
+      ChangePointsIn1(ph);
+      ChangePointsIn2(ph);
     }
 
     ph = OSBaseDirOut1->GetPath();

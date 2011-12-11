@@ -890,6 +890,7 @@ wxOscape::wxOscape( wxWindow* parent, wxWindowID id, const wxString& title, cons
 	OSPluginAutosave->Connect( wxEVT_COMMAND_CHECKBOX_CLICKED, wxCommandEventHandler( wxOscape::ChangeAutosave ), NULL, this );
 	OSPluginDir->Connect( wxEVT_COMMAND_DIRPICKER_CHANGED, wxFileDirPickerEventHandler( wxOscape::ChangePluginDir ), NULL, this );
 	OSPluginList->Connect( wxEVT_COMMAND_LISTBOX_SELECTED, wxCommandEventHandler( wxOscape::ChangeActivePlugins ), NULL, this );
+	OSPluginList->Connect( wxEVT_COMMAND_CHECKLISTBOX_TOGGLED, wxCommandEventHandler( wxOscape::ChangeActivePlugins ), NULL, this );
 	OSWorldspace->Connect( wxEVT_COMMAND_COMBOBOX_SELECTED, wxCommandEventHandler( wxOscape::ChangeWorldspace ), NULL, this );
 	OSWorldspaceFill->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( wxOscape::WorldspacesFromPlugins ), NULL, this );
 	OSFileHeightfieldOut->Connect( wxEVT_COMMAND_FILEPICKER_CHANGED, wxFileDirPickerEventHandler( wxOscape::ChangeHeightfieldOut ), NULL, this );
@@ -936,6 +937,7 @@ wxOscape::~wxOscape()
 	OSPluginAutosave->Disconnect( wxEVT_COMMAND_CHECKBOX_CLICKED, wxCommandEventHandler( wxOscape::ChangeAutosave ), NULL, this );
 	OSPluginDir->Disconnect( wxEVT_COMMAND_DIRPICKER_CHANGED, wxFileDirPickerEventHandler( wxOscape::ChangePluginDir ), NULL, this );
 	OSPluginList->Disconnect( wxEVT_COMMAND_LISTBOX_SELECTED, wxCommandEventHandler( wxOscape::ChangeActivePlugins ), NULL, this );
+	OSPluginList->Disconnect( wxEVT_COMMAND_CHECKLISTBOX_TOGGLED, wxCommandEventHandler( wxOscape::ChangeActivePlugins ), NULL, this );
 	OSWorldspace->Disconnect( wxEVT_COMMAND_COMBOBOX_SELECTED, wxCommandEventHandler( wxOscape::ChangeWorldspace ), NULL, this );
 	OSWorldspaceFill->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( wxOscape::WorldspacesFromPlugins ), NULL, this );
 	OSFileHeightfieldOut->Disconnect( wxEVT_COMMAND_FILEPICKER_CHANGED, wxFileDirPickerEventHandler( wxOscape::ChangeHeightfieldOut ), NULL, this );

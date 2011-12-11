@@ -559,7 +559,20 @@ public:
 	cell = (Ob::CELLRecord *)(*walk);
 	land = (Ob::LANDRecord *)cell->LAND;
 
-	if (cell->XCLC.IsLoaded() && land) {
+	/* make sure it's winning */
+	if (cell->XCLC.IsLoaded() && land && !land->IsWinningDetermined()) {
+	  ModFile *WinningModFile;
+	  Record *WinningRecord;
+
+	  col->LookupWinningRecord(land->formID, WinningModFile, WinningRecord, false);
+	  printf("hmm");
+	}
+
+	if (cell->XCLC.IsLoaded() && land && !land->IsWinning()) {
+	  printf("skipping");
+	}
+
+	if (cell->XCLC.IsLoaded() && land && land->IsWinning()) {
 	  long leftx = (cell->XCLC->posX + rofx);
 	  long topy  = (cell->XCLC->posY + rofy);
 	  long leftc = (offsx + leftx) * 32;
@@ -618,7 +631,20 @@ public:
 	cell = (Ob::CELLRecord *)(*walk);
 	land = (Ob::LANDRecord *)cell->LAND;
 
-	if (cell->XCLC.IsLoaded() && land) {
+	/* make sure it's winning */
+	if (cell->XCLC.IsLoaded() && land && !land->IsWinningDetermined()) {
+	  ModFile *WinningModFile;
+	  Record *WinningRecord;
+
+	  col->LookupWinningRecord(land->formID, WinningModFile, WinningRecord, false);
+	  printf("hmm");
+	}
+
+	if (cell->XCLC.IsLoaded() && land && !land->IsWinning()) {
+	  printf("skipping");
+	}
+
+	if (cell->XCLC.IsLoaded() && land && land->IsWinning()) {
 	  long leftx = (cell->XCLC->posX + rofx);
 	  long topy  = (cell->XCLC->posY + rofy);
 	  long leftc = (offsx + leftx) * 32;
@@ -691,7 +717,20 @@ public:
 	cell = (Ob::CELLRecord *)(*walk);
 	land = (Ob::LANDRecord *)cell->LAND;
 
-	if (cell->XCLC.IsLoaded() && land) {
+	/* make sure it's winning */
+	if (cell->XCLC.IsLoaded() && land && !land->IsWinningDetermined()) {
+	  ModFile *WinningModFile;
+	  Record *WinningRecord;
+
+	  col->LookupWinningRecord(land->formID, WinningModFile, WinningRecord, false);
+	  printf("hmm");
+	}
+
+	if (cell->XCLC.IsLoaded() && land && !land->IsWinning()) {
+	  printf("skipping");
+	}
+
+	if (cell->XCLC.IsLoaded() && land && land->IsWinning()) {
 	  long leftx = (cell->XCLC->posX + rofx);
 	  long topy  = (cell->XCLC->posY + rofy);
 	  long leftc = (offsx + leftx) * 32;
@@ -896,7 +935,20 @@ public:
 	cell = (Ob::CELLRecord *)(*walk);
 	land = (Ob::LANDRecord *)cell->LAND;
 
-	if (cell->XCLC.IsLoaded() && land) {
+	/* make sure it's winning */
+	if (cell->XCLC.IsLoaded() && land && !land->IsWinningDetermined()) {
+	  ModFile *WinningModFile;
+	  Record *WinningRecord;
+
+	  col->LookupWinningRecord(land->formID, WinningModFile, WinningRecord, false);
+	  printf("hmm");
+	}
+
+	if (cell->XCLC.IsLoaded() && land && !land->IsWinning()) {
+	  printf("skipping");
+	}
+
+	if (cell->XCLC.IsLoaded() && land && land->IsWinning()) {
 	  long leftx = (cell->XCLC->posX + rofx);
 	  long topy  = (cell->XCLC->posY + rofy);
 	  long leftc = (offsx + leftx) * 32;
@@ -1479,6 +1531,10 @@ DWORD __stdcall ExtractFromCollection(LPVOID lp) {
 
   sizex *= 32;
   sizey *= 32;
+
+  if (!sizex || !sizey) {
+    throw runtime_error("There is no data about this worldspace in the active plugin-list.");
+  }
 
   int numpasses = 0;
 
