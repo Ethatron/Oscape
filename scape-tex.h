@@ -16,6 +16,7 @@ bool TextureConvertA(LPDIRECT3DTEXTURE9 *alpha, int minlevel);
 bool TextureConvertXYZD(LPDIRECT3DTEXTURE9 *norm, int minlevel);
 bool TextureConvertXY_Z(LPDIRECT3DTEXTURE9 *norm, LPDIRECT3DTEXTURE9 *z, int minlevel);
 bool TextureConvertXYZ(LPDIRECT3DTEXTURE9 *norm, int minlevel);
+bool TextureConvertXZY(LPDIRECT3DTEXTURE9 *norm, int minlevel);
 bool TextureConvertXY(LPDIRECT3DTEXTURE9 *norm, int minlevel);
 bool TextureConvertLA(LPDIRECT3DTEXTURE9 *base, int minlevel);
 bool TextureConvertA(LPDIRECT3DTEXTURE9 *alpha, int minlevel);
@@ -27,6 +28,7 @@ bool TextureCompressA(LPDIRECT3DTEXTURE9 *alpha, int minlevel);
 bool TextureCompressXYZD(LPDIRECT3DTEXTURE9 *norm, int minlevel);
 bool TextureCompressXY_Z(LPDIRECT3DTEXTURE9 *norm, LPDIRECT3DTEXTURE9 *z, int minlevel);
 bool TextureCompressXYZ(LPDIRECT3DTEXTURE9 *norm, int minlevel);
+bool TextureCompressXZY(LPDIRECT3DTEXTURE9 *norm, int minlevel);
 bool TextureCompressXY(LPDIRECT3DTEXTURE9 *norm, int minlevel);
 bool TextureCompressPM(LPDIRECT3DTEXTURE9 *base, LPDIRECT3DTEXTURE9 *norm, int minlevel, bool gama);
 

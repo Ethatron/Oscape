@@ -660,11 +660,11 @@ void CalculateGeometryNormals() {
 /* ---------------------------------------------------- */
 
 #ifdef	SPLIT_ON_INJECTION
-std::set<class objVertex *, struct V> SectorVertices[16][16];
-std::vector<class objFace *> SectorFaces[16][16];
+std::set<class objVertex *, struct V> SectorVertices[128][128];
+std::vector<class objFace *> SectorFaces[128][128];
 
 #include <omp.h>
-omp_lock_t SectorLocks[16][16];
+omp_lock_t SectorLocks[128][128];
 
 void TileGeometry() {
     set<class objVertex *, struct V>::const_iterator itv;
@@ -708,14 +708,10 @@ void TileGeometry() {
 
       if ((sy >= minty) && (sy < numty)) {
       if ((sx >= mintx) && (sx < numtx)) {
-	/* codification is:
-	 * "worldspace.tilex*32.tiley*32.32"
-	 * worldspace == 60 == Tamriel
-	 */
 	int coordx = (sx - offx) * resx;
 	int coordy = (sy - offy) * resy;
 
-	if (!skipTile(coordx, coordy, 32)) {
+	if (!skipTile(coordx, coordy, min(resx, resy))) {
 	  omp_set_lock(&SectorLocks[sy][sx]);
 
 	  /* this set MUST be searchable by local coordinates
@@ -856,14 +852,10 @@ void ExtrudeBorders() {
 
     for (int ty = minty; ty < numty; ty++) {
     for (int tx = mintx; tx < numtx; tx++) {
-      /* codification is:
-       * "worldspace.tilex*32.tiley*32.32"
-       * worldspace == 60 == Tamriel
-       */
       int coordx = (tx - offx) * resx;
       int coordy = (ty - offy) * resy;
 
-      if (!skipTile(coordx, coordy, 32)) {
+      if (!skipTile(coordx, coordy, min(resx, resy))) {
 	for (itv = SectorVertices[ty][tx].begin(); itv != SectorVertices[ty][tx].end(); itv++) {
 	  /* border-vertex */
 	  if (((*itv)->x == 0) ||
@@ -887,8 +879,8 @@ typedef std::vector<class objFace *>::iterator fiterator;
 void roptimize_faces() {
 }
 #else
-std::vector<class objVertex *> SectorVerticeO[16][16];
-std::vector<class objFace *> SectorFaceO[16][16];
+std::vector<class objVertex *> SectorVerticeO[128][128];
+std::vector<class objFace *> SectorFaceO[128][128];
 std::vector<unsigned int> SectorRemapO;
 
 typedef std::vector<class objVertex *>::iterator viterator;
@@ -1123,16 +1115,12 @@ void OptimizeGeometry() {
 
     for (int ty = minty; ty < numty; ty++) {
     for (int tx = mintx; tx < numtx; tx++) {
-      /* codification is:
-       * "worldspace.tilex*32.tiley*32.32"
-       * worldspace == 60 == Tamriel
-       */
       int coordx = (tx - offx) * resx;
       int coordy = (ty - offy) * resy;
 
       SetTopic("Optimizing tile {%d,%d}:", coordx, coordy);
 
-      if (!skipTile(coordx, coordy, 32)) {
+      if (!skipTile(coordx, coordy, min(resx, resy))) {
       char buf[256];
 
       /* VBs starts on index 0 */

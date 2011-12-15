@@ -186,22 +186,22 @@
                 <event name="OnSize"></event>
                 <event name="OnUpdateUI"></event>
                 <object class="wxMenu" expanded="1">
-                    <property name="label">Defaults</property>
-                    <property name="name">OSDefaults</property>
+                    <property name="label">Game</property>
+                    <property name="name">OSGame</property>
                     <property name="permission">protected</property>
                     <object class="wxMenuItem" expanded="1">
                         <property name="bitmap"></property>
                         <property name="checked">1</property>
                         <property name="enabled">1</property>
                         <property name="help"></property>
-                        <property name="id">wxID_DEFV</property>
+                        <property name="id">wxID_OBLIVON</property>
                         <property name="kind">wxITEM_RADIO</property>
-                        <property name="label">Vanilla Oblivion</property>
-                        <property name="name">OSDefaultVanilla</property>
+                        <property name="label">Oblivion</property>
+                        <property name="name">OSOblivion</property>
                         <property name="permission">none</property>
                         <property name="shortcut"></property>
                         <property name="unchecked_bitmap"></property>
-                        <event name="OnMenuSelection">ChangeDefaults</event>
+                        <event name="OnMenuSelection">ChangeToOblivion</event>
                         <event name="OnUpdateUI"></event>
                     </object>
                     <object class="wxMenuItem" expanded="1">
@@ -209,30 +209,70 @@
                         <property name="checked">0</property>
                         <property name="enabled">1</property>
                         <property name="help"></property>
-                        <property name="id">wxID_DEFT</property>
+                        <property name="id">wxID_SKYRIM</property>
                         <property name="kind">wxITEM_RADIO</property>
-                        <property name="label">Vanilla TWMP</property>
-                        <property name="name">OSDefaultTWMP</property>
+                        <property name="label">Skyrim</property>
+                        <property name="name">OSSkyrim</property>
                         <property name="permission">none</property>
                         <property name="shortcut"></property>
                         <property name="unchecked_bitmap"></property>
-                        <event name="OnMenuSelection">ChangeDefaults</event>
+                        <event name="OnMenuSelection">ChangeToSkyrim</event>
                         <event name="OnUpdateUI"></event>
                     </object>
-                    <object class="wxMenuItem" expanded="1">
-                        <property name="bitmap"></property>
-                        <property name="checked">0</property>
-                        <property name="enabled">1</property>
-                        <property name="help"></property>
-                        <property name="id">wxID_DEFL</property>
-                        <property name="kind">wxITEM_RADIO</property>
-                        <property name="label">LLOD TWMP</property>
-                        <property name="name">OSDefaultLLOD</property>
-                        <property name="permission">none</property>
-                        <property name="shortcut"></property>
-                        <property name="unchecked_bitmap"></property>
-                        <event name="OnMenuSelection">ChangeDefaults</event>
-                        <event name="OnUpdateUI"></event>
+                </object>
+                <object class="wxMenu" expanded="1">
+                    <property name="label">Defaults</property>
+                    <property name="name">OSDefaults</property>
+                    <property name="permission">protected</property>
+                    <object class="submenu" expanded="1">
+                        <property name="label">Oblivion</property>
+                        <property name="name">OSOblivionDefs</property>
+                        <property name="permission">protected</property>
+                        <object class="wxMenuItem" expanded="1">
+                            <property name="bitmap"></property>
+                            <property name="checked">1</property>
+                            <property name="enabled">1</property>
+                            <property name="help"></property>
+                            <property name="id">wxID_DEFV</property>
+                            <property name="kind">wxITEM_RADIO</property>
+                            <property name="label">Vanilla Oblivion</property>
+                            <property name="name">OSDefaultVanilla</property>
+                            <property name="permission">none</property>
+                            <property name="shortcut"></property>
+                            <property name="unchecked_bitmap"></property>
+                            <event name="OnMenuSelection">ChangeDefaults</event>
+                            <event name="OnUpdateUI"></event>
+                        </object>
+                        <object class="wxMenuItem" expanded="1">
+                            <property name="bitmap"></property>
+                            <property name="checked">0</property>
+                            <property name="enabled">1</property>
+                            <property name="help"></property>
+                            <property name="id">wxID_DEFT</property>
+                            <property name="kind">wxITEM_RADIO</property>
+                            <property name="label">Vanilla TWMP</property>
+                            <property name="name">OSDefaultTWMP</property>
+                            <property name="permission">none</property>
+                            <property name="shortcut"></property>
+                            <property name="unchecked_bitmap"></property>
+                            <event name="OnMenuSelection">ChangeDefaults</event>
+                            <event name="OnUpdateUI"></event>
+                        </object>
+                        <object class="wxMenuItem" expanded="1">
+                            <property name="bitmap"></property>
+                            <property name="checked">0</property>
+                            <property name="enabled">1</property>
+                            <property name="help"></property>
+                            <property name="id">wxID_DEFL</property>
+                            <property name="kind">wxITEM_RADIO</property>
+                            <property name="label">LLOD TWMP</property>
+                            <property name="name">OSDefaultLLOD</property>
+                            <property name="permission">none</property>
+                            <property name="shortcut"></property>
+                            <property name="unchecked_bitmap"></property>
+                            <event name="OnMenuSelection">ChangeDefaults</event>
+                            <event name="OnUpdateUI"></event>
+                        </object>
                     </object>
                 </object>
             </object>

@@ -54,6 +54,10 @@ int tilesx, tilesy;
 
 __int64 writechk = 0;
 int wdspace = 60;
+char wdsname[256] = "tamriel";
+int wchgame = 0;
+char *wpattern = "%02d.%02d.%02d.%02d";
+
 unsigned short basinshift  = (8192 - 512) / (2 * 4);
 Real heightscale =    2.0f *    4.0f/*Annwyn*/;
 Real heightshift = 8192.0f -    0.0f/*Annwyn*/;
@@ -84,7 +88,18 @@ bool skipTile(int coordx, int coordy, int reso) {
     vector<string>::iterator walk = skiplist.begin();
     while (walk != skiplist.end()) {
       char nbase[256], name[256];
-      sprintf(nbase, walk->data(), wdspace, coordx, coordy, reso);
+
+      /* codification is:
+       * "worldspace.tilex*32.tiley*32.32"
+       * worldspace == 60 == Tamriel
+       */
+      /**/ if (wchgame == 0)	// Oblivion
+        sprintf(nbase, walk->data(), wdspace, coordx, coordy, reso);
+      else if (wchgame == 1)	// Skyrim
+        sprintf(nbase, walk->data(), wdsname, reso, coordx, coordy);
+
+      /* lower-case */
+      strlwr(nbase);
 
       if (writeobj) {
 	strcpy(name, nbase); strcat(name, ".obj");
@@ -414,10 +429,6 @@ void wrteWavefront(SimplField& ter, const char *pattern) {
 
   for (int ty = minty; ty < numty; ty++) {
   for (int tx = mintx; tx < numtx; tx++) {
-    /* codification is:
-      * "worldspace.tilex*32.tiley*32.32"
-      * worldspace == 60 == Tamriel
-      */
     int coordx = (tx - offx) * resx;
     int coordy = (ty - offy) * resy;
 
@@ -425,7 +436,13 @@ void wrteWavefront(SimplField& ter, const char *pattern) {
 
     char name[256];
 
-    sprintf(name, pattern, wdspace, coordx, coordy, min(resx, resy));
+    /**/ if (wchgame == 0)	// Oblivion
+      sprintf(name, pattern, wdspace, coordx, coordy, min(resx, resy));
+    else if (wchgame == 1)	// Skyrim
+      sprintf(name, pattern, wdsname, min(resx, resy), coordx, coordy);
+
+    /* lower-case */
+    strlwr(name);
     strcat(name, ".obj");
 
     /* check if to write */
@@ -492,13 +509,19 @@ void wrteWavefront(SimplField& ter) {
 
 #if 1
 #define	NIFLIB_STATIC_LINK
+#define NIFLIB_QUOTEDIR(__D)  #__D
+//#define NIFLIB_BASEDIR(__D)	NIFLIB_QUOTEDIR(../NIFtools/trunk/niflib/)
+#define NIFLIB_BASEDIR(__L)	NIFLIB_QUOTEDIR(../NIFtools (Ethatron)/niflib/__L)
 
-#include "../NIFtools/trunk/niflib/include/niflib.h"
-#include "../NIFtools/trunk/niflib/include/obj/NiNode.h"
-#include "../NIFtools/trunk/niflib/include/obj/NiTriShape.h"
-#include "../NIFtools/trunk/niflib/include/obj/NiTriShapeData.h"
+#include NIFLIB_BASEDIR(include/niflib.h)
+#include NIFLIB_BASEDIR(include/obj/NiNode.h)
+#include NIFLIB_BASEDIR(include/obj/NiTriShape.h)
+#include NIFLIB_BASEDIR(include/obj/NiTriShapeData.h)
 
 using namespace Niflib;
+
+//#define NIFLIB_LIBDIR	"../../../NIFtools/trunk/niflib/"
+#define NIFLIB_LIBDIR	"../../../NIFtools (Ethatron)/niflib/"
 
 #if   _MSC_VER == 1500
 #define LIBDIR	"vc9"
@@ -508,15 +531,15 @@ using namespace Niflib;
 
 #ifndef	NDEBUG
 #ifdef	_WIN64
-#pragma comment(lib,"../../../NIFtools/trunk/niflib/" LIBDIR "/lib/niflib_static_debug_x64")
+#pragma comment(lib,NIFLIB_LIBDIR LIBDIR "/lib/niflib_static_debug_x64")
 #else
-#pragma comment(lib,"../../../NIFtools/trunk/niflib/" LIBDIR "/lib/niflib_static_debug")
+#pragma comment(lib,NIFLIB_LIBDIR LIBDIR "/lib/niflib_static_debug")
 #endif
 #else
 #ifdef	_WIN64
-#pragma comment(lib,"../../../NIFtools/trunk/niflib/" LIBDIR "/lib/niflib_static_x64")
+#pragma comment(lib,NIFLIB_LIBDIR LIBDIR "/lib/niflib_static_x64")
 #else
-#pragma comment(lib,"../../../NIFtools/trunk/niflib/" LIBDIR "/lib/niflib_static")
+#pragma comment(lib,NIFLIB_LIBDIR LIBDIR "/lib/niflib_static")
 #endif
 #endif
 
@@ -539,10 +562,6 @@ void wrteNIF(SimplField& ter, const char *pattern) {
 
   for (int ty = minty; ty < numty; ty++) {
   for (int tx = mintx; tx < numtx; tx++) {
-    /* codification is:
-      * "worldspace.tilex*32.tiley*32.32"
-      * worldspace == 60 == Tamriel
-      */
     int coordx = (tx - offx) * resx;
     int coordy = (ty - offy) * resy;
 
@@ -550,7 +569,13 @@ void wrteNIF(SimplField& ter, const char *pattern) {
 
     char name[256];
 
-    sprintf(name, pattern, wdspace, coordx, coordy, min(resx, resy));
+    /**/ if (wchgame == 0)	// Oblivion
+      sprintf(name, pattern, wdspace, coordx, coordy, min(resx, resy));
+    else if (wchgame == 1)	// Skyrim
+      sprintf(name, pattern, wdsname, min(resx, resy), coordx, coordy);
+
+    /* lower-case */
+    strlwr(name);
     strcat(name, ".nif");
 
     /* check if to write */
@@ -897,10 +922,6 @@ void wrteDXMesh(SimplField& ter, const char *pattern) {
 
   for (int ty = minty; ty < numty; ty++) {
   for (int tx = mintx; tx < numtx; tx++) {
-    /* codification is:
-      * "worldspace.tilex*32.tiley*32.32"
-      * worldspace == 60 == Tamriel
-      */
     int coordx = (tx - offx) * resx;
     int coordy = (ty - offy) * resy;
 
@@ -908,7 +929,13 @@ void wrteDXMesh(SimplField& ter, const char *pattern) {
 
     char name[256];
 
-    sprintf(name, pattern, wdspace, coordx, coordy, min(resx, resy));
+    /**/ if (wchgame == 0)	// Oblivion
+      sprintf(name, pattern, wdspace, coordx, coordy, min(resx, resy));
+    else if (wchgame == 1)	// Skyrim
+      sprintf(name, pattern, wdsname, min(resx, resy), coordx, coordy);
+
+    /* lower-case */
+    strlwr(name);
     strcat(name, ".x");
 
     /* check if to write */
@@ -1033,7 +1060,14 @@ bool skipTexture(const char *pattern, const char *pfx, int coordx, int coordy, i
 
   if (writeppm || writepng || writedds) {
     char nbase[256], name[256];
-    sprintf(nbase, pattern, wdspace, coordx, coordy, reso);
+
+    /**/ if (wchgame == 0)	// Oblivion
+      sprintf(nbase, pattern, wdspace, coordx, coordy, reso);
+    else if (wchgame == 1)	// Skyrim
+      sprintf(nbase, pattern, wdsname, reso, coordx, coordy);
+
+    /* lower-case */
+    strlwr(nbase);
 
     if (writeppm) {
       strcpy(name, nbase); strcat(name, pfx); strcat(name, ".ppm");
@@ -1088,7 +1122,40 @@ void wrteTexture(LPDIRECT3DTEXTURE9 tex, const char *pattern, const char *pfx, i
   if (writeppm || writepng || writedds) {
     HRESULT res;
     char nbase[256], name[256];
-    sprintf(nbase, pattern, wdspace, coordx, coordy, reso);
+
+    /**/ if (wchgame == 0)	// Oblivion
+      sprintf(nbase, pattern, wdspace, coordx, coordy, reso);
+    else if (wchgame == 1)	// Skyrim
+      sprintf(nbase, pattern, wdsname, reso, coordx, coordy);
+
+    /* lower-case */
+    strlwr(nbase);
+
+    /* flip-y for Skyrim */
+    if (wchgame == 1) {
+      D3DSURFACE_DESC texd;
+      D3DLOCKED_RECT texr;
+
+      tex->GetLevelDesc(0, &texd);
+      tex->LockRect(0, &texr, NULL, 0);
+
+      /* xyz: D3DFMT_A16B16G16R16, color: D3DFMT_A8B8G8R8 */
+      UCHAR *dTex = (UCHAR *)texr.pBits;
+      UINT32 stride = texd.Width * 4 * (xyz ? 2 : 1);
+      UCHAR *lTex = (UCHAR *)malloc(stride);
+      for (UINT32 s = 0; s < texd.Height; s++) {
+	UINT32 loH = (                    s) * stride;
+	UINT32 hiH = ((texd.Height - 1) - s) * stride;
+
+	/* swap lines */
+	memcpy(lTex      , dTex + loH, stride);
+	memcpy(dTex + loH, dTex + hiH, stride);
+	memcpy(dTex + hiH, lTex      , stride);
+      }
+
+      tex->UnlockRect(0);
+      free(lTex);
+    }
 
     if (writeppm) {
       strcpy(name, nbase); strcat(name, pfx); strcat(name, ".ppm");
@@ -1121,8 +1188,14 @@ void wrteTexture(LPDIRECT3DTEXTURE9 tex, const char *pattern, const char *pfx, i
 	  tex->AddRef();
 
 	if (xyz) {
-	  if (TextureCompressXYZ(&tex_plus, 0))
-	    res = D3DXSaveTextureToFile(name, D3DXIFF_DDS, tex_plus, NULL);
+          /**/ if (wchgame == 0) {	// Oblivion
+	    if (TextureCompressXYZ(&tex_plus, 0))
+	      res = D3DXSaveTextureToFile(name, D3DXIFF_DDS, tex_plus, NULL);
+	  }
+          else if (wchgame == 1) {	// Skyrim
+	    if (TextureCompressXZY(&tex_plus, 0))
+	      res = D3DXSaveTextureToFile(name, D3DXIFF_DDS, tex_plus, NULL);
+	  }
 	}
 	else {
 	  if (TextureCompressRGB(&tex_plus, 0, true))

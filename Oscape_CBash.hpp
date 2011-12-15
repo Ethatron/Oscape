@@ -4,7 +4,7 @@
 #include <CBash.h>
 #pragma comment(lib,"CBash")
 
-extern string wedata;
+extern string wedata; extern long weoffs;
 extern string weoutn; extern bool calcn;
 extern string weouth; extern bool calch;
 extern string weoutx; extern bool calcx;

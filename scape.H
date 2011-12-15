@@ -70,7 +70,11 @@ extern bool emituvs;
 extern bool emitnrm;
 extern int rasterx, tilesx, dotilex, rwsizex;
 extern int rastery, tilesy, dotiley, rwsizey;
+
 extern int wdspace;
+extern char wdsname[256];
+extern int wchgame;
+extern char *wpattern;
 
 extern Real emphasis;
 

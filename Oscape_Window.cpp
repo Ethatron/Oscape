@@ -14,19 +14,34 @@ wxOscape::wxOscape( wxWindow* parent, wxWindowID id, const wxString& title, cons
 	this->SetSizeHints( wxDefaultSize, wxDefaultSize );
 	
 	OSMenuBar = new wxMenuBar( 0 );
+	OSGame = new wxMenu();
+	wxMenuItem* OSOblivion;
+	OSOblivion = new wxMenuItem( OSGame, wxID_OBLIVON, wxString( wxT("Oblivion") ) , wxEmptyString, wxITEM_RADIO );
+	OSGame->Append( OSOblivion );
+	OSOblivion->Check( true );
+	
+	wxMenuItem* OSSkyrim;
+	OSSkyrim = new wxMenuItem( OSGame, wxID_SKYRIM, wxString( wxT("Skyrim") ) , wxEmptyString, wxITEM_RADIO );
+	OSGame->Append( OSSkyrim );
+	
+	OSMenuBar->Append( OSGame, wxT("Game") ); 
+	
 	OSDefaults = new wxMenu();
+	OSOblivionDefs = new wxMenu();
 	wxMenuItem* OSDefaultVanilla;
-	OSDefaultVanilla = new wxMenuItem( OSDefaults, wxID_DEFV, wxString( wxT("Vanilla Oblivion") ) , wxEmptyString, wxITEM_RADIO );
-	OSDefaults->Append( OSDefaultVanilla );
+	OSDefaultVanilla = new wxMenuItem( OSOblivionDefs, wxID_DEFV, wxString( wxT("Vanilla Oblivion") ) , wxEmptyString, wxITEM_RADIO );
+	OSOblivionDefs->Append( OSDefaultVanilla );
 	OSDefaultVanilla->Check( true );
 	
 	wxMenuItem* OSDefaultTWMP;
-	OSDefaultTWMP = new wxMenuItem( OSDefaults, wxID_DEFT, wxString( wxT("Vanilla TWMP") ) , wxEmptyString, wxITEM_RADIO );
-	OSDefaults->Append( OSDefaultTWMP );
+	OSDefaultTWMP = new wxMenuItem( OSOblivionDefs, wxID_DEFT, wxString( wxT("Vanilla TWMP") ) , wxEmptyString, wxITEM_RADIO );
+	OSOblivionDefs->Append( OSDefaultTWMP );
 	
 	wxMenuItem* OSDefaultLLOD;
-	OSDefaultLLOD = new wxMenuItem( OSDefaults, wxID_DEFL, wxString( wxT("LLOD TWMP") ) , wxEmptyString, wxITEM_RADIO );
-	OSDefaults->Append( OSDefaultLLOD );
+	OSDefaultLLOD = new wxMenuItem( OSOblivionDefs, wxID_DEFL, wxString( wxT("LLOD TWMP") ) , wxEmptyString, wxITEM_RADIO );
+	OSOblivionDefs->Append( OSDefaultLLOD );
+	
+	OSDefaults->Append( -1, wxT("Oblivion"), OSOblivionDefs );
 	
 	OSMenuBar->Append( OSDefaults, wxT("Defaults") ); 
 	
@@ -880,6 +895,8 @@ wxOscape::wxOscape( wxWindow* parent, wxWindowID id, const wxString& title, cons
 	this->Centre( wxBOTH );
 	
 	// Connect Events
+	this->Connect( OSOblivion->GetId(), wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler( wxOscape::ChangeToOblivion ) );
+	this->Connect( OSSkyrim->GetId(), wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler( wxOscape::ChangeToSkyrim ) );
 	this->Connect( OSDefaultVanilla->GetId(), wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler( wxOscape::ChangeDefaults ) );
 	this->Connect( OSDefaultTWMP->GetId(), wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler( wxOscape::ChangeDefaults ) );
 	this->Connect( OSDefaultLLOD->GetId(), wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler( wxOscape::ChangeDefaults ) );
@@ -927,6 +944,8 @@ wxOscape::wxOscape( wxWindow* parent, wxWindowID id, const wxString& title, cons
 wxOscape::~wxOscape()
 {
 	// Disconnect Events
+	this->Disconnect( wxID_OBLIVON, wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler( wxOscape::ChangeToOblivion ) );
+	this->Disconnect( wxID_SKYRIM, wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler( wxOscape::ChangeToSkyrim ) );
 	this->Disconnect( wxID_DEFV, wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler( wxOscape::ChangeDefaults ) );
 	this->Disconnect( wxID_DEFT, wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler( wxOscape::ChangeDefaults ) );
 	this->Disconnect( wxID_DEFL, wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler( wxOscape::ChangeDefaults ) );

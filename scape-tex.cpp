@@ -976,9 +976,12 @@ static bool TextureCollapse(LPDIRECT3DTEXTURE9 *tex, D3DFORMAT target) {
 #define TCOMPRESS_xyz		9
 #define TCOMPRESS_xyzD		10
 #define TCOMPRESS_XYZ		11
-#define TCOMPRESS_XYZD		12
+#define TCOMPRESS_XZY		12
+#define TCOMPRESS_XYZD		13
+#define TCOMPRESS_XZYD		14
 #define	TCOMPRESS_NINDEP(fmt)	(((fmt) >= TCOMPRESS_xyZ) && ((fmt) <= TCOMPRESS_xyzD))
-#define	TCOMPRESS_NORMAL(fmt)	(((fmt) >= TCOMPRESS_xyZ) && ((fmt) <= TCOMPRESS_XYZD))
+#define	TCOMPRESS_SWIZZL(fmt)	(((fmt) == TCOMPRESS_XZY) || ((fmt) == TCOMPRESS_XZYD))
+#define	TCOMPRESS_NORMAL(fmt)	(((fmt) >= TCOMPRESS_xyZ) && ((fmt) <= TCOMPRESS_XZYD))
 
 static int TCOMPRESS_CHANNELS(int fmt) {
   switch (fmt) {
@@ -995,7 +998,9 @@ static int TCOMPRESS_CHANNELS(int fmt) {
     case TCOMPRESS_xyz		: return 3;
     case TCOMPRESS_xyzD		: return 4;
     case TCOMPRESS_XYZ		: return 3;
+    case TCOMPRESS_XZY		: return 3;
     case TCOMPRESS_XYZD		: return 4;
+    case TCOMPRESS_XZYD		: return 4;
   }
 
   return 0;
@@ -1250,7 +1255,8 @@ static bool TextureConvertRAW(int minlevel, LPDIRECT3DTEXTURE9 *tex, bool optimi
 	    if (format == TCOMPRESS_XYZD) pD3DDevice->CreateTexture(texo.Width, texo.Height, levels, 0, D3DFMT_A8R8G8B8, D3DPOOL_SYSTEMMEM, &text, NULL); break;
     case 3: if (format == TCOMPRESS_RGB ) pD3DDevice->CreateTexture(texo.Width, texo.Height, levels, 0, D3DFMT_R8G8B8  , D3DPOOL_SYSTEMMEM, &text, NULL);
 	    if (format == TCOMPRESS_xyz ) pD3DDevice->CreateTexture(texo.Width, texo.Height, levels, 0, D3DFMT_R8G8B8  , D3DPOOL_SYSTEMMEM, &text, NULL);
-	    if (format == TCOMPRESS_XYZ ) pD3DDevice->CreateTexture(texo.Width, texo.Height, levels, 0, D3DFMT_R8G8B8  , D3DPOOL_SYSTEMMEM, &text, NULL); break;
+	    if (format == TCOMPRESS_XYZ ) pD3DDevice->CreateTexture(texo.Width, texo.Height, levels, 0, D3DFMT_R8G8B8  , D3DPOOL_SYSTEMMEM, &text, NULL);
+	    if (format == TCOMPRESS_XZY ) pD3DDevice->CreateTexture(texo.Width, texo.Height, levels, 0, D3DFMT_R8G8B8  , D3DPOOL_SYSTEMMEM, &text, NULL); break;
     case 2: if (format == TCOMPRESS_LA  ) pD3DDevice->CreateTexture(texo.Width, texo.Height, levels, 0, D3DFMT_A8L8    , D3DPOOL_SYSTEMMEM, &text, NULL);
 	    if (format == TCOMPRESS_XYz ) abort(); /* no R8G8 available */ break;
     case 1: if (format == TCOMPRESS_A   ) pD3DDevice->CreateTexture(texo.Width, texo.Height, levels, 0, D3DFMT_L8      , D3DPOOL_SYSTEMMEM, &text, NULL);
@@ -1360,11 +1366,18 @@ static bool TextureConvertRAW(int minlevel, LPDIRECT3DTEXTURE9 *tex, bool optimi
 	  ULONG t = sTex[(posy * texo.Width) + posx];
 
 	  /* read ARGB -> ABGR */
-	  t = //t;
-	      (((t >> 24) & 0xFF) << 24 /*h*/)
-	    | (((t >> 16) & 0xFF) <<  0 /*r*/)
-	    | (((t >>  8) & 0xFF) <<  8 /*g*/)
-	    | (((t >>  0) & 0xFF) << 16 /*t*/);
+//	  if (TCOMPRESS_SWIZZL(format))
+//	    t = //t;
+//	        (((t >> 24) & 0xFF) << 24 /*h*/)
+//	      | (((t >> 16) & 0xFF) <<  0 /*r*/)
+//	      | (((t >>  0) & 0xFF) <<  8 /*g*/)
+//	      | (((t >>  8) & 0xFF) << 16 /*b*/);
+//	  else
+	    t = //t;
+	        (((t >> 24) & 0xFF) << 24 /*h*/)
+	      | (((t >> 16) & 0xFF) <<  0 /*r*/)
+	      | (((t >>  8) & 0xFF) <<  8 /*g*/)
+	      | (((t >>  0) & 0xFF) << 16 /*b*/);
 
 	  /**/ if (TCOMPRESS_COLOR (format))
 	    AccuRGBH<ACCUMODE_LINEAR>(tt, t, level, l);	// +=
@@ -1434,10 +1447,10 @@ static bool TextureConvertRAW(int minlevel, LPDIRECT3DTEXTURE9 *tex, bool optimi
 	  case 3: bTex[0][(ly * 4) + lx] = (t) | 0xFF000000; break;
 	  /* --YX -> XY-- */
 	  /* AL-- -> LA-- */
-          case 2: /**/ if (format == TCOMPRESS_LA) bTex[0][(ly * 4) + lx] = (t <<  0) & 0xFF000000,
-						   bTex[1][(ly * 4) + lx] = (t <<  8) & 0xFF000000;
-          	  else                             bTex[0][(ly * 4) + lx] = (t << 16) & 0xFF000000,
-						   bTex[1][(ly * 4) + lx] = (t << 24) & 0xFF000000;
+          case 2: /**/ if (format == TCOMPRESS_LA ) bTex[0][(ly * 4) + lx] = (t <<  0) & 0xFF000000,
+						    bTex[1][(ly * 4) + lx] = (t <<  8) & 0xFF000000;
+          	  else                              bTex[0][(ly * 4) + lx] = (t << 16) & 0xFF000000,
+						    bTex[1][(ly * 4) + lx] = (t << 24) & 0xFF000000;
 		  break;
           /* -Z-- -> Z--- */
           /* A--- -> A--- */
@@ -1460,11 +1473,20 @@ static bool TextureConvertRAW(int minlevel, LPDIRECT3DTEXTURE9 *tex, bool optimi
 	  /* ABGR -> ARGB */
 	  case 4:
 	    t0 = bTex[0][(ly * 4) + lx];
-	    t0 = //t;
-		(((t0 >> 24) & 0xFF) << 24 /*h*/)
-	      | (((t0 >> 16) & 0xFF) <<  0 /*r*/)
-	      | (((t0 >>  8) & 0xFF) <<  8 /*g*/)
-	      | (((t0 >>  0) & 0xFF) << 16 /*t*/);
+
+	    /* swizzle ARGB -> ARBG */
+//	    if (TCOMPRESS_SWIZZL(format))
+//	      t0 = //t;
+//		  (((t0 >> 24) & 0xFF) << 24 /*h*/)
+//	        | (((t0 >> 16) & 0xFF) <<  8 /*r*/)
+//	        | (((t0 >>  8) & 0xFF) <<  0 /*g*/)
+//	        | (((t0 >>  0) & 0xFF) << 16 /*b*/);
+//	    else
+	      t0 = //t;
+		  (((t0 >> 24) & 0xFF) << 24 /*h*/)
+	        | (((t0 >> 16) & 0xFF) <<  0 /*r*/)
+	        | (((t0 >>  8) & 0xFF) <<  8 /*g*/)
+	        | (((t0 >>  0) & 0xFF) << 16 /*b*/);
 
 	    ((ULONG *)wTex)[((posy * texd.Width) + posx) * 1] = t0;
 	    break;
@@ -1472,9 +1494,17 @@ static bool TextureConvertRAW(int minlevel, LPDIRECT3DTEXTURE9 *tex, bool optimi
 	  case 3:
 	    t0 = bTex[0][(ly * 4) + lx];
 
-	    wTex[((posy * texd.Width) + posx) * 3 + 0] = (t0 >> 16) & 0xFF;
-	    wTex[((posy * texd.Width) + posx) * 3 + 1] = (t0 >>  8) & 0xFF;
-	    wTex[((posy * texd.Width) + posx) * 3 + 2] = (t0 >>  0) & 0xFF;
+	    /* swizzle RGB -> RBG */
+	    if (TCOMPRESS_SWIZZL(format)) {
+	      wTex[((posy * texd.Width) + posx) * 3 + 0] = (t0 >> 16) & 0xFF;
+	      wTex[((posy * texd.Width) + posx) * 3 + 2] = (t0 >>  8) & 0xFF;
+	      wTex[((posy * texd.Width) + posx) * 3 + 1] = (t0 >>  0) & 0xFF;
+	    }
+	    else {
+	      wTex[((posy * texd.Width) + posx) * 3 + 0] = (t0 >> 16) & 0xFF;
+	      wTex[((posy * texd.Width) + posx) * 3 + 1] = (t0 >>  8) & 0xFF;
+	      wTex[((posy * texd.Width) + posx) * 3 + 2] = (t0 >>  0) & 0xFF;
+	    }
 	    break;
 	  /* XY-- -> YX-- */
 	  /* LA-- -> AL-- */
@@ -1482,15 +1512,19 @@ static bool TextureConvertRAW(int minlevel, LPDIRECT3DTEXTURE9 *tex, bool optimi
 	    t1 = bTex[0][(ly * 4) + lx];
 	    t2 = bTex[1][(ly * 4) + lx];
 
-	    wTex[((posy * texd.Width) + posx) * 2 + 0] = (t1 >> 24) & 0xFF;
-	    wTex[((posy * texd.Width) + posx) * 2 + 1] = (t2 >> 24) & 0xFF;
+	    {
+	      wTex[((posy * texd.Width) + posx) * 2 + 0] = (t1 >> 24) & 0xFF;
+	      wTex[((posy * texd.Width) + posx) * 2 + 1] = (t2 >> 24) & 0xFF;
+	    }
 	    break;
 	  /* Z--- */
 	  /* A--- */
 	  case 1:
 	    t0 = bTex[0][(ly * 4) + lx];
 
-	    wTex[((posy * texd.Width) + posx) * 1 + 0] = (t0 >> 24) & 0xFF;
+	    {
+	      wTex[((posy * texd.Width) + posx) * 1 + 0] = (t0 >> 24) & 0xFF;
+	    }
 	    break;
 	}
       }
@@ -1501,6 +1535,7 @@ static bool TextureConvertRAW(int minlevel, LPDIRECT3DTEXTURE9 *tex, bool optimi
 
     text->UnlockRect(l);
   }
+
 
   logrf("                                                      \r");
 
@@ -1594,6 +1629,14 @@ bool TextureConvertXYZ(LPDIRECT3DTEXTURE9 *norm, int minlevel) {
   bool res = true;
 
   res = res && TextureConvertRAW<ULONG, float, TCOMPRESS_XYZ>(minlevel, norm);
+
+  return res;
+}
+
+bool TextureConvertXZY(LPDIRECT3DTEXTURE9 *norm, int minlevel) {
+  bool res = true;
+
+  res = res && TextureConvertRAW<ULONG, float, TCOMPRESS_XZY>(minlevel, norm);
 
   return res;
 }
@@ -1966,11 +2009,18 @@ static bool TextureCompressDXT(int minlevel, LPDIRECT3DTEXTURE9 *tex, bool optim
 	  ULONG t = sTex[(posy * texo.Width) + posx];
 
 	  /* read ARGB -> ABGR */
-	  t = //t;
-	      (((t >> 24) & 0xFF) << 24 /*h*/)
-	    | (((t >> 16) & 0xFF) <<  0 /*r*/)
-	    | (((t >>  8) & 0xFF) <<  8 /*g*/)
-	    | (((t >>  0) & 0xFF) << 16 /*t*/);
+//	  if (TCOMPRESS_SWIZZL(format))
+//	    t = //t;
+//	        (((t >> 24) & 0xFF) << 24 /*h*/)
+//	      | (((t >> 16) & 0xFF) <<  0 /*r*/)
+//	      | (((t >>  0) & 0xFF) <<  8 /*g*/)
+//	      | (((t >>  8) & 0xFF) << 16 /*b*/);
+//	  else
+	    t = //t;
+	        (((t >> 24) & 0xFF) << 24 /*h*/)
+	      | (((t >> 16) & 0xFF) <<  0 /*r*/)
+	      | (((t >>  8) & 0xFF) <<  8 /*g*/)
+	      | (((t >>  0) & 0xFF) << 16 /*b*/);
 
 	  /**/ if (TCOMPRESS_COLOR (format))
 	    AccuRGBH<ACCUMODE_LINEAR>(tt, t, level, l);	// +=
@@ -2032,6 +2082,11 @@ static bool TextureCompressDXT(int minlevel, LPDIRECT3DTEXTURE9 *tex, bool optim
 	else if (TCOMPRESS_NORMAL(format))
 	  t = JoinXYZD<TRGTMODE_CODING_DXDYDZt>(fTex[0][(ly * 4) + lx], tr);
 
+	/* swizzle ABGR -> AGBR */
+        if (TCOMPRESS_SWIZZL(format))
+//	  t = (t & 0xFFFF0000) | ((t >> 8) & 0x00FF) | ((t & 0x00FF) << 8);
+	  t = (t & 0xFF0000FF) | ((t >> 8) & 0xFF00) | ((t & 0xFF00) << 8);
+
 	/* write the result ABGR, BGR */
         switch (TCOMPRESS_CHANNELS(format)) {
           /* ABGR -> RGBA */
@@ -2040,10 +2095,10 @@ static bool TextureCompressDXT(int minlevel, LPDIRECT3DTEXTURE9 *tex, bool optim
 	  case 3: bTex[0][(ly * 4) + lx] = (t) | 0xFF000000; break;
 	  /* --YX -> XY-- */
 	  /* AL-- -> LA-- */
-          case 2: /**/ if (format == TCOMPRESS_LA) bTex[0][(ly * 4) + lx] = (t <<  0) & 0xFF000000,
-						   bTex[1][(ly * 4) + lx] = (t <<  8) & 0xFF000000;
-          	  else                             bTex[0][(ly * 4) + lx] = (t << 16) & 0xFF000000,
-						   bTex[1][(ly * 4) + lx] = (t << 24) & 0xFF000000;
+          case 2: /**/ if (format == TCOMPRESS_LA ) bTex[0][(ly * 4) + lx] = (t <<  0) & 0xFF000000,
+						    bTex[1][(ly * 4) + lx] = (t <<  8) & 0xFF000000;
+          	  else                              bTex[0][(ly * 4) + lx] = (t << 16) & 0xFF000000,
+						    bTex[1][(ly * 4) + lx] = (t << 24) & 0xFF000000;
 		  break;
           /* -Z-- -> Z--- */
           /* A--- -> A--- */
@@ -2155,6 +2210,14 @@ bool TextureCompressXYZ(LPDIRECT3DTEXTURE9 *norm, int minlevel) {
   bool res = true;
 
   res = res && TextureCompressDXT<ULONG, float, TCOMPRESS_XYZ>(minlevel, norm);
+
+  return res;
+}
+
+bool TextureCompressXZY(LPDIRECT3DTEXTURE9 *norm, int minlevel) {
+  bool res = true;
+
+  res = res && TextureCompressDXT<ULONG, float, TCOMPRESS_XZY>(minlevel, norm);
 
   return res;
 }

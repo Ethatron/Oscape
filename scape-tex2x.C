@@ -290,10 +290,6 @@ void wrteNormals2(bool fmaps, bool nmaps, bool hmaps, const HField& hf, const ch
 
     for (int ty = minty; ty < numty; ty++) {
     for (int tx = mintx; tx < numtx; tx++) {
-      /* codification is:
-       * "worldspace.tilex*32.tiley*32.32"
-       * worldspace == 60 == Tamriel
-       */
       int coordx = (tx - offx) * resx;
       int coordy = (ty - offy) * resy;
 

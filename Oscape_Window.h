@@ -46,30 +46,32 @@
 
 ///////////////////////////////////////////////////////////////////////////
 
-#define wxID_DEFV 1000
-#define wxID_DEFT 1001
-#define wxID_DEFL 1002
-#define wxID_LOAD 1003
-#define wxID_LEVEL0_INST 1004
-#define wxID_LEVEL0UV_INST 1005
-#define wxID_LEVEL0_MRES 1006
-#define wxID_LEVEL0N_TRES 1007
-#define wxID_LEVEL0C_TRES 1008
-#define wxID_LEVEL1_INST 1009
-#define wxID_LEVEL1UV_INST 1010
-#define wxID_LEVEL1_MRES 1011
-#define wxID_LEVEL1N_TRES 1012
-#define wxID_LEVEL1C_TRES 1013
-#define wxID_LEVEL2_INST 1014
-#define wxID_LEVEL2UV_INST 1015
-#define wxID_LEVEL2_MRES 1016
-#define wxID_LEVEL2N_TRES 1017
-#define wxID_LEVEL2C_TRES 1018
-#define wxID_LEVEL3_INST 1019
-#define wxID_LEVEL3UV_INST 1020
-#define wxID_LEVEL3_MRES 1021
-#define wxID_LEVEL3N_TRES 1022
-#define wxID_LEVEL3C_TRES 1023
+#define wxID_OBLIVON 1000
+#define wxID_SKYRIM 1001
+#define wxID_DEFV 1002
+#define wxID_DEFT 1003
+#define wxID_DEFL 1004
+#define wxID_LOAD 1005
+#define wxID_LEVEL0_INST 1006
+#define wxID_LEVEL0UV_INST 1007
+#define wxID_LEVEL0_MRES 1008
+#define wxID_LEVEL0N_TRES 1009
+#define wxID_LEVEL0C_TRES 1010
+#define wxID_LEVEL1_INST 1011
+#define wxID_LEVEL1UV_INST 1012
+#define wxID_LEVEL1_MRES 1013
+#define wxID_LEVEL1N_TRES 1014
+#define wxID_LEVEL1C_TRES 1015
+#define wxID_LEVEL2_INST 1016
+#define wxID_LEVEL2UV_INST 1017
+#define wxID_LEVEL2_MRES 1018
+#define wxID_LEVEL2N_TRES 1019
+#define wxID_LEVEL2C_TRES 1020
+#define wxID_LEVEL3_INST 1021
+#define wxID_LEVEL3UV_INST 1022
+#define wxID_LEVEL3_MRES 1023
+#define wxID_LEVEL3N_TRES 1024
+#define wxID_LEVEL3C_TRES 1025
 
 ///////////////////////////////////////////////////////////////////////////////
 /// Class wxOscape
@@ -80,7 +82,9 @@ class wxOscape : public wxFrame
 	
 	protected:
 		wxMenuBar* OSMenuBar;
+		wxMenu* OSGame;
 		wxMenu* OSDefaults;
+		wxMenu* OSOblivionDefs;
 		wxNotebook* OSToolSwitch;
 		wxPanel* OSPanelPlugins;
 		wxToolBar* OSPluginToolbar;
@@ -225,6 +229,8 @@ class wxOscape : public wxFrame
 		wxStatusBar* OSStatusBar;
 		
 		// Virtual event handlers, overide them in your derived class
+		virtual void ChangeToOblivion( wxCommandEvent& event ) { event.Skip(); }
+		virtual void ChangeToSkyrim( wxCommandEvent& event ) { event.Skip(); }
 		virtual void ChangeDefaults( wxCommandEvent& event ) { event.Skip(); }
 		virtual void ResetPluginList( wxCommandEvent& event ) { event.Skip(); }
 		virtual void ClearPluginList( wxCommandEvent& event ) { event.Skip(); }

@@ -1,5 +1,39 @@
+/* Version: MPL 1.1/LGPL 3.0
+ *
+ * "The contents of this file are subject to the Mozilla Public License
+ * Version 1.1 (the "License"); you may not use this file except in
+ * compliance with the License. You may obtain a copy of the License at
+ * http://www.mozilla.org/MPL/
+ *
+ * Software distributed under the License is distributed on an "AS IS"
+ * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See the
+ * License for the specific language governing rights and limitations
+ * under the License.
+ *
+ * The Original Code is Oscape.
+ *
+ * The Initial Developer of the Original Code is
+ * Ethatron <niels@paradice-insight.us>. Portions created by The Initial
+ * Developer are Copyright (C) 2011 The Initial Developer.
+ * All Rights Reserved.
+ *
+ * Alternatively, the contents of this file may be used under the terms
+ * of the GNU Library General Public License Version 3 license (the
+ * "LGPL License"), in which case the provisions of LGPL License are
+ * applicable instead of those above. If you wish to allow use of your
+ * version of this file only under the terms of the LGPL License and not
+ * to allow others to use your version of this file under the MPL,
+ * indicate your decision by deleting the provisions above and replace
+ * them with the notice and other provisions required by the LGPL License.
+ * If you do not delete the provisions above, a recipient may use your
+ * version of this file under either the MPL or the LGPL License."
+ */
+
 #define CBASH
 #ifdef	CBASH
+
+#define	_CRT_SECURE_NO_WARNINGS
+#define	_CRT_NONSTDC_NO_DEPRECATE
 
 #include <string>
 
@@ -82,6 +116,7 @@ extern IDirect3DDevice9 *pD3DDevice;
 #include "Oscape_CBash-io.C"
 
 string wedata;
+long weoffs = 0;
 map<string, struct iodir *> websas;
 map<string, LPDIRECT3DTEXTURE9> wetxts;
 
@@ -191,7 +226,7 @@ LPDIRECT3DTEXTURE9 TextureSearch(const char *name) {
 
   /* search in the directory */
   strcpy(fname, wedata.data());
-  strcat(fname, "\\Textures\\Landscape\\");
+  strcat(fname, "\\Textures\\");
   strcat(fname, name);
 
   struct ioinfo info;
@@ -203,7 +238,7 @@ LPDIRECT3DTEXTURE9 TextureSearch(const char *name) {
     map<string, struct iodir *>::iterator walk = websas.begin();
     while (walk != websas.end()) {
       strcpy(fname, walk->first.data());
-      strcat(fname, "\\Textures\\Landscape\\");
+      strcat(fname, "\\Textures\\");
       strcat(fname, name);
 
       if (!iostat(fname, &info)) {
@@ -290,20 +325,26 @@ Collection *col;
 
 /* ---------------------------------------------------------------------------- */
 
+template<
+  class WRLDRecord = Ob::WRLDRecord,
+  class CELLRecord = Ob::CELLRecord,
+  class LANDRecord = Ob::LANDRecord,
+  class LTEXRecord = Ob::LTEXRecord
+>
 class ExtendsWorldOp : public RecordOp {
 public:
   ExtendsWorldOp() : RecordOp() { }
 
   virtual bool Accept(Record *&curRecord) {
-    Ob::WRLDRecord *wrld = (Ob::WRLDRecord *)curRecord;
-    Ob::CELLRecord *cell;
-    Ob::LANDRecord *land;
+    WRLDRecord *wrld = (WRLDRecord *)curRecord;
+    CELLRecord *cell;
+    LANDRecord *land;
 
     if (!stricmp(wrld->EDID.value, wename.data())) {
       std::vector<Record *>::iterator walk = wrld->CELLS.begin();
       while (walk != wrld->CELLS.end()) {
-	cell = (Ob::CELLRecord *)(*walk);
-	land = (Ob::LANDRecord *)cell->LAND;
+	cell = (CELLRecord *)(*walk);
+	land = (LANDRecord *)cell->LAND;
 
 	/* determine extents */
 	if (cell->XCLC.IsLoaded() && land) {
@@ -329,12 +370,21 @@ public:
   }
 };
 
+/* ---------------------------------------------------------------------------- */
+
 #undef	TEXTURE1x1
 #undef	TEXTURE2x2
 
 /* global so it's much faster to search */
 struct landtex {
-  Ob::LTEXRecord *rec;
+//Ob::LTEXRecord *rec;
+  union {
+    void *rec;
+
+    Ob::LTEXRecord *reco;
+    Sk::LTEXRecord *recs;
+  };
+
   LPDIRECT3DTEXTURE9 tex;
   unsigned long mem1x1[1*1];
   unsigned long mem2x2[2*2];
@@ -343,6 +393,50 @@ struct landtex {
 
 map<FORMID, struct landtex> ltex;
 
+/* ............................................................................ */
+
+template<
+  class LTEXRecord /*= Ob::LTEXRecord*/
+>
+const char *GetTextureName(LTEXRecord *rec);
+
+template<>
+const char *GetTextureName<Ob::LTEXRecord>(Ob::LTEXRecord *rec) {
+  static char tmp[256];
+  if (rec) {
+    /* entry does not include "Landscape" */
+    strcpy(tmp, "Landscape\\");
+    strcat(tmp, rec->ICON.value);
+
+    return tmp;
+  }
+
+  return "Landscape\\default.dds";
+}
+
+template<>
+const char *GetTextureName<Sk::LTEXRecord>(Sk::LTEXRecord *rec) {
+  if (rec) {
+    /* find the record */
+    ModFile *WinningModFile;
+    Record *WinningRecord;
+
+    col->LookupWinningRecord(rec->TNAM.value, WinningModFile, WinningRecord, false);
+    if (!WinningRecord)
+      return NULL;
+
+    /* entry includes "Landscape" */
+    return ((Sk::TXSTRecord *)WinningRecord)->TX00.value;
+  }
+
+  return "Landscape\\tundra01.dds";
+}
+
+/* ............................................................................ */
+
+template<
+  class LTEXRecord /*= Ob::LTEXRecord*/
+>
 unsigned long *LookupTexture(FORMID t) {
   /* what does a texture of 0 mean? (assume default.dds) */
   if (t && !ltex[t].rec) {
@@ -353,21 +447,24 @@ unsigned long *LookupTexture(FORMID t) {
     col->LookupWinningRecord(t, WinningModFile, WinningRecord, false);
     if (!WinningRecord)
       return NULL;
-    ltex[t].rec = (Ob::LTEXRecord *)WinningRecord;
+    ltex[t].rec = (LTEXRecord *)WinningRecord;
   }
 
   if (!ltex[t].tex) {
     /* read in the color */
-    LPDIRECT3DTEXTURE9 tex;
+    const char *name = NULL;
+    LPDIRECT3DTEXTURE9 tex = NULL;
+    LTEXRecord *rec;
 
-    if (t && ltex[t].rec)
-      tex = TextureSearch(ltex[t].rec->ICON.value);
+    if (t && (rec = (LTEXRecord *)ltex[t].rec))
+      name = GetTextureName(rec);
     else
-      tex = TextureSearch("default.dds");
+      name = GetTextureName((LTEXRecord *)NULL);
 
-    if (!tex)
+    if (!name)
       return NULL;
-    ltex[t].tex = tex;
+    if (!(ltex[t].tex = tex = TextureSearch(name)))
+      return NULL;
 
     /* 1x1 ------------------------------------------------------- */
     DWORD low = max(tex->GetLevelCount(), 1) - 1;
@@ -443,6 +540,9 @@ unsigned long *LookupTexture(FORMID t) {
   return ltex[t].mem1x1;
 }
 
+template<
+  class LTEXRecord /*= Ob::LTEXRecord*/
+>
 unsigned char ClassifyTexture(FORMID t) {
   /* what does a texture of 0 mean? (assume default.dds) */
   if (t && !ltex[t].rec) {
@@ -453,17 +553,21 @@ unsigned char ClassifyTexture(FORMID t) {
     col->LookupWinningRecord(t, WinningModFile, WinningRecord, false);
     if (!WinningRecord)
       return NULL;
-    ltex[t].rec = (Ob::LTEXRecord *)WinningRecord;
+    ltex[t].rec = (LTEXRecord *)WinningRecord;
   }
 
   if (!ltex[t].classification) {
     /* read in the name */
-    const char *name;
+    const char *name = NULL;
+    LTEXRecord *rec;
 
-    if (t && ltex[t].rec)
-      name = ltex[t].rec->ICON.value;
+    if (t && (rec = (LTEXRecord *)ltex[t].rec))
+      name = GetTextureName(rec);
     else
-      name = "default.dds";
+      name = GetTextureName((LTEXRecord *)NULL);
+
+    if (!name)
+      return 0;
 
     /* neutral */
     unsigned char cls = 128;
@@ -472,20 +576,19 @@ unsigned char ClassifyTexture(FORMID t) {
     /**/ if (stristr(name, "terrainskstoneground"))
       cls = 255;
 
-    else if (stristr(name, "default"))
-      cls = 1;
-    else if (stristr(name, "sand"))
-      cls = 1;
-    else if (stristr(name, "mud"))
-      cls = 1;
-    else if (stristr(name, "rock"))
-      cls = 128;
-    else if (stristr(name, "cobble"))
-      cls = 255;
-    else if (stristr(name, "road"))
-      cls = 255;
-    else if (stristr(name, "street"))
-      cls = 255;
+    else if (stristr(name, "default")) cls = 1;
+    else if (stristr(name, "ocean"  )) cls = 1;
+    else if (stristr(name, "beach"  )) cls = 1;
+    else if (stristr(name, "sand"   )) cls = 1;
+    else if (stristr(name, "mud"    )) cls = 1;
+    else if (stristr(name, "river"  )) cls = 1;
+    else if (stristr(name, "grass"  )) cls = 128;
+    else if (stristr(name, "rock"   )) cls = 140;
+    else if (stristr(name, "snow"   )) cls = 192;
+    else if (stristr(name, "cobble" )) cls = 255;
+    else if (stristr(name, "road"   )) cls = 255;
+    else if (stristr(name, "street" )) cls = 255;
+    else if (stristr(name, "path"   )) cls = 255;
 
     ltex[t].classification = cls;
   }
@@ -540,6 +643,14 @@ public:
   }
 };
 
+/* ---------------------------------------------------------------------------- */
+
+template<
+  class WRLDRecord = Ob::WRLDRecord,
+  class CELLRecord = Ob::CELLRecord,
+  class LANDRecord = Ob::LANDRecord,
+  class LTEXRecord = Ob::LTEXRecord
+>
 class ExtractNWorldOp : public WindowedWorldOp {
   unsigned char *nm;
 
@@ -549,15 +660,15 @@ public:
   }
 
   virtual bool Accept(Record *&curRecord) {
-    Ob::WRLDRecord *wrld = (Ob::WRLDRecord *)curRecord;
-    Ob::CELLRecord *cell;
-    Ob::LANDRecord *land;
+    WRLDRecord *wrld = (WRLDRecord *)curRecord;
+    CELLRecord *cell;
+    LANDRecord *land;
 
     if (!stricmp(wrld->EDID.value, wename.data())) {
       std::vector<Record *>::iterator walk = wrld->CELLS.begin();
       while (walk != wrld->CELLS.end()) {
-	cell = (Ob::CELLRecord *)(*walk);
-	land = (Ob::LANDRecord *)cell->LAND;
+	cell = (CELLRecord *)(*walk);
+	land = (LANDRecord *)cell->LAND;
 
 	/* make sure it's winning */
 	if (cell->XCLC.IsLoaded() && land && !land->IsWinningDetermined()) {
@@ -565,7 +676,6 @@ public:
 	  Record *WinningRecord;
 
 	  col->LookupWinningRecord(land->formID, WinningModFile, WinningRecord, false);
-	  printf("hmm");
 	}
 
 	if (cell->XCLC.IsLoaded() && land && !land->IsWinning()) {
@@ -612,6 +722,12 @@ public:
   }
 };
 
+template<
+  class WRLDRecord = Ob::WRLDRecord,
+  class CELLRecord = Ob::CELLRecord,
+  class LANDRecord = Ob::LANDRecord,
+  class LTEXRecord = Ob::LTEXRecord
+>
 class ExtractHWorldOp : public WindowedWorldOp {
   unsigned short *hf;
 
@@ -621,15 +737,15 @@ public:
   }
 
   virtual bool Accept(Record *&curRecord) {
-    Ob::WRLDRecord *wrld = (Ob::WRLDRecord *)curRecord;
-    Ob::CELLRecord *cell;
-    Ob::LANDRecord *land;
+    WRLDRecord *wrld = (WRLDRecord *)curRecord;
+    CELLRecord *cell;
+    LANDRecord *land;
 
     if (!stricmp(wrld->EDID.value, wename.data())) {
       std::vector<Record *>::iterator walk = wrld->CELLS.begin();
       while (walk != wrld->CELLS.end()) {
-	cell = (Ob::CELLRecord *)(*walk);
-	land = (Ob::LANDRecord *)cell->LAND;
+	cell = (CELLRecord *)(*walk);
+	land = (LANDRecord *)cell->LAND;
 
 	/* make sure it's winning */
 	if (cell->XCLC.IsLoaded() && land && !land->IsWinningDetermined()) {
@@ -637,7 +753,6 @@ public:
 	  Record *WinningRecord;
 
 	  col->LookupWinningRecord(land->formID, WinningModFile, WinningRecord, false);
-	  printf("hmm");
 	}
 
 	if (cell->XCLC.IsLoaded() && land && !land->IsWinning()) {
@@ -677,7 +792,7 @@ public:
 #undef	scale
 
 #define shift 0x400
-		hf[realpos] = ((unsigned short)floor(hv + 0.5)) + shift;
+		hf[realpos] = (unsigned short)min(((long)floor(hv + 0.5)) + shift + weoffs, 0xFFFF);
 #undef	shift
 	      }
 	    }
@@ -698,6 +813,12 @@ public:
 #define EXTRACT_BLENDLAYER	1
 #define EXTRACT_OVERLAYER	1
 
+template<
+  class WRLDRecord = Ob::WRLDRecord,
+  class CELLRecord = Ob::CELLRecord,
+  class LANDRecord = Ob::LANDRecord,
+  class LTEXRecord = Ob::LTEXRecord
+>
 class ExtractMWorldOp : public WindowedWorldOp {
   unsigned char *tx;
 
@@ -707,15 +828,15 @@ public:
   }
 
   virtual bool Accept(Record *&curRecord) {
-    Ob::WRLDRecord *wrld = (Ob::WRLDRecord *)curRecord;
-    Ob::CELLRecord *cell;
-    Ob::LANDRecord *land;
+    WRLDRecord *wrld = (WRLDRecord *)curRecord;
+    CELLRecord *cell;
+    LANDRecord *land;
 
     if (!stricmp(wrld->EDID.value, wename.data())) {
       std::vector<Record *>::iterator walk = wrld->CELLS.begin();
       while (walk != wrld->CELLS.end()) {
-	cell = (Ob::CELLRecord *)(*walk);
-	land = (Ob::LANDRecord *)cell->LAND;
+	cell = (CELLRecord *)(*walk);
+	land = (LANDRecord *)cell->LAND;
 
 	/* make sure it's winning */
 	if (cell->XCLC.IsLoaded() && land && !land->IsWinningDetermined()) {
@@ -723,7 +844,6 @@ public:
 	  Record *WinningRecord;
 
 	  col->LookupWinningRecord(land->formID, WinningModFile, WinningRecord, false);
-	  printf("hmm");
 	}
 
 	if (cell->XCLC.IsLoaded() && land && !land->IsWinning()) {
@@ -746,7 +866,7 @@ public:
 
 	  if (EXTRACT_GROUNDLAYER) {
 	    /* search for the texture and get the average color of it */
-	    unsigned char tex = ClassifyTexture(0);
+	    unsigned char tex = ClassifyTexture<LTEXRecord>(0);
 	    /* don't apply missing textures (instead of applying black) */
 	    if (tex) {
 	      for (int y = 0; y <= 32; y++)
@@ -762,7 +882,7 @@ public:
 	    std::vector<FORMID>::iterator walk = land->VTEX.value.begin();
 	    while (walk != land->VTEX.value.end()) {
 	      /* search for the texture and get the average color of it */
-	      unsigned char tex = ClassifyTexture(*walk);
+	      unsigned char tex = ClassifyTexture<LTEXRecord>(*walk);
 
 	      walk++;
 	    }
@@ -770,10 +890,10 @@ public:
 
 	  if (EXTRACT_BASELAYER)
 	  if (land->BTXT.IsLoaded()) {
-	    std::vector<Ob::LANDRecord::LANDGENTXT *>::iterator walk = land->BTXT.value.begin();
+	    std::vector<LANDRecord::LANDGENTXT *>::iterator walk = land->BTXT.value.begin();
 	    while (walk != land->BTXT.value.end()) {
 	      /* search for the texture and get the average color of it */
-	      unsigned char tex = ClassifyTexture((*walk)->texture);
+	      unsigned char tex = ClassifyTexture<LTEXRecord>((*walk)->texture);
 	      /* don't apply missing textures (instead of applying black) */
 	      if (tex) {
 		int offsx;
@@ -808,7 +928,7 @@ public:
 		      ((       (B/* * A / 0xFF*/)) * b)		\
 		    )
 
-		  bbuf[y][x] = blend(1.0, bbuf[y][x], alpha, ctext);
+		  bbuf[y][x] = blend(1.0f, bbuf[y][x], alpha, ctext);
 #undef	blend
 		}
 	      }
@@ -821,12 +941,12 @@ public:
 	  if (EXTRACT_BLENDLAYER)
 	  if (land->Layers.IsLoaded()) {
 	    for (int l = 0; l < 0x8; l++) {
-	      std::vector<Ob::LANDRecord::LANDLAYERS *>::iterator srch = land->Layers.value.begin();
+	      std::vector<LANDRecord::LANDLAYERS *>::iterator srch = land->Layers.value.begin();
 	      while (srch != land->Layers.value.end()) {
-		Ob::LANDRecord::LANDGENTXT *walk = &(*srch)->ATXT.value;
+		LANDRecord::LANDGENTXT *walk = &(*srch)->ATXT.value;
 		if (walk->layer == l) {
 		  /* search for the texture and get the average color of it */
-		  unsigned char tex = ClassifyTexture((*walk).texture);
+		  unsigned char tex = ClassifyTexture<LTEXRecord>((*walk).texture);
 		  /* don't apply missing textures (instead of applying black) */
 		  if (tex) {
 		    int offsx;
@@ -846,7 +966,7 @@ public:
 		    }
 
 		    /* blend per-pixel */
-		    std::vector<Ob::LANDRecord::LANDVTXT>::iterator over = (*srch)->VTXT.value.begin();
+		    std::vector<LANDRecord::LANDVTXT>::iterator over = (*srch)->VTXT.value.begin();
 		    while (over != (*srch)->VTXT.value.end()) {
 		      float opc = over->opacity;
 
@@ -916,6 +1036,12 @@ public:
   }
 };
 
+template<
+  class WRLDRecord = Ob::WRLDRecord,
+  class CELLRecord = Ob::CELLRecord,
+  class LANDRecord = Ob::LANDRecord,
+  class LTEXRecord = Ob::LTEXRecord
+>
 class ExtractCWorldOp : public WindowedWorldOp {
   unsigned long *tx;
 
@@ -925,15 +1051,15 @@ public:
   }
 
   virtual bool Accept(Record *&curRecord) {
-    Ob::WRLDRecord *wrld = (Ob::WRLDRecord *)curRecord;
-    Ob::CELLRecord *cell;
-    Ob::LANDRecord *land;
+    WRLDRecord *wrld = (WRLDRecord *)curRecord;
+    CELLRecord *cell;
+    LANDRecord *land;
 
     if (!stricmp(wrld->EDID.value, wename.data())) {
       std::vector<Record *>::iterator walk = wrld->CELLS.begin();
       while (walk != wrld->CELLS.end()) {
-	cell = (Ob::CELLRecord *)(*walk);
-	land = (Ob::LANDRecord *)cell->LAND;
+	cell = (CELLRecord *)(*walk);
+	land = (LANDRecord *)cell->LAND;
 
 	/* make sure it's winning */
 	if (cell->XCLC.IsLoaded() && land && !land->IsWinningDetermined()) {
@@ -941,7 +1067,6 @@ public:
 	  Record *WinningRecord;
 
 	  col->LookupWinningRecord(land->formID, WinningModFile, WinningRecord, false);
-	  printf("hmm");
 	}
 
 	if (cell->XCLC.IsLoaded() && land && !land->IsWinning()) {
@@ -966,7 +1091,7 @@ public:
 
 	  if (EXTRACT_GROUNDLAYER) {
 	    /* search for the texture and get the average color of it */
-	    unsigned long *tex = LookupTexture(0);
+	    unsigned long *tex = LookupTexture<LTEXRecord>(0);
 	    /* don't apply missing textures (instead of applying black) */
 	    if (tex) {
 	      for (int y = 0; y <= 32; y++)
@@ -988,7 +1113,7 @@ public:
 	    std::vector<FORMID>::iterator walk = land->VTEX.value.begin();
 	    while (walk != land->VTEX.value.end()) {
 	      /* search for the texture and get the average color of it */
-	      unsigned long *tex = LookupTexture(*walk);
+	      unsigned long *tex = LookupTexture<LTEXRecord>(*walk);
 
 	      walk++;
 	    }
@@ -996,10 +1121,10 @@ public:
 
 	  if (EXTRACT_BASELAYER)
 	  if (land->BTXT.IsLoaded()) {
-	    std::vector<Ob::LANDRecord::LANDGENTXT *>::iterator walk = land->BTXT.value.begin();
+	    std::vector<LANDRecord::LANDGENTXT *>::iterator walk = land->BTXT.value.begin();
 	    while (walk != land->BTXT.value.end()) {
 	      /* search for the texture and get the average color of it */
-	      unsigned long *tex = LookupTexture((*walk)->texture);
+	      unsigned long *tex = LookupTexture<LTEXRecord>((*walk)->texture);
 	      /* don't apply missing textures (instead of applying black) */
 	      if (tex) {
 		int offsx;
@@ -1028,7 +1153,7 @@ public:
 #ifdef TEXTURE2x2
 		  ctext = tex[((x & 1) << 0) | ((y & 1) << 1)];
 #endif
-		  unsigned long alpha = extract(ctext, 0);
+		  float alpha = extract(ctext, 0);
 
 		  /* blending with alpha from texture looks bad,
 		   * in theory the alpha should be a max()-map anyway
@@ -1038,10 +1163,10 @@ public:
 		      ((       (B/* * A / 0xFF*/)) * ((b >> pos) & 0xFF))	\
 		    )
 
-		  bbuf[y][x][0] = blend(1.0, bbuf[y][x][0], alpha, ctext, 24);
-		  bbuf[y][x][1] = blend(1.0, bbuf[y][x][1], alpha, ctext, 16);
-		  bbuf[y][x][2] = blend(1.0, bbuf[y][x][2], alpha, ctext,  8);
-		  bbuf[y][x][3] = blend(1.0, bbuf[y][x][3], alpha, ctext,  0);
+		  bbuf[y][x][0] = blend(1.0f, bbuf[y][x][0], alpha, ctext, 24);
+		  bbuf[y][x][1] = blend(1.0f, bbuf[y][x][1], alpha, ctext, 16);
+		  bbuf[y][x][2] = blend(1.0f, bbuf[y][x][2], alpha, ctext,  8);
+		  bbuf[y][x][3] = blend(1.0f, bbuf[y][x][3], alpha, ctext,  0);
 #undef	blend
 		}
 	      }
@@ -1054,12 +1179,12 @@ public:
 	  if (EXTRACT_BLENDLAYER)
 	  if (land->Layers.IsLoaded()) {
 	    for (int l = 0; l < 0x8; l++) {
-	      std::vector<Ob::LANDRecord::LANDLAYERS *>::iterator srch = land->Layers.value.begin();
+	      std::vector<LANDRecord::LANDLAYERS *>::iterator srch = land->Layers.value.begin();
 	      while (srch != land->Layers.value.end()) {
-		Ob::LANDRecord::LANDGENTXT *walk = &(*srch)->ATXT.value;
+		LANDRecord::LANDGENTXT *walk = &(*srch)->ATXT.value;
 		if (walk->layer == l) {
 		  /* search for the texture and get the average color of it */
-		  unsigned long *tex = LookupTexture((*walk).texture);
+		  unsigned long *tex = LookupTexture<LTEXRecord>((*walk).texture);
 		  /* don't apply missing textures (instead of applying black) */
 		  if (tex) {
 		    int offsx;
@@ -1079,7 +1204,7 @@ public:
 		    }
 
 		    /* blend per-pixel */
-		    std::vector<Ob::LANDRecord::LANDVTXT>::iterator over = (*srch)->VTXT.value.begin();
+		    std::vector<LANDRecord::LANDVTXT>::iterator over = (*srch)->VTXT.value.begin();
 		    while (over != (*srch)->VTXT.value.end()) {
 		      float opc = over->opacity;
 
@@ -1098,7 +1223,7 @@ public:
 #ifdef TEXTURE2x2
 		      ctext = tex[((x & 1) << 0) | ((y & 1) << 1)];
 #endif
-		      unsigned long alpha = extract(ctext, 0);
+		      float alpha = extract(ctext, 0);
 
 		      /* blending with alpha from texture looks bad,
 		       * in theory the alpha should be a max()-map anyway
@@ -1227,11 +1352,23 @@ void NExtract(SINT32 num) {
 
     /* intercept for clean-up */
     try {
-      ExtractNWorldOp ewo(mem, sy, PARTITION_ROWS);
-      for (SINT32 n = 0; n < num; ++n) {
-	ModFile *mf = GetModIDByLoadOrder(col, n);
+      switch (col->CollectionType) {
+	case eIsOblivion: {
+	  ExtractNWorldOp<Ob::WRLDRecord, Ob::CELLRecord, Ob::LANDRecord, Ob::LTEXRecord> ewo(mem, sy, PARTITION_ROWS);
+	  for (SINT32 n = 0; n < num; ++n) {
+	    ModFile *mf = GetModIDByLoadOrder(col, n);
 
-	mf->VisitRecords(REV32(WRLD), ewo);
+	    mf->VisitRecords(REV32(WRLD), ewo);
+	  }
+	} break;
+	case eIsSkyrim: {
+	  ExtractNWorldOp<Sk::WRLDRecord, Sk::CELLRecord, Sk::LANDRecord, Sk::LTEXRecord> ewo(mem, sy, PARTITION_ROWS);
+	  for (SINT32 n = 0; n < num; ++n) {
+	    ModFile *mf = GetModIDByLoadOrder(col, n);
+
+	    mf->VisitRecords(REV32(WRLD), ewo);
+	  }
+	} break;
       }
     }
     catch (exception &e) {
@@ -1297,11 +1434,23 @@ void HExtract(SINT32 num) {
 
     /* intercept for clean-up */
     try {
-      ExtractHWorldOp ewo(mem, sy, PARTITION_ROWS);
-      for (SINT32 n = 0; n < num; ++n) {
-	ModFile *mf = GetModIDByLoadOrder(col, n);
+      switch (col->CollectionType) {
+	case eIsOblivion: {
+	  ExtractHWorldOp<Ob::WRLDRecord, Ob::CELLRecord, Ob::LANDRecord, Ob::LTEXRecord> ewo(mem, sy, PARTITION_ROWS);
+	  for (SINT32 n = 0; n < num; ++n) {
+	    ModFile *mf = GetModIDByLoadOrder(col, n);
 
-	mf->VisitRecords(REV32(WRLD), ewo);
+	    mf->VisitRecords(REV32(WRLD), ewo);
+	  }
+	} break;
+	case eIsSkyrim: {
+	  ExtractHWorldOp<Sk::WRLDRecord, Sk::CELLRecord, Sk::LANDRecord, Sk::LTEXRecord> ewo(mem, sy, PARTITION_ROWS);
+	  for (SINT32 n = 0; n < num; ++n) {
+	    ModFile *mf = GetModIDByLoadOrder(col, n);
+
+	    mf->VisitRecords(REV32(WRLD), ewo);
+	  }
+	} break;
       }
     }
     catch (exception &e) {
@@ -1367,11 +1516,23 @@ void MExtract(SINT32 num) {
 
     /* intercept for clean-up */
     try {
-      ExtractMWorldOp ewo(mem, sy, PARTITION_ROWS);
-      for (SINT32 n = 0; n < num; ++n) {
-	ModFile *mf = GetModIDByLoadOrder(col, n);
+      switch (col->CollectionType) {
+	case eIsOblivion: {
+	  ExtractMWorldOp<Ob::WRLDRecord, Ob::CELLRecord, Ob::LANDRecord, Ob::LTEXRecord> ewo(mem, sy, PARTITION_ROWS);
+	  for (SINT32 n = 0; n < num; ++n) {
+	    ModFile *mf = GetModIDByLoadOrder(col, n);
 
-	mf->VisitRecords(REV32(WRLD), ewo);
+	    mf->VisitRecords(REV32(WRLD), ewo);
+	  }
+	} break;
+	case eIsSkyrim: {
+	  ExtractMWorldOp<Sk::WRLDRecord, Sk::CELLRecord, Sk::LANDRecord, Sk::LTEXRecord> ewo(mem, sy, PARTITION_ROWS);
+	  for (SINT32 n = 0; n < num; ++n) {
+	    ModFile *mf = GetModIDByLoadOrder(col, n);
+
+	    mf->VisitRecords(REV32(WRLD), ewo);
+	  }
+	} break;
       }
     }
     catch (exception &e) {
@@ -1450,11 +1611,23 @@ void CExtract(SINT32 num) {
 
     /* intercept for clean-up */
     try {
-      ExtractCWorldOp ewo(mem, sy, PARTITION_ROWS);
-      for (SINT32 n = 0; n < num; ++n) {
-	ModFile *mf = GetModIDByLoadOrder(col, n);
+      switch (col->CollectionType) {
+	case eIsOblivion: {
+	  ExtractCWorldOp<Ob::WRLDRecord, Ob::CELLRecord, Ob::LANDRecord, Ob::LTEXRecord> ewo(mem, sy, PARTITION_ROWS);
+	  for (SINT32 n = 0; n < num; ++n) {
+	    ModFile *mf = GetModIDByLoadOrder(col, n);
 
-	mf->VisitRecords(REV32(WRLD), ewo);
+	    mf->VisitRecords(REV32(WRLD), ewo);
+	  }
+	} break;
+	case eIsSkyrim: {
+	  ExtractCWorldOp<Sk::WRLDRecord, Sk::CELLRecord, Sk::LANDRecord, Sk::LTEXRecord> ewo(mem, sy, PARTITION_ROWS);
+	  for (SINT32 n = 0; n < num; ++n) {
+	    ModFile *mf = GetModIDByLoadOrder(col, n);
+
+	    mf->VisitRecords(REV32(WRLD), ewo);
+	  }
+	} break;
       }
     }
     catch (exception &e) {
@@ -1495,11 +1668,23 @@ DWORD __stdcall ExtractFromCollection(LPVOID lp) {
   wtopy  =  1024 * 1024;
   wboty  = -1024 * 1024;
 
-  ExtendsWorldOp wo;
-  for (SINT32 n = 0; n < num; ++n) {
-    ModFile *mf = GetModIDByLoadOrder(col, n);
+  switch (col->CollectionType) {
+    case eIsOblivion: {
+      ExtendsWorldOp<Ob::WRLDRecord, Ob::CELLRecord, Ob::LANDRecord, Ob::LTEXRecord> wo;
+      for (SINT32 n = 0; n < num; ++n) {
+	ModFile *mf = GetModIDByLoadOrder(col, n);
 
-    mf->VisitRecords(REV32(WRLD), wo);
+	mf->VisitRecords(REV32(WRLD), wo);
+      }
+    } break;
+    case eIsSkyrim: {
+      ExtendsWorldOp<Sk::WRLDRecord, Sk::CELLRecord, Sk::LANDRecord, Sk::LTEXRecord> wo;
+      for (SINT32 n = 0; n < num; ++n) {
+	ModFile *mf = GetModIDByLoadOrder(col, n);
+
+	mf->VisitRecords(REV32(WRLD), wo);
+      }
+    } break;
   }
 
   /* get higher deviation from 0 */

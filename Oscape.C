@@ -29,7 +29,8 @@
  * version of this file under either the MPL or the LGPL License."
  */
 
-#define _CRT_SECURE_NO_WARNINGS
+#define	_CRT_SECURE_NO_WARNINGS
+#define	_CRT_NONSTDC_NO_DEPRECATE
 
 #include <string.h>
 #include <algorithm>
@@ -124,6 +125,62 @@ LPCWSTR AnsiToUnicode(LPSTR s)
   return psz;
 }
 
+#ifdef _DEBUG
+#include <fcntl.h>
+#include <io.h>
+
+// maximum mumber of lines the output console should have
+static const WORD MAX_CONSOLE_LINES = 500;
+
+void RedirectIOToConsole() {
+  int hConHandle;
+  long lStdHandle;
+  CONSOLE_SCREEN_BUFFER_INFO coninfo;
+  FILE *fp;
+
+  // allocate a console for this app
+  AllocConsole();
+
+  // set the screen buffer to be big enough to let us scroll text
+  GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &coninfo);
+
+  coninfo.dwSize.Y = MAX_CONSOLE_LINES;
+
+  SetConsoleScreenBufferSize(GetStdHandle(STD_OUTPUT_HANDLE), coninfo.dwSize);
+
+  // redirect unbuffered STDOUT to the console
+  lStdHandle = (long)GetStdHandle(STD_OUTPUT_HANDLE);
+  hConHandle = _open_osfhandle(lStdHandle, _O_TEXT);
+
+  fp = _fdopen( hConHandle, "w" );
+  *stdout = *fp;
+
+  setvbuf( stdout, NULL, _IONBF, 0 );
+
+  // redirect unbuffered STDIN to the console
+  lStdHandle = (long)GetStdHandle(STD_INPUT_HANDLE);
+  hConHandle = _open_osfhandle(lStdHandle, _O_TEXT);
+
+  fp = _fdopen( hConHandle, "r" );
+  *stdin = *fp;
+
+  setvbuf( stdin, NULL, _IONBF, 0 );
+
+  // redirect unbuffered STDERR to the console
+  lStdHandle = (long)GetStdHandle(STD_ERROR_HANDLE);
+  hConHandle = _open_osfhandle(lStdHandle, _O_TEXT);
+
+  fp = _fdopen( hConHandle, "w" );
+  *stderr = *fp;
+
+  setvbuf( stderr, NULL, _IONBF, 0 );
+
+  // make cout, wcout, cin, wcin, wcerr, cerr, wclog and clog
+  // point to console as well
+  ios::sync_with_stdio();
+}
+#endif
+
 // ----------------------------------------------------------------------------
 // headers
 // ----------------------------------------------------------------------------
@@ -193,92 +250,143 @@ struct sset {
 
 class OscapePrg; class OscapePrg *prg;
 class OscapePrg : public wxProgress {
+
 private:
+  wxEventType evtProgress;
+  int idProgress;
+
+  class ProgressEvent: public wxCommandEvent {
+  public:
+    ProgressEvent(int id, const wxEventType& event_type) : wxCommandEvent(event_type, id) { memset(&state, 0, sizeof(state)); }
+    ProgressEvent(const ProgressEvent& event) : wxCommandEvent(event) { memcpy(&state, &event.state, sizeof(state)); }
+
+    wxEvent* Clone() const { return new ProgressEvent(*this); }
+
+  public:
+    struct {
+      unsigned int mask; 
+
+      int task1R; int task1V;
+      int task2R; int task2V;
+      char subj1S[256];
+      char subj2S[256];
+    } state;
+
+    void SetTask1Range(int r) { state.mask |= 1; state.task1R = r; }
+    void SetTask1Value(int v) { state.mask |= 2; state.task1V = v; }
+    void SetTask2Range(int r) { state.mask |= 4; state.task2R = r; }
+    void SetTask2Value(int v) { state.mask |= 8; state.task2V = v; }
+    void SetSubject1(const char *s) { state.mask |= 16; strcpy(state.subj1S, s); }
+    void SetSubject2(const char *s) { state.mask |= 32; strcpy(state.subj2S, s); }
+  };
+
+  typedef void (wxEvtHandler::*ProgressEventFunction)(ProgressEvent &);
+
+  /* called from Progress-thread */
+  void Progress(ProgressEvent &evt) {
+    if (evt.state.mask &  1) OSTask1->SetRange(evt.state.task1R);
+    if (evt.state.mask &  2) OSTask1->SetValue(evt.state.task1V);
+    if (evt.state.mask &  4) OSTask2->SetRange(evt.state.task2R);
+    if (evt.state.mask &  8) OSTask2->SetValue(evt.state.task2V);
+    if (evt.state.mask & 16) OSSubject1->SetLabel(evt.state.subj1S);
+    if (evt.state.mask & 32) OSSubject2->SetLabel(evt.state.subj2S);
+  }
+
   const char *lastpa;
   const char *lastpb;
 
 public:
   void StartProgress(int rng) {
-    Wait();
+    Wait(); ProgressEvent event(idProgress, evtProgress);
 
-    OSTask1->SetRange(rng);
+    event.SetTask1Range(rng);
 
-//  Update();
+    wxPostEvent(this, event);
   }
 
   void InitProgress(const char *patterna, size_t val, const char *patternb, double err, int dne, int rng) {
-    Wait();
+    Wait(); ProgressEvent event(idProgress, evtProgress);
 
     char tmp[256];
 
-    if (patterna) { sprintf(tmp, lastpa = patterna, val); OSSubject1->SetLabel(tmp); }
-    if (patternb) { sprintf(tmp, lastpb = patternb, err); OSSubject2->SetLabel(tmp); }
+    if (patterna) { sprintf(tmp, lastpa = patterna, val); event.SetSubject1(tmp); }
+    if (patternb) { sprintf(tmp, lastpb = patternb, err); event.SetSubject2(tmp); }
 
-    OSTask1->SetValue(dne);
-    OSTask2->SetRange(rng);
-    OSTask2->SetValue(0);
+    event.SetTask1Value(dne);
+    event.SetTask2Range(rng);
+    event.SetTask2Value(0);
 
-//  Update();
+    wxPostEvent(this, event);
   }
 
   void InitProgress(int rng, Real err) {
-    Wait();
+    Wait(); ProgressEvent event(idProgress, evtProgress);
 
     char tmp[256];
 
-    sprintf(tmp, lastpb, err); OSSubject2->SetLabel(tmp);
+    sprintf(tmp, lastpb, err); event.SetSubject2(tmp);
 
-    OSTask2->SetRange((range1 = rng) * (range2 = 1));
-    OSTask2->SetValue(0);
+    event.SetTask2Range((range1 = rng) * (range2 = 1));
+    event.SetTask2Value(0);
 
-//  Update();
+    wxPostEvent(this, event);
   }
 
   void SetProgress(int dne, Real err) {
-    Wait();
+    Wait(); ProgressEvent event(idProgress, evtProgress);
 
     char tmp[256];
 
-    sprintf(tmp, lastpb, err); OSSubject2->SetLabel(tmp);
+    sprintf(tmp, lastpb, err); event.SetSubject2(tmp);
 
-    OSTask2->SetValue(dne);
+    event.SetTask2Value(dne);
+
+    wxPostEvent(this, event);
   }
 
   int range1, value1;
   int range2, value2;
 
   void InitProgress(int rng) {
-    Wait();
+    Wait(); ProgressEvent event(idProgress, evtProgress);
 
-    OSTask2->SetRange((range1 = rng) * (range2 = 1));
-    OSTask2->SetValue(0);
+    event.SetTask2Range((range1 = rng) * (range2 = 1));
+    event.SetTask2Value(0);
 
-//  Update();
+    wxPostEvent(this, event);
   }
 
   void SetProgress(int dne) {
-    Wait();
+    Wait(); ProgressEvent event(idProgress, evtProgress);
 
-    OSTask2->SetValue((value1 = dne) * (range2) + (value2 = 0));
+    event.SetTask2Value((value1 = dne) * (range2) + (value2 = 0));
+
+    wxPostEvent(this, event);
   }
 
   void SetTopic(const char *topic) {
-    OSSubject2->SetLabel(topic);
+    Wait(); ProgressEvent event(idProgress, evtProgress);
+
+    event.SetSubject2(topic);
+
+    wxPostEvent(this, event);
   }
 
   void InitProgress(int rng, int srng) {
-    Wait();
+    Wait(); ProgressEvent event(idProgress, evtProgress);
 
-    OSTask2->SetRange((range1 = rng) * (range2 = srng));
-    OSTask2->SetValue(0);
+    event.SetTask2Range((range1 = rng) * (range2 = srng));
+    event.SetTask2Value(0);
 
-//  Update();
+    wxPostEvent(this, event);
   }
 
   void SetProgress(int dne, int sdne) {
-    Wait();
+    Wait(); ProgressEvent event(idProgress, evtProgress);
 
-    OSTask2->SetValue((value1      ) * (range2) + (value2 = sdne));
+    event.SetTask2Value((value1      ) * (range2) + (value2 = sdne));
+
+    wxPostEvent(this, event);
   }
 
 private:
@@ -441,6 +549,15 @@ public:
       NULL,
       this);
 
+    evtProgress = wxNewEventType();
+    idProgress = wxNewId();
+
+    /* Connect to event handler that will make us close */
+    Connect(wxID_ANY, evtProgress,
+      (wxObjectEventFunction)(wxEventFunction)(wxCommandEventFunction)wxStaticCastEvent(ProgressEventFunction, &OscapePrg::Progress),
+      NULL,
+      this);
+
     tinit = time(NULL);
     paused = false;
     quit = false;
@@ -488,6 +605,38 @@ private:
   OscapePrg *prog;
 
   /* ---------------------------------------------------------------------------- */
+  const char *GetGameKey(const char *subsub = NULL) {
+    const char *subkey = NULL;
+
+    if (OSGame->FindItem(wxID_OBLIVON)->IsChecked())
+      subkey = "Oblivion";
+    else if (OSGame->FindItem(wxID_SKYRIM)->IsChecked())
+      subkey = "Skyrim";
+
+    if (subsub && subsub[0]) {
+      static char submrg[256];
+
+      strcpy(submrg, subkey);
+      strcat(submrg, "\\");
+      strcat(submrg, subsub);
+
+      return submrg;
+    }
+
+    return subkey;
+  }
+
+  const char *GetGameKey(const char *prefix, const char *subsub) {
+    static char submrg[256];
+
+    strcpy(submrg, prefix);
+    strcat(submrg, "\\");
+    strcat(submrg, subsub);
+
+    return GetGameKey(submrg);
+  }
+
+  /* ---------------------------------------------------------------------------- */
   void ResetHButtons() {
     /* enable button */
     OSWorldspaceFill->Enable((actives != 0));
@@ -503,7 +652,7 @@ private:
     wspacef.clear();
 
     HKEY WSs = 0;
-    if (RegOpenKey(Settings, "Worldspaces", &WSs) == ERROR_SUCCESS) {
+    if (RegOpenKey(Settings, GetGameKey("Worldspaces"), &WSs) == ERROR_SUCCESS) {
       char p[256]; DWORD pl = 64; DWORD pos = 0;
       char s[256]; DWORD sl = 32;
 
@@ -518,9 +667,12 @@ private:
 
       RegCloseKey(WSs);
     }
-    else {
+    else if (OSGame->FindItem(wxID_OBLIVON)->IsChecked()) {
       wspacef[60] = wspaces.insert("Tamriel").first;
       wspacef[40728] = wspaces.insert("SEWorld").first;
+    }
+    else if (OSGame->FindItem(wxID_SKYRIM)->IsChecked()) {
+      wspacef[60] = wspaces.insert("Tamriel").first;
     }
   }
 
@@ -531,7 +683,7 @@ private:
       const char *p = (srch->second)->data();
       sprintf(s, "%d", srch->first);
 
-      RegSetKeyValue(Settings, "Worldspaces", p, RRF_RT_REG_SZ, s, (DWORD)strlen(s) + 1);
+      RegSetKeyValue(Settings, GetGameKey("Worldspaces"), p, RRF_RT_REG_SZ, s, (DWORD)strlen(s) + 1);
 
       srch++;
     }
@@ -542,16 +694,23 @@ private:
     IPath[0] = 0; DWORD IPL; HKEY IDir;
 
     if (init)
-      RegGetValue(Settings, NULL, "Plugin Directory", RRF_RT_REG_SZ, NULL, &IPath, &IPL);
+      RegGetValue(Settings, GetGameKey(), "Plugin Directory", RRF_RT_REG_SZ, NULL, &IPath, &IPL);
 
-    if (!IPath[0])
-      if (RegOpenKeyEx(HKEY_LOCAL_MACHINE, "Software\\Bethesda Softworks\\Oblivion", 0, KEY_READ | KEY_WOW64_32KEY, &IDir) == ERROR_SUCCESS) {
+    if (!IPath[0]) {
+      const char *game = NULL;
+      if (OSGame->FindItem(wxID_OBLIVON)->IsChecked())
+	game = "Software\\Bethesda Softworks\\Oblivion";
+      else if (OSGame->FindItem(wxID_SKYRIM)->IsChecked())
+	game = "Software\\Bethesda Softworks\\Skyrim";
+
+      if (RegOpenKeyEx(HKEY_LOCAL_MACHINE, game, 0, KEY_READ | KEY_WOW64_32KEY, &IDir) == ERROR_SUCCESS) {
 	RegGetValue(IDir, NULL, "Installed Path", RRF_RT_REG_SZ, NULL, &IPath, &IPL);
 	RegCloseKey(IDir);
 
 	strcat(IPath, "Data");
 //	strcat(IPath, "\\");
       }
+    }
 
     size_t ILen = strlen(IPath) - 1;
     while (IPath[ILen] == '\\')
@@ -607,8 +766,13 @@ private:
       FILE *plugs;
       char *p = UnicodeToAnsi(Path);
       char PBuffer[261];
+
       strcpy(PBuffer, p);
-      strcat(PBuffer, "\\Oblivion\\Plugins.txt");
+      if (OSGame->FindItem(wxID_OBLIVON)->IsChecked())
+	strcat(PBuffer, "\\Oblivion\\Plugins.txt");
+      else if (OSGame->FindItem(wxID_SKYRIM)->IsChecked())
+	strcat(PBuffer, "\\Skyrim\\Plugins.txt");
+
       if (!fopen_s(&plugs, PBuffer, "rt")) {
 	while (!feof(plugs)) {
 	  if (fgets(PBuffer, 260, plugs)) {
@@ -686,7 +850,7 @@ private:
       const char *p = OSPluginList->GetItem(n)->GetName().data();
       char s[32] = ""; DWORD sl = 32;
 
-      RegGetValue(Settings, "Plugins", p, RRF_RT_REG_SZ, NULL, s, &sl);
+      RegGetValue(Settings, GetGameKey("Plugins"), p, RRF_RT_REG_SZ, NULL, s, &sl);
 
       if (s[0] != '\0')
 	OSPluginList->Check(n, s[0] == '1');
@@ -701,8 +865,35 @@ private:
       if (OSPluginList->IsChecked(n))
 	s = "1";
 
-      RegSetKeyValue(Settings, "Plugins", p, RRF_RT_REG_SZ, s, (DWORD)strlen(s) + 1);
+      RegSetKeyValue(Settings, GetGameKey("Plugins"), p, RRF_RT_REG_SZ, s, (DWORD)strlen(s) + 1);
     }
+  }
+
+  /* ---------------------------------------------------------------------------- */
+  void ChangeToOblivion(wxCommandEvent& event) {
+    ResetHPluginDir();
+    ResetHPluginList();
+    LoadHPluginList();
+    
+    ReadMemory();
+
+    ChangeHeightfieldIn1(OSFileHeightfieldIn1->GetPath());
+    ChangeHeightfieldIn2(OSFileHeightfieldIn2->GetPath());
+
+    RegSetKeyValue(Settings, NULL, "Game", RRF_RT_REG_SZ, "0", 2);
+  }
+
+  void ChangeToSkyrim(wxCommandEvent& event) {
+    ResetHPluginDir();
+    ResetHPluginList();
+    LoadHPluginList();
+
+    ReadMemory();
+
+    ChangeHeightfieldIn1(OSFileHeightfieldIn1->GetPath());
+    ChangeHeightfieldIn2(OSFileHeightfieldIn2->GetPath());
+
+    RegSetKeyValue(Settings, NULL, "Game", RRF_RT_REG_SZ, "1", 2);
   }
 
   /* ---------------------------------------------------------------------------- */
@@ -723,7 +914,7 @@ private:
   }
 
   void ChangeAutosave(wxCommandEvent& event) {
-    RegSetKeyValue(Settings, NULL, "Autosave", RRF_RT_REG_SZ, OSPluginAutosave->GetValue() ? "1" : "0", 2);
+    RegSetKeyValue(Settings, GetGameKey(), "Autosave", RRF_RT_REG_SZ, OSPluginAutosave->GetValue() ? "1" : "0", 2);
   }
 
   /* ---------------------------------------------------------------------------- */
@@ -859,7 +1050,7 @@ private:
     ResetHPluginList();
     ResetHButtons();
 
-    RegSetKeyValue(Settings, NULL, "Plugin Directory", RRF_RT_REG_SZ, IPath, (DWORD)strlen(IPath) + 1);
+    RegSetKeyValue(Settings, GetGameKey(), "Plugin Directory", RRF_RT_REG_SZ, IPath, (DWORD)strlen(IPath) + 1);
   }
 
   /* ---------------------------------------------------------------------------- */
@@ -883,7 +1074,7 @@ private:
     wxString ph = event.GetString();
     if (!ph.IsNull()) {
       const char *WS = ph.data();
-      RegSetKeyValue(Settings, NULL, "Last worldspace", RRF_RT_REG_SZ, WS, (DWORD)strlen(WS) + 1);
+      RegSetKeyValue(Settings, GetGameKey(), "Last worldspace", RRF_RT_REG_SZ, WS, (DWORD)strlen(WS) + 1);
     }
 
     if (formID) {
@@ -911,7 +1102,7 @@ private:
     wxString ph = event.GetPath();
     if (!ph.IsNull()) {
       const char *HO = ph.data();
-      RegSetKeyValue(Settings, NULL, "Heightfield Out", RRF_RT_REG_SZ, HO, (DWORD)strlen(HO) + 1);
+      RegSetKeyValue(Settings, GetGameKey(), "Heightfield Out", RRF_RT_REG_SZ, HO, (DWORD)strlen(HO) + 1);
     }
   }
 
@@ -1055,7 +1246,7 @@ private:
       const char *HI = ph.data();
       OSFileHeightfieldIn1->SetPath(HI);
       OSFileHeightfieldIn2->SetPath(HI);
-      RegSetKeyValue(Settings, NULL, "Heightfield In", RRF_RT_REG_SZ, HI, (DWORD)strlen(HI) + 1);
+      RegSetKeyValue(Settings, GetGameKey(), "Heightfield In", RRF_RT_REG_SZ, HI, (DWORD)strlen(HI) + 1);
     }
 
     ChangeHeightfieldIn1(ph);
@@ -1073,7 +1264,7 @@ public:
     wxFileName fnx(ph); fnx.ClearExt(); fnx.SetExt("land");
     wxFileName fnm(ph); fnm.ClearExt(); fnm.SetExt("fmap");
 
-    wedata = OSPluginDir->GetPath();
+    wedata = OSPluginDir->GetPath(); weoffs = 0;
     weoutn = fnn.GetFullPath(); calcn = false;
     weouth = fnh.GetFullPath(); calch = OSCalcHeight->GetValue();
     weoutx = fnx.GetFullPath(); calcx = OSCalcColor->GetValue();
@@ -1090,7 +1281,11 @@ public:
       srch++;
     }
 
-    Collection *col = CreateCollection(IPath, 0);
+    Collection *col = NULL;
+    if (OSGame->FindItem(wxID_OBLIVON)->IsChecked())
+      col = CreateCollection(IPath, eIsOblivion), weoffs = 0;
+    else if (OSGame->FindItem(wxID_SKYRIM)->IsChecked())
+      col = CreateCollection(IPath, eIsSkyrim), weoffs = 18040 - 16000;
 
     int num = OSPluginList->GetCount();
     for (int n = 0; n < num; n++) {
@@ -1116,6 +1311,8 @@ public:
     col->AddRecordFilter(REV32(WRLD));
     col->AddRecordFilter(REV32(CELL));
     col->AddRecordFilter(REV32(LTEX));
+    col->AddRecordFilter(REV32(TXST));
+    col->AddRecordFilter(REV32(MATT));
     col->AddRecordFilter(REV32(LAND));
     col->AddWSpaceFilter(weid);
 
@@ -1227,8 +1424,15 @@ private:
     if (atr == INVALID_FILE_ATTRIBUTES)
       return;
     
-    int rasterx = 32 * 32;
-    int rastery = 32 * 32;
+    int csze = 0;
+    int cnum = 0;
+    if (OSGame->FindItem(wxID_OBLIVON)->IsChecked())
+      csze = 32, cnum = 32;
+    else if (OSGame->FindItem(wxID_SKYRIM)->IsChecked())
+      csze =  4, cnum = 32;
+
+    int rasterx = csze * cnum;
+    int rastery = csze * cnum;
     int tilesx = 1;
     int tilesy = 1;
     int offsx = 1;
@@ -1239,7 +1443,7 @@ private:
 
     {
       /**/ if (pw == "Heightfield") OSStatusBar->SetStatusText(wxT("Skimming heightfield ..."), 0);
-      else if (pw == "Normals"    ) OSStatusBar->SetStatusText(wxT("Skimming normals ..."), 0);
+      else if (pw == "Normals"    ) OSStatusBar->SetStatusText(wxT("Skimming normals ..."    ), 0);
       else if (pw == "Features"   ) OSStatusBar->SetStatusText(wxT("Skimming feature-map ..."), 0);
       else if (pw == "Surface"    ) OSStatusBar->SetStatusText(wxT("Skimming surface-map ..."), 0);
 
@@ -1270,12 +1474,18 @@ private:
 	tilesy = (height + (rastery - 1)) / rastery;
 	offsx = tilesx >> 1;
 	offsy = tilesy >> 1;
+
 	int scanx = 64;
 	int scany = 64;
+	if (OSGame->FindItem(wxID_OBLIVON)->IsChecked())
+	  scanx = 64, scany = 64;
+	else if (OSGame->FindItem(wxID_SKYRIM)->IsChecked())
+	  scanx = 8, scany = 8;
+
 	int pwidth  = tilesx * scanx;
 	int pheight = tilesy * scany;
-	int multx = 1024 / scanx;
-	int multy = 1024 / scany;
+	int multx = rasterx / scanx;
+	int multy = rastery / scany;
 
 	unsigned char *rgb;
 	unsigned char *a;
@@ -1423,7 +1633,7 @@ private:
       const char *HI = ph.data();
       OSFileHeightfieldIn1->SetPath(HI);
       OSFileHeightfieldIn2->SetPath(HI);
-      RegSetKeyValue(Settings, NULL, "Heightfield In", RRF_RT_REG_SZ, HI, (DWORD)strlen(HI) + 1);
+      RegSetKeyValue(Settings, GetGameKey(), "Heightfield In", RRF_RT_REG_SZ, HI, (DWORD)strlen(HI) + 1);
     }
 
     wxFileName fnn(ph); fnn.ClearExt(); fnn.SetExt("nrm");
@@ -1451,8 +1661,15 @@ private:
     OSHeightfieldFirst1->Hide();
     OSHeightfieldFirst1->GetParent()->Layout();
 
-    int rasterx = 32 * 32;
-    int rastery = 32 * 32;
+    int csze = 0;
+    int cnum = 0;
+    if (OSGame->FindItem(wxID_OBLIVON)->IsChecked())
+      csze = 32, cnum = 32;
+    else if (OSGame->FindItem(wxID_SKYRIM)->IsChecked())
+      csze =  4, cnum = 32;
+
+    int rasterx = csze * cnum;
+    int rastery = csze * cnum;
     int tilesx = 1;
     int tilesy = 1;
     int offsx = 1;
@@ -1543,18 +1760,18 @@ private:
 
     OSHeightfieldInfos->AppendCategory("Dimensions");
     OSHeightfieldInfos->Append(p = wxIntProperty("Worldspace FormID", wxPG_LABEL, wdscape)); formID = p;
-    OSHeightfieldInfos->Append(p = wxIntProperty("Tilesize (in cells)", wxPG_LABEL, 32)); tSize = p;
-    OSHeightfieldInfos->Append(p = wxIntProperty("Cellsize (in units)", wxPG_LABEL, 32)); cSize = p;
+    OSHeightfieldInfos->Append(p = wxIntProperty("Tilesize (in cells)", wxPG_LABEL, csze)); tSize = p;
+    OSHeightfieldInfos->Append(p = wxIntProperty("Cellsize (in units)", wxPG_LABEL, cnum)); cSize = p;
     wxPGId valProp =
     OSHeightfieldInfos->Append(wxParentProperty("Total", wxPG_LABEL));
     OSHeightfieldInfos->AppendIn(valProp, p = wxIntProperty("Width", wxPG_LABEL, width)); rWidth = p;
     OSHeightfieldInfos->AppendIn(valProp, p = wxIntProperty("Height", wxPG_LABEL, height)); rHeight = p;
     wxPGId tileProp =
     OSHeightfieldInfos->Append(wxParentProperty("Cells", wxPG_LABEL));
-    OSHeightfieldInfos->AppendIn(tileProp, p = wxIntProperty("Left", wxPG_LABEL, (-offsx) * 32)); tLeft = p;
-    OSHeightfieldInfos->AppendIn(tileProp, p = wxIntProperty("Top", wxPG_LABEL, (-offsy) * 32)); tTop = p;
-    OSHeightfieldInfos->AppendIn(tileProp, p = wxIntProperty("Right", wxPG_LABEL, (tilesx - offsx - 1) * 32)); tRight = p;
-    OSHeightfieldInfos->AppendIn(tileProp, p = wxIntProperty("Bottom", wxPG_LABEL, (tilesy - offsy - 1) * 32)); tBottom = p;
+    OSHeightfieldInfos->AppendIn(tileProp, p = wxIntProperty("Left", wxPG_LABEL, (-offsx) * csze)); tLeft = p;
+    OSHeightfieldInfos->AppendIn(tileProp, p = wxIntProperty("Top", wxPG_LABEL, (-offsy) * csze)); tTop = p;
+    OSHeightfieldInfos->AppendIn(tileProp, p = wxIntProperty("Right", wxPG_LABEL, (tilesx - offsx - 1) * csze)); tRight = p;
+    OSHeightfieldInfos->AppendIn(tileProp, p = wxIntProperty("Bottom", wxPG_LABEL, (tilesy - offsy - 1) * csze)); tBottom = p;
     OSHeightfieldInfos->AppendCategory("Stats");
     OSHeightfieldInfos->Append(p = wxIntProperty("Minimum", wxPG_LABEL, -8192)); p->SetFlag(wxPG_PROP_READONLY);
     OSHeightfieldInfos->Append(p = wxIntProperty("Seallevel", wxPG_LABEL, 0)); p->SetFlag(wxPG_PROP_READONLY);
@@ -1575,7 +1792,7 @@ private:
   void ChangeOrientation(wxCommandEvent& event) {
     ChangeHeightfieldIn1(OSFileHeightfieldIn1->GetPath());
 
-    RegSetKeyValue(Settings, NULL, "Orientation", RRF_RT_REG_DWORD, OSOrientation->GetValue() ? "H" : "V", 2);
+    RegSetKeyValue(Settings, GetGameKey(), "Orientation", RRF_RT_REG_DWORD, OSOrientation->GetValue() ? "H" : "V", 2);
   }
 
   void ChangeHeightfieldInfos(wxPropertyGridEvent& event) {
@@ -1608,7 +1825,7 @@ private:
       const char *PI = ph.data();
       OSFilePoints1->SetPath(PI);
       OSFilePoints2->SetPath(PI);
-      RegSetKeyValue(Settings, NULL, "Points In", RRF_RT_REG_SZ, PI, (DWORD)strlen(PI) + 1);
+      RegSetKeyValue(Settings, GetGameKey(), "Points In", RRF_RT_REG_SZ, PI, (DWORD)strlen(PI) + 1);
     }
 
     if (ph.IsNull())
@@ -1685,7 +1902,7 @@ private:
       const char *BO = ph.data();
       OSBaseDirOut1->SetPath(BO);
       OSBaseDirOut2->SetPath(BO);
-      RegSetKeyValue(Settings, NULL, "Base directory Out", RRF_RT_REG_SZ, BO, (DWORD)strlen(BO) + 1);
+      RegSetKeyValue(Settings, GetGameKey(), "Base directory Out", RRF_RT_REG_SZ, BO, (DWORD)strlen(BO) + 1);
     }
 
     OSHeightfieldAccept->Enable(TRUE);
@@ -1729,7 +1946,7 @@ private:
       const char *HI = snh.data();
       OSFileHeightfieldIn1->SetPath(HI);
       OSFileHeightfieldIn2->SetPath(HI);
-      RegSetKeyValue(Settings, NULL, "Heightfield In", RRF_RT_REG_SZ, HI, (DWORD)strlen(HI) + 1);
+      RegSetKeyValue(Settings, GetGameKey(), "Heightfield In", RRF_RT_REG_SZ, HI, (DWORD)strlen(HI) + 1);
     }
 
     OSEmphasis->Enable(GetFileAttributes(snm.data()) != INVALID_FILE_ATTRIBUTES);
@@ -1757,7 +1974,7 @@ private:
       const char *PI = ph.data();
       OSFilePoints1->SetPath(PI);
       OSFilePoints2->SetPath(PI);
-      RegSetKeyValue(Settings, NULL, "Points In", RRF_RT_REG_SZ, PI, (DWORD)strlen(PI) + 1);
+      RegSetKeyValue(Settings, GetGameKey(), "Points In", RRF_RT_REG_SZ, PI, (DWORD)strlen(PI) + 1);
     }
 
     if (ph.IsNull())
@@ -1796,7 +2013,7 @@ private:
       const char *BO = ph.data();
       OSBaseDirOut1->SetPath(BO);
       OSBaseDirOut2->SetPath(BO);
-      RegSetKeyValue(Settings, NULL, "Base directory Out", RRF_RT_REG_SZ, BO, (DWORD)strlen(BO) + 1);
+      RegSetKeyValue(Settings, GetGameKey(), "Base directory Out", RRF_RT_REG_SZ, BO, (DWORD)strlen(BO) + 1);
     }
 
     /* scan directory and compare timestamps
@@ -1986,7 +2203,7 @@ private:
 
     {
       const char *TG = ph.data();
-      RegSetKeyValue(Settings, NULL, "Target", RRF_RT_REG_DWORD, TG, (DWORD)strlen(TG) + 1);
+      RegSetKeyValue(Settings, GetGameKey(), "Target", RRF_RT_REG_DWORD, TG, (DWORD)strlen(TG) + 1);
     }
 
     int r = 0;
@@ -2011,25 +2228,25 @@ private:
   void ChangeMeshes(wxCommandEvent& event) {
     ChangeMeshes();
 
-    RegSetKeyValue(Settings, NULL, "Do Meshes", RRF_RT_REG_DWORD, OSMeshes->GetValue() ? "1" : "0", 2);
+    RegSetKeyValue(Settings, GetGameKey(), "Do Meshes", RRF_RT_REG_DWORD, OSMeshes->GetValue() ? "1" : "0", 2);
   }
 
   void ChangeNormals(wxCommandEvent& event) {
     ChangeNormals();
 
-    RegSetKeyValue(Settings, NULL, "Do Normals", RRF_RT_REG_DWORD, OSNormals->GetValue() ? "1" : "0", 2);
+    RegSetKeyValue(Settings, GetGameKey(), "Do Normals", RRF_RT_REG_DWORD, OSNormals->GetValue() ? "1" : "0", 2);
   }
 
   void ChangeColors(wxCommandEvent& event) {
     ChangeColors();
 
-    RegSetKeyValue(Settings, NULL, "Do Colors", RRF_RT_REG_DWORD, OSColors->GetValue() ? "1" : "0", 2);
+    RegSetKeyValue(Settings, GetGameKey(), "Do Colors", RRF_RT_REG_DWORD, OSColors->GetValue() ? "1" : "0", 2);
   }
 
   void ChangeHeightmap(wxCommandEvent& event) {
     ChangeHeightmap();
 
-    RegSetKeyValue(Settings, NULL, "Do Heightmap", RRF_RT_REG_DWORD, OSHeightmap->GetValue() ? "1" : "0", 2);
+    RegSetKeyValue(Settings, GetGameKey(), "Do Heightmap", RRF_RT_REG_DWORD, OSHeightmap->GetValue() ? "1" : "0", 2);
   }
 
   void ChangeMeshes() {
@@ -2204,6 +2421,12 @@ public:
     dotiley = dotiley + (tilesy >> 1);
 
     wdspace = formID->GetValueAsVariant().GetInteger();
+
+    /* put the string there and identify the game */
+    if (OSGame->FindItem(wxID_OBLIVON)->IsChecked())
+      wpattern = "%02d.%02d.%02d.%02d", wchgame = 0, sprintf(wdsname, "%02d", wdspace);
+    else if (OSGame->FindItem(wxID_SKYRIM)->IsChecked())
+      wpattern = "%s.%d.%d.%d", wchgame = 1, sprintf(wdsname, "%s", wspacef[wdspace]->data());
 
     /* -------------------------------------------------------------------- */
     long l = 0; double r = 0.0;
@@ -2391,14 +2614,16 @@ public:
 
 	      if (OSMeshUVs->Get3StateValue() != wxCHK_CHECKED) {
 		strcpy(temps, base);
-		strcat(temps, "\\UVoff\\%02d.%02d.%02d.%02d");
+		strcat(temps, "\\UVoff\\");
+		strcat(temps, wpattern);
 
 		skiplist.push_back(temps);
 	      }
 
 	      if (OSMeshUVs->Get3StateValue() != wxCHK_UNCHECKED) {
 		strcpy(temps, base);
-		strcat(temps, "\\UVon\\%02d.%02d.%02d.%02d");
+		strcat(temps, "\\UVon\\");
+		strcat(temps, wpattern);
 
 		skiplist.push_back(temps);
 	      }
@@ -2461,7 +2686,8 @@ public:
 		CreateDirectory(temps, NULL);
 
 		strcpy(temps, base);
-		strcat(temps, "\\UVoff\\%02d.%02d.%02d.%02d");
+		strcat(temps, "\\UVoff\\");
+		strcat(temps, wpattern);
 		emituvs = false;
 
 		prog->InitProgress("Resolution %d, saving mesh:", limit, "Saving non-UV tiles:", 0.0, majordone++, 1);
@@ -2475,7 +2701,8 @@ public:
 		CreateDirectory(temps, NULL);
 
 		strcpy(temps, base);
-		strcat(temps, "\\UVon\\%02d.%02d.%02d.%02d");
+		strcat(temps, "\\UVon\\");
+		strcat(temps, wpattern);
 		emituvs = true;
 
 		prog->InitProgress("Resolution %d, saving mesh:", limit, "Saving UV tiles:", 0.0, majordone++, 1);
@@ -2532,7 +2759,8 @@ public:
 	    CreateDirectory(base, NULL);
 
 	    strcpy(temps, base);
-	    strcat(temps, "\\%02d.%02d.%02d.%02d");
+	    strcat(temps, "\\");
+	    strcat(temps, wpattern);
 
 	    prog->InitProgress("Resolution %d, calculating normal-maps:", 512, "Tiling normals:", 0.0, majordone++, 1);
 	    wrteNormals0(false, OSNormalLow    ->GetValue(), false, H, temps);
@@ -2544,7 +2772,8 @@ public:
 	    CreateDirectory(base, NULL);
 
 	    strcpy(temps, base);
-	    strcat(temps, "\\%02d.%02d.%02d.%02d");
+	    strcat(temps, "\\");
+	    strcat(temps, wpattern);
 
 	    prog->InitProgress("Resolution %d, calculating normal-maps:", 1024, "Tiling normals:", 0.0, majordone++, 1);
 	    wrteNormals1(false, OSNormalRegular->GetValue(), false, H, temps);
@@ -2556,7 +2785,8 @@ public:
 	    CreateDirectory(base, NULL);
 
 	    strcpy(temps, base);
-	    strcat(temps, "\\%02d.%02d.%02d.%02d");
+	    strcat(temps, "\\");
+	    strcat(temps, wpattern);
 
 	    prog->InitProgress("Resolution %d, calculating normal-maps:", 2048, "Tiling normals:", 0.0, majordone++, 1);
 	    wrteNormals2(false, OSNormalHigh   ->GetValue(), false, H, temps);
@@ -2601,7 +2831,8 @@ public:
 	    CreateDirectory(base, NULL);
 
 	    strcpy(temps, base);
-	    strcat(temps, "\\%02d.%02d.%02d.%02d");
+	    strcat(temps, "\\");
+	    strcat(temps, wpattern);
 
 	    prog->InitProgress("Resolution %d, calculating color-maps:", 512, "Tiling colors:", 0.0, majordone++, 1);
 	    wrteColors0(OSColorLow    ->GetValue(), C, temps);
@@ -2613,7 +2844,8 @@ public:
 	    CreateDirectory(base, NULL);
 
 	    strcpy(temps, base);
-	    strcat(temps, "\\%02d.%02d.%02d.%02d");
+	    strcat(temps, "\\");
+	    strcat(temps, wpattern);
 
 	    prog->InitProgress("Resolution %d, calculating color-maps:", 1024, "Tiling colors:", 0.0, majordone++, 1);
 	    wrteColors1(OSColorRegular->GetValue(), C, temps);
@@ -2625,7 +2857,8 @@ public:
 	    CreateDirectory(base, NULL);
 
 	    strcpy(temps, base);
-	    strcat(temps, "\\%02d.%02d.%02d.%02d");
+	    strcat(temps, "\\");
+	    strcat(temps, wpattern);
 
 	    prog->InitProgress("Resolution %d, calculating color-maps:", 2048, "Tiling colors:", 0.0, majordone++, 1);
 	    wrteColors2(OSColorHigh   ->GetValue(), C, temps);
@@ -2637,7 +2870,8 @@ public:
 	    CreateDirectory(base, NULL);
 
 	    strcpy(temps, base);
-	    strcat(temps, "\\%02d.%02d.%02d.%02d");
+	    strcat(temps, "\\");
+	    strcat(temps, wpattern);
 
 	    prog->InitProgress("Resolution %d, calculating color-maps:", 4096, "Tiling colors:", 0.0, majordone++, 1);
 	    wrteColors3(OSColorUltra  ->GetValue(), C, temps);
@@ -2924,13 +3158,13 @@ private:
     /* ####################################################################### */
     char buf[256]; DWORD bufl = 256;
 
-    buf[0] = 0; RegGetValue(Settings, wsn.data(), "Install0", RRF_RT_REG_SZ, NULL, buf, &bufl);
+    buf[0] = 0; RegGetValue(Settings, GetGameKey("Installer", wsn.data()), "Install0", RRF_RT_REG_SZ, NULL, buf, &bufl);
     if (buf[0]) OSInstallLevel0->SetValue(buf[0] == '1'); bufl = 1023;
-    buf[0] = 0; RegGetValue(Settings, wsn.data(), "Install1", RRF_RT_REG_SZ, NULL, buf, &bufl);
+    buf[0] = 0; RegGetValue(Settings, GetGameKey("Installer", wsn.data()), "Install1", RRF_RT_REG_SZ, NULL, buf, &bufl);
     if (buf[0]) OSInstallLevel1->SetValue(buf[0] == '1'); bufl = 1023;
-    buf[0] = 0; RegGetValue(Settings, wsn.data(), "Install2", RRF_RT_REG_SZ, NULL, buf, &bufl);
+    buf[0] = 0; RegGetValue(Settings, GetGameKey("Installer", wsn.data()), "Install2", RRF_RT_REG_SZ, NULL, buf, &bufl);
     if (buf[0]) OSInstallLevel2->SetValue(buf[0] == '1'); bufl = 1023;
-    buf[0] = 0; RegGetValue(Settings, wsn.data(), "Install3", RRF_RT_REG_SZ, NULL, buf, &bufl);
+    buf[0] = 0; RegGetValue(Settings, GetGameKey("Installer", wsn.data()), "Install3", RRF_RT_REG_SZ, NULL, buf, &bufl);
     if (buf[0]) OSInstallLevel3->SetValue(buf[0] == '1'); bufl = 1023;
 
     /* --------------------------------------------------------------------- */
@@ -3178,7 +3412,7 @@ private:
     {
       const char *BO = ph.data();
       OSBaseDirIn->SetPath(BO);
-      RegSetKeyValue(Settings, NULL, "Base directory In", RRF_RT_REG_SZ, BO, (DWORD)strlen(BO) + 1);
+      RegSetKeyValue(Settings, GetGameKey(), "Base directory In", RRF_RT_REG_SZ, BO, (DWORD)strlen(BO) + 1);
     }
 
     OSStatusBar->SetStatusText(wxT("Skimming directory ..."), 0);
@@ -3653,8 +3887,14 @@ public:
 	    base = trns;
 
 	    if (n) {
-	      if (!TextureCompressXYZ(&base, 0))
-		goto terminal_error;
+	      if (OSGame->FindItem(wxID_OBLIVON)->IsChecked()) {
+		if (!TextureCompressXYZ(&base, 0))
+		  goto terminal_error;
+	      }
+	      else if (OSGame->FindItem(wxID_SKYRIM)->IsChecked()) {
+		if (!TextureCompressXZY(&base, 0))
+		  goto terminal_error;
+	      }
 	    }
 	    else {
 	      if (!TextureCompressRGB(&base, 0, true))
@@ -3815,10 +4055,10 @@ terminal_error: {
 	  return;
 	}
 
-	RegSetKeyValue(Settings, wsn.data(), "Install0", RRF_RT_REG_SZ, inst0 ? "1" : "0", 2);
-	RegSetKeyValue(Settings, wsn.data(), "Install1", RRF_RT_REG_SZ, inst1 ? "1" : "0", 2);
-	RegSetKeyValue(Settings, wsn.data(), "Install2", RRF_RT_REG_SZ, inst2 ? "1" : "0", 2);
-	RegSetKeyValue(Settings, wsn.data(), "Install3", RRF_RT_REG_SZ, inst3 ? "1" : "0", 2);
+	RegSetKeyValue(Settings, GetGameKey("Installer", wsn.data()), "Install0", RRF_RT_REG_SZ, inst0 ? "1" : "0", 2);
+	RegSetKeyValue(Settings, GetGameKey("Installer", wsn.data()), "Install1", RRF_RT_REG_SZ, inst1 ? "1" : "0", 2);
+	RegSetKeyValue(Settings, GetGameKey("Installer", wsn.data()), "Install2", RRF_RT_REG_SZ, inst2 ? "1" : "0", 2);
+	RegSetKeyValue(Settings, GetGameKey("Installer", wsn.data()), "Install3", RRF_RT_REG_SZ, inst3 ? "1" : "0", 2);
       }
       else
 	prog->InitProgress(tpc, 0, "Skipping:", 0.0, installdone += 8, 1);
@@ -3832,35 +4072,96 @@ terminal_error: {
   }
 private:
 
+  void ReadMemory() {
+    char TS[1024]; DWORD TSL = 1023;
+    TS[0] = 0; RegGetValue(Settings, GetGameKey(), "Last worldspace", RRF_RT_REG_SZ, NULL, TS, &TSL);
+    if (TS[0]) OSWorldspace->SetValue(TS); TSL = 1023;
+    TS[0] = 0; RegGetValue(Settings, GetGameKey(), "Heightfield Out", RRF_RT_REG_SZ, NULL, TS, &TSL);
+    if (TS[0]) OSFileHeightfieldOut->SetPath(TS); TSL = 1023;
+    TS[0] = 0; RegGetValue(Settings, GetGameKey(), "Heightfield In", RRF_RT_REG_SZ, NULL, TS, &TSL);
+    if (TS[0]) OSFileHeightfieldIn1->SetPath(TS); TSL = 1023;
+    if (TS[0]) OSFileHeightfieldIn2->SetPath(TS); TSL = 1023;
+    TS[0] = 0; RegGetValue(Settings, GetGameKey(), "Points In", RRF_RT_REG_SZ, NULL, TS, &TSL);
+    if (TS[0]) OSFilePoints1->SetPath(TS); TSL = 1023;
+    if (TS[0]) OSFilePoints2->SetPath(TS); TSL = 1023;
+    TS[0] = 0; RegGetValue(Settings, GetGameKey(), "Base directory Out", RRF_RT_REG_SZ, NULL, TS, &TSL);
+    if (TS[0]) OSBaseDirOut1->SetPath(TS); TSL = 1023;
+    if (TS[0]) OSBaseDirOut2->SetPath(TS); TSL = 1023;
+    TS[0] = 0; RegGetValue(Settings, GetGameKey(), "Base directory In", RRF_RT_REG_SZ, NULL, TS, &TSL);
+    if (TS[0]) OSBaseDirIn->SetPath(TS); TSL = 1023;
+    TS[0] = 0; RegGetValue(Settings, GetGameKey(), "Autosave", RRF_RT_REG_SZ, NULL, TS, &TSL);
+    if (TS[0]) OSPluginAutosave->SetValue(TS[0] == '1'); TSL = 1023;
+    TS[0] = 0; RegGetValue(Settings, GetGameKey(), "Do Meshes", RRF_RT_REG_SZ, NULL, TS, &TSL);
+    if (TS[0]) OSMeshes->SetValue(TS[0] == '1'); TSL = 1023;
+    TS[0] = 0; RegGetValue(Settings, GetGameKey(), "Do Normals", RRF_RT_REG_SZ, NULL, TS, &TSL);
+    if (TS[0]) OSNormals->SetValue(TS[0] == '1'); TSL = 1023;
+    TS[0] = 0; RegGetValue(Settings, GetGameKey(), "Do Colors", RRF_RT_REG_SZ, NULL, TS, &TSL);
+    if (TS[0]) OSColors->SetValue(TS[0] == '1'); TSL = 1023;
+    TS[0] = 0; RegGetValue(Settings, GetGameKey(), "Do Heightmap", RRF_RT_REG_SZ, NULL, TS, &TSL);
+    if (TS[0]) OSHeightmap->SetValue(TS[0] == '1'); TSL = 1023;
+    TS[0] = 0; RegGetValue(Settings, GetGameKey(), "Defaults", RRF_RT_REG_SZ, NULL, TS, &TSL);
+    switch (TS[0]) {
+      default:
+      case '0':
+	OSDefaults->FindItem(wxID_DEFV, NULL)->Check(true);
+	OSMeshUVs->SetValue(true);
+	OSMeshNIF->SetValue(true);
+	OSMeshDX->SetValue(false);
+	OSRes1->SetValue(true ); OSRes2->SetValue(false); OSRes3->SetValue(false); OSRes4->SetValue(false);
+	OSRes5->SetValue(false); OSRes6->SetValue(false); OSRes7->SetValue(false); OSRes8->SetValue(false);
+	break;
+      case '1':
+	OSDefaults->FindItem(wxID_DEFT, NULL)->Check(true);
+	OSMeshUVs->SetValue(true);
+	OSMeshNIF->SetValue(true);
+	OSMeshDX->SetValue(false);
+	OSRes1->SetValue(true ); OSRes2->SetValue(false); OSRes3->SetValue(false); OSRes4->SetValue(false);
+	OSRes5->SetValue(false); OSRes6->SetValue(false); OSRes7->SetValue(false); OSRes8->SetValue(false);
+	break;
+      case '2':
+	OSDefaults->FindItem(wxID_DEFL, NULL)->Check(true);
+	OSMeshUVs->SetValue(false);
+	OSMeshNIF->SetValue(true);
+	OSMeshDX->SetValue(true);
+	OSRes1->SetValue(true); OSRes2->SetValue(true); OSRes3->SetValue(true); OSRes4->SetValue(true);
+	OSRes5->SetValue(true); OSRes6->SetValue(true); OSRes7->SetValue(true); OSRes8->SetValue(true);
+	break;
+    }
+    TS[0] = 0; RegGetValue(Settings, GetGameKey(), "Orientation", RRF_RT_REG_SZ, NULL, TS, &TSL);
+    if (TS[0]) OSOrientation->SetValue(TS[0] == 'H'); TSL = 1023;
+    if (!TS[0]) OSOrientation->SetValue(!OSDefaults->FindItem(wxID_DEFV, NULL)->IsChecked());
+    TS[0] = 0; RegGetValue(Settings, GetGameKey(), "Target", RRF_RT_REG_SZ, NULL, TS, &TSL);
+    if (TS[0]) OSTarget->SetValue(TS); TSL = 1023;
+    if (!TS[0]) OSTarget->SetValue(OSDefaults->FindItem(wxID_DEFV, NULL)->IsChecked() ? "155000" : "450000");
+  }
+
   void ChangeDefaults(wxCommandEvent& event) {
-    if (OSDefaults->FindChildItem(wxID_DEFV, NULL)->IsChecked()) {
+    if (OSDefaults->FindItem(wxID_DEFV, NULL)->IsChecked()) {
       OSMeshUVs->SetValue(true);
       OSMeshNIF->SetValue(true);
       OSMeshDX->SetValue(false);
       OSRes1->SetValue(true ); OSRes2->SetValue(false); OSRes3->SetValue(false); OSRes4->SetValue(false);
       OSRes5->SetValue(false); OSRes6->SetValue(false); OSRes7->SetValue(false); OSRes8->SetValue(false);
 
-      RegSetKeyValue(Settings, NULL, "Defaults", RRF_RT_REG_SZ, "0", 2);
+      RegSetKeyValue(Settings, GetGameKey(), "Defaults", RRF_RT_REG_SZ, "0", 2);
     }
-    else if (OSDefaults->FindChildItem(wxID_DEFT, NULL)->IsChecked()) {
-      OSDefaults->FindChildItem(wxID_DEFT, NULL)->Check(true);
+    else if (OSDefaults->FindItem(wxID_DEFT, NULL)->IsChecked()) {
       OSMeshUVs->SetValue(true);
       OSMeshNIF->SetValue(true);
       OSMeshDX->SetValue(false);
       OSRes1->SetValue(true ); OSRes2->SetValue(false); OSRes3->SetValue(false); OSRes4->SetValue(false);
       OSRes5->SetValue(false); OSRes6->SetValue(false); OSRes7->SetValue(false); OSRes8->SetValue(false);
 
-      RegSetKeyValue(Settings, NULL, "Defaults", RRF_RT_REG_SZ, "1", 2);
+      RegSetKeyValue(Settings, GetGameKey(), "Defaults", RRF_RT_REG_SZ, "1", 2);
     }
-    else if (OSDefaults->FindChildItem(wxID_DEFL, NULL)->IsChecked()) {
-      OSDefaults->FindChildItem(wxID_DEFL, NULL)->Check(true);
+    else if (OSDefaults->FindItem(wxID_DEFL, NULL)->IsChecked()) {
       OSMeshUVs->SetValue(false);
       OSMeshNIF->SetValue(true);
       OSMeshDX->SetValue(true);
       OSRes1->SetValue(true); OSRes2->SetValue(true); OSRes3->SetValue(true); OSRes4->SetValue(true);
       OSRes5->SetValue(true); OSRes6->SetValue(true); OSRes7->SetValue(true); OSRes8->SetValue(true);
 
-      RegSetKeyValue(Settings, NULL, "Defaults", RRF_RT_REG_SZ, "2", 2);
+      RegSetKeyValue(Settings, GetGameKey(), "Defaults", RRF_RT_REG_SZ, "2", 2);
     }
   }
 
@@ -3877,6 +4178,13 @@ public:
     else if (RegCreateKeyEx(HKEY_LOCAL_MACHINE, "Software\\Bethesda Softworks\\Oscape", 0, NULL, REG_OPTION_NON_VOLATILE, KEY_READ | KEY_WRITE | KEY_WOW64_32KEY, NULL, &Settings, NULL) == ERROR_SUCCESS) {
     }
 
+    char TS[1024]; DWORD TSL = 1023; TS[0] = 0; 
+    RegGetValue(Settings, NULL, "Game", RRF_RT_REG_SZ, NULL, TS, &TSL);
+    if ((TS[0] == '0') || (TS[0] == 0))
+      OSGame->FindItem(wxID_OBLIVON, NULL)->Check(true);
+    else if (TS[0] == '1')
+      OSGame->FindItem(wxID_SKYRIM, NULL)->Check(true);
+
     ResetHPluginDir(true);
     ResetHPluginList();
     LoadHPluginList();
@@ -3886,66 +4194,7 @@ public:
     OSFilePoints1->SetPath("");
     OSFilePoints2->SetPath("");
 
-    char TS[1024]; DWORD TSL = 1023;
-    TS[0] = 0; RegGetValue(Settings, NULL, "Last worldspace", RRF_RT_REG_SZ, NULL, TS, &TSL);
-    if (TS[0]) OSWorldspace->SetValue(TS); TSL = 1023;
-    TS[0] = 0; RegGetValue(Settings, NULL, "Heightfield Out", RRF_RT_REG_SZ, NULL, TS, &TSL);
-    if (TS[0]) OSFileHeightfieldOut->SetPath(TS); TSL = 1023;
-    TS[0] = 0; RegGetValue(Settings, NULL, "Heightfield In", RRF_RT_REG_SZ, NULL, TS, &TSL);
-    if (TS[0]) OSFileHeightfieldIn1->SetPath(TS); TSL = 1023;
-    if (TS[0]) OSFileHeightfieldIn2->SetPath(TS); TSL = 1023;
-    TS[0] = 0; RegGetValue(Settings, NULL, "Points In", RRF_RT_REG_SZ, NULL, TS, &TSL);
-    if (TS[0]) OSFilePoints1->SetPath(TS); TSL = 1023;
-    if (TS[0]) OSFilePoints2->SetPath(TS); TSL = 1023;
-    TS[0] = 0; RegGetValue(Settings, NULL, "Base directory Out", RRF_RT_REG_SZ, NULL, TS, &TSL);
-    if (TS[0]) OSBaseDirOut1->SetPath(TS); TSL = 1023;
-    if (TS[0]) OSBaseDirOut2->SetPath(TS); TSL = 1023;
-    TS[0] = 0; RegGetValue(Settings, NULL, "Base directory In", RRF_RT_REG_SZ, NULL, TS, &TSL);
-    if (TS[0]) OSBaseDirIn->SetPath(TS); TSL = 1023;
-    TS[0] = 0; RegGetValue(Settings, NULL, "Autosave", RRF_RT_REG_SZ, NULL, TS, &TSL);
-    if (TS[0]) OSPluginAutosave->SetValue(TS[0] == '1'); TSL = 1023;
-    TS[0] = 0; RegGetValue(Settings, NULL, "Do Meshes", RRF_RT_REG_SZ, NULL, TS, &TSL);
-    if (TS[0]) OSMeshes->SetValue(TS[0] == '1'); TSL = 1023;
-    TS[0] = 0; RegGetValue(Settings, NULL, "Do Normals", RRF_RT_REG_SZ, NULL, TS, &TSL);
-    if (TS[0]) OSNormals->SetValue(TS[0] == '1'); TSL = 1023;
-    TS[0] = 0; RegGetValue(Settings, NULL, "Do Colors", RRF_RT_REG_SZ, NULL, TS, &TSL);
-    if (TS[0]) OSColors->SetValue(TS[0] == '1'); TSL = 1023;
-    TS[0] = 0; RegGetValue(Settings, NULL, "Do Heightmap", RRF_RT_REG_SZ, NULL, TS, &TSL);
-    if (TS[0]) OSHeightmap->SetValue(TS[0] == '1'); TSL = 1023;
-    TS[0] = 0; RegGetValue(Settings, NULL, "Defaults", RRF_RT_REG_SZ, NULL, TS, &TSL);
-    switch (TS[0]) {
-      default:
-      case '0':
-	OSDefaults->FindChildItem(wxID_DEFV, NULL)->Check(true);
-	OSMeshUVs->SetValue(true);
-	OSMeshNIF->SetValue(true);
-	OSMeshDX->SetValue(false);
-	OSRes1->SetValue(true ); OSRes2->SetValue(false); OSRes3->SetValue(false); OSRes4->SetValue(false);
-	OSRes5->SetValue(false); OSRes6->SetValue(false); OSRes7->SetValue(false); OSRes8->SetValue(false);
-	break;
-      case '1':
-	OSDefaults->FindChildItem(wxID_DEFT, NULL)->Check(true);
-	OSMeshUVs->SetValue(true);
-	OSMeshNIF->SetValue(true);
-	OSMeshDX->SetValue(false);
-	OSRes1->SetValue(true ); OSRes2->SetValue(false); OSRes3->SetValue(false); OSRes4->SetValue(false);
-	OSRes5->SetValue(false); OSRes6->SetValue(false); OSRes7->SetValue(false); OSRes8->SetValue(false);
-	break;
-      case '2':
-	OSDefaults->FindChildItem(wxID_DEFL, NULL)->Check(true);
-	OSMeshUVs->SetValue(false);
-	OSMeshNIF->SetValue(true);
-	OSMeshDX->SetValue(true);
-	OSRes1->SetValue(true); OSRes2->SetValue(true); OSRes3->SetValue(true); OSRes4->SetValue(true);
-	OSRes5->SetValue(true); OSRes6->SetValue(true); OSRes7->SetValue(true); OSRes8->SetValue(true);
-	break;
-    }
-    TS[0] = 0; RegGetValue(Settings, NULL, "Orientation", RRF_RT_REG_SZ, NULL, TS, &TSL);
-    if (TS[0]) OSOrientation->SetValue(TS[0] == 'H'); TSL = 1023;
-    if (!TS[0]) OSOrientation->SetValue(!OSDefaults->FindChildItem(wxID_DEFV, NULL)->IsChecked());
-    TS[0] = 0; RegGetValue(Settings, NULL, "Target", RRF_RT_REG_SZ, NULL, TS, &TSL);
-    if (TS[0]) OSTarget->SetValue(TS); TSL = 1023;
-    if (!TS[0]) OSTarget->SetValue(OSDefaults->FindChildItem(wxID_DEFV, NULL)->IsChecked() ? "155000" : "450000");
+    ReadMemory();
 
     ChangeMeshes();
     ChangeNormals();
@@ -4021,6 +4270,10 @@ extern "C" int WINAPI WinMain(HINSTANCE hInstance,
     return 0;
   if (!TextureInit())
     return 0;
+
+#ifdef _DEBUG
+  RedirectIOToConsole();
+#endif
 
   int ret = wxEntry(hInstance, hPrevInstance, lpCmdLine, nCmdShow);
 
