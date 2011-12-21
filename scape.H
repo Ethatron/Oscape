@@ -57,6 +57,7 @@ extern const char *texFile;
 extern const char *greyFile;
 extern const char *colrFile;
 extern const char *dataFile;
+extern const char *watrFile;
 
 extern bool writeobjmaps;
 extern bool writefcemaps;
@@ -70,6 +71,10 @@ extern bool emituvs;
 extern bool emitnrm;
 extern int rasterx, tilesx, dotilex, rwsizex;
 extern int rastery, tilesy, dotiley, rwsizey;
+
+extern unsigned short basinshift;
+extern Real heightscale;
+extern Real heightshift;
 
 extern int wdspace;
 extern char wdsname[256];
@@ -129,6 +134,14 @@ extern int dotilex, dotiley;
 #include "hfield.H"
 #include "cfield.H"
 #include "simplfield.H"
+
+void RegisterWater(const Point2d& _p, Real lvl, bool o);
+
+/* ---------------------------------------------------- */
+
+void readWaterFile(SimplField& ter, const char *name);
+
+/* ---------------------------------------------------- */
 
 #ifdef	MATCH_WITH_HIRES
 void readPointsFile(SimplField& ter, const char *name);

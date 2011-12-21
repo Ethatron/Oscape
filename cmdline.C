@@ -74,6 +74,7 @@ const char *texFile = NULL;
 const char *greyFile = NULL;
 const char *colrFile = NULL;
 const char *dataFile = NULL;
+const char *watrFile = NULL;
 
 //-debug <debuglevel>           set debugging level [default=0]\n\
 

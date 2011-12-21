@@ -300,6 +300,7 @@ LPDIRECT3DTEXTURE9 TextureSearch(const char *name) {
 
 string weoutn; bool calcn = false;
 string weouth; bool calch = false;
+string weoutw; bool calcw = false;
 string weoutx; bool calcx = false;
 string weoutm; bool calcm = false;
 string wename; int weid;
@@ -429,7 +430,7 @@ const char *GetTextureName<Sk::LTEXRecord>(Sk::LTEXRecord *rec) {
     return ((Sk::TXSTRecord *)WinningRecord)->TX00.value;
   }
 
-  return "Landscape\\tundra01.dds";
+  return "Landscape\\dirt01.dds";
 }
 
 /* ............................................................................ */
@@ -576,19 +577,21 @@ unsigned char ClassifyTexture(FORMID t) {
     /**/ if (stristr(name, "terrainskstoneground"))
       cls = 255;
 
-    else if (stristr(name, "default")) cls = 1;
-    else if (stristr(name, "ocean"  )) cls = 1;
-    else if (stristr(name, "beach"  )) cls = 1;
-    else if (stristr(name, "sand"   )) cls = 1;
-    else if (stristr(name, "mud"    )) cls = 1;
-    else if (stristr(name, "river"  )) cls = 1;
-    else if (stristr(name, "grass"  )) cls = 128;
-    else if (stristr(name, "rock"   )) cls = 140;
-    else if (stristr(name, "snow"   )) cls = 192;
-    else if (stristr(name, "cobble" )) cls = 255;
-    else if (stristr(name, "road"   )) cls = 255;
-    else if (stristr(name, "street" )) cls = 255;
-    else if (stristr(name, "path"   )) cls = 255;
+    else if (stristr(name, "default" )) cls = 1;
+    else if (stristr(name, "ocean"   )) cls = 1;
+    else if (stristr(name, "beach"   )) cls = 1;
+    else if (stristr(name, "sand"    )) cls = 1;
+    else if (stristr(name, "mud"     )) cls = 1;
+    else if (stristr(name, "river"   )) cls = 64;
+    else if (stristr(name, "grass"   )) cls = 128;
+    else if (stristr(name, "rock"    )) cls = 140;
+    else if (stristr(name, "mountain")) cls = 140;
+    else if (stristr(name, "snow"    )) cls = 192;
+    else if (stristr(name, "cobble"  )) cls = 255;
+    else if (stristr(name, "road"    )) cls = 255;
+    else if (stristr(name, "bridge"  )) cls = 255;
+    else if (stristr(name, "street"  )) cls = 255;
+    else if (stristr(name, "path"    )) cls = 255;
 
     ltex[t].classification = cls;
   }
@@ -765,6 +768,17 @@ public:
 	  long leftc = (offsx + leftx) * 32;
 	  long topc  = (offsy + topy ) * 32;
 
+	  if ((cell->XCLC->posX == 0) && (cell->XCLC->posY == 0)) {
+	    printf("stopping");
+
+	    /* XCLW: FFFF7F7F == no water */
+	    
+//	    fprintf(stdout, "XCLW: 0x%08x\n", *((long *)&cell->XCLW.value));
+//	    fprintf(stdout, "XWCN: 0x%08x\n", *((long *)&cell->XWCN.value));
+//	    fprintf(stdout, "XWCU: 0x%08x 0x%08x 0x%08x 0x%08x\n", *((long *)&cell->XWCU.value[ 0]), *((long *)&cell->XWCU.value[ 4]), *((long *)&cell->XWCU.value[ 8]), *((long *)&cell->XWCU.value[12]));
+//	    fprintf(stdout, "XWCU: 0x%08x 0x%08x 0x%08x 0x%08x\n", *((long *)&cell->XWCU.value[16]), *((long *)&cell->XWCU.value[20]), *((long *)&cell->XWCU.value[24]), *((long *)&cell->XWCU.value[28]));
+	  }
+
 	  /* check cell-center against range, no problems with the overlap that way */
 	  if (!cchk(leftc + 16 + lofx, topc + 16 + lofy)) {
 	    /* next */ walk++; continue; }
@@ -797,6 +811,83 @@ public:
 	      }
 	    }
 	  }
+	}
+
+	/* next */
+	walk++;
+      }
+    }
+
+    return false;
+  }
+};
+
+template<
+  class WRLDRecord = Ob::WRLDRecord,
+  class CELLRecord = Ob::CELLRecord,
+  class LANDRecord = Ob::LANDRecord,
+  class LTEXRecord = Ob::LTEXRecord
+>
+class ExtractWWorldOp : public WindowedWorldOp {
+  FILE *wf;
+
+public:
+  ExtractWWorldOp(void *mwf, long b, long r) : WindowedWorldOp(b, r) {
+    wf = (FILE *)mwf;
+  }
+
+  virtual bool Accept(Record *&curRecord) {
+    WRLDRecord *wrld = (WRLDRecord *)curRecord;
+    CELLRecord *cell;
+    LANDRecord *land;
+
+    if (!stricmp(wrld->EDID.value, wename.data())) {
+      std::vector<Record *>::iterator walk = wrld->CELLS.begin();
+      while (walk != wrld->CELLS.end()) {
+	cell = (CELLRecord *)(*walk);
+	land = (LANDRecord *)cell->LAND;
+
+	/* make sure it's winning */
+	if (cell->XCLC.IsLoaded() && land && !land->IsWinningDetermined()) {
+	  ModFile *WinningModFile;
+	  Record *WinningRecord;
+
+	  col->LookupWinningRecord(land->formID, WinningModFile, WinningRecord, false);
+	}
+
+	if (cell->XCLC.IsLoaded() && land && !land->IsWinning()) {
+	  printf("skipping");
+	}
+
+	if (cell->XCLC.IsLoaded() && land && land->IsWinning()) {
+	  long leftx = (cell->XCLC->posX + rofx);
+	  long topy  = (cell->XCLC->posY + rofy);
+	  long leftc = (offsx + leftx) * 32;
+	  long topc  = (offsy + topy ) * 32;
+
+	  /* check cell-center against range, no problems with the overlap that way */
+	  if (!cchk(leftc + 16 + lofx, topc + 16 + lofy)) {
+	    /* next */ walk++; continue; }
+
+	  SetTopic("Extracting water-heights from cell {%d,%d}", leftx, topy);
+	  SetProgress(dells++);
+
+	  if (1) {
+	    fprintf(wf, "%4d %4d 0x%08x %f\n",
+	      cell->XCLC->posX,
+	      cell->XCLC->posY,
+	      *((long  *)&cell->XCLW.value),
+	      *((float *)&cell->XCLW.value)
+	    );
+
+	    /* XCLW: FFFF7F7F == no water */
+
+	    //	    fprintf(stdout, "XCLW: 0x%08x\n", *((long *)&cell->XCLW.value));
+	    //	    fprintf(stdout, "XWCN: 0x%08x\n", *((long *)&cell->XWCN.value));
+	    //	    fprintf(stdout, "XWCU: 0x%08x 0x%08x 0x%08x 0x%08x\n", *((long *)&cell->XWCU.value[ 0]), *((long *)&cell->XWCU.value[ 4]), *((long *)&cell->XWCU.value[ 8]), *((long *)&cell->XWCU.value[12]));
+	    //	    fprintf(stdout, "XWCU: 0x%08x 0x%08x 0x%08x 0x%08x\n", *((long *)&cell->XWCU.value[16]), *((long *)&cell->XWCU.value[20]), *((long *)&cell->XWCU.value[24]), *((long *)&cell->XWCU.value[28]));
+	  }
+
 	}
 
 	/* next */
@@ -1474,6 +1565,60 @@ void HExtract(SINT32 num) {
   }
 }
 
+void WExtract(SINT32 num) {
+  bool rethrow = false;
+  char rethrowing[256];
+
+  /* create output file */
+  FILE *file = fopen(weoutw.data(), "wb");
+  if (file == NULL) throw runtime_error("Failed to open output file");
+
+  for (unsigned long sy = 0; sy < sizey; sy += PARTITION_ROWS) {
+    /* this may be 65535 if we want to mark them invalid
+    memset(mem, 0x00000000, len); */
+
+    SetTopic("Extracting water-heights from cells:");
+    SetStatus("Extracting water-heights ...");
+
+    /* intercept for clean-up */
+    try {
+      switch (col->CollectionType) {
+	case eIsOblivion: {
+	  ExtractWWorldOp<Ob::WRLDRecord, Ob::CELLRecord, Ob::LANDRecord, Ob::LTEXRecord> ewo(file, sy, PARTITION_ROWS);
+	  for (SINT32 n = 0; n < num; ++n) {
+	    ModFile *mf = GetModIDByLoadOrder(col, n);
+
+	    mf->VisitRecords(REV32(WRLD), ewo);
+	  }
+	} break;
+	case eIsSkyrim: {
+	  ExtractWWorldOp<Sk::WRLDRecord, Sk::CELLRecord, Sk::LANDRecord, Sk::LTEXRecord> ewo(file, sy, PARTITION_ROWS);
+	  for (SINT32 n = 0; n < num; ++n) {
+	    ModFile *mf = GetModIDByLoadOrder(col, n);
+
+	    mf->VisitRecords(REV32(WRLD), ewo);
+	  }
+	} break;
+      }
+    }
+    catch (exception &e) {
+      strcpy(rethrowing, e.what());
+      rethrow = true;
+
+      /* force loop-finish (allow clean-up) */
+      sy = sizey;
+    }
+  }
+
+  fclose(file);
+
+  /* after total cleanup, pass the error down */
+  if (rethrow) {
+    DeleteFile(weoutw.data());
+    throw runtime_error(rethrowing);
+  }
+}
+
 void MExtract(SINT32 num) {
   bool rethrow = false;
   char rethrowing[256];
@@ -1714,6 +1859,7 @@ DWORD __stdcall ExtractFromCollection(LPVOID lp) {
 //sizex += 1;
 //sizey += 1;
 
+  /* we always want multiple of 1024 */ 
   sizex *= 32;
   sizey *= 32;
 
@@ -1725,6 +1871,7 @@ DWORD __stdcall ExtractFromCollection(LPVOID lp) {
 
   numpasses += calcn ? 1 : 0;
   numpasses += calch ? 1 : 0;
+  numpasses += calcw ? 1 : 0;
   numpasses += calcx ? 1 : 0;
   numpasses += calcm ? 1 : 0;
 
@@ -1732,6 +1879,7 @@ DWORD __stdcall ExtractFromCollection(LPVOID lp) {
 
   if (calcn) NExtract(num);
   if (calch) HExtract(num);
+  if (calcw) WExtract(num);
   if (calcm) MExtract(num);
   if (calcx) CExtract(num);
 

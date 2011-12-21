@@ -48,6 +48,7 @@
 
 /* makes the smooth fall back to point-sampling */
 #undef	MULTI_HEIGHTFIELD
+#define MAXPATH	1024
 
 int width, height;
 int tilesx, tilesy;
@@ -59,9 +60,9 @@ int wchgame = 0;
 char *wpattern = "%02d.%02d.%02d.%02d";
 
 unsigned short basinshift  = (8192 - 512) / (2 * 4);
-Real heightscale =    2.0f *    4.0f/*Annwyn*/;
-Real heightshift = 8192.0f -    0.0f/*Annwyn*/;
-Real heightadjust1 = 4.0f / (4.0f)/*Oblivion*/;
+Real heightscale =    2.0f * 4.0f; /*Annwyn*/
+Real heightshift = 8192.0f - 0.0f; /*Annwyn*/
+Real heightadjust1 = 4.0f / (4.0f); /*Oblivion*/
 Real heightadjust2 = 4.0f / (2.0f * sqrt(2.0f))/*Oblivion (conciously more steep!)*/;
 Real sizescale = 131072.0f / 1024.0f;
 
@@ -87,32 +88,44 @@ bool skipTile(int coordx, int coordy, int reso) {
   if (writeobj || writedx9 || writenif) {
     vector<string>::iterator walk = skiplist.begin();
     while (walk != skiplist.end()) {
-      char nbase[256], name[256];
+      char nbase[MAXPATH], name[MAXPATH];
 
       /* codification is:
        * "worldspace.tilex*32.tiley*32.32"
        * worldspace == 60 == Tamriel
        */
       /**/ if (wchgame == 0)	// Oblivion
-        sprintf(nbase, walk->data(), wdspace, coordx, coordy, reso);
+        _snprintf(nbase, sizeof(nbase) - 1, walk->data(), wdspace, coordx, coordy, reso);
       else if (wchgame == 1)	// Skyrim
-        sprintf(nbase, walk->data(), wdsname, reso, coordx, coordy);
+        _snprintf(nbase, sizeof(nbase) - 1, walk->data(), wdsname, reso, coordx, coordy);
 
       /* lower-case */
       strlwr(nbase);
 
-      if (writeobj) {
-	strcpy(name, nbase); strcat(name, ".obj");
+      if (writenif) {
+	/**/ if (wchgame == 0) {	// Oblivion
+	  strcpy(name, nbase);
+	  strcat(name, ".nif");
+	}
+	else if (wchgame == 1) {	// Skyrim
+	  strcpy(name, nbase);
+	  strcat(name, ".btr");
+	}
+
 	skip = skip && !IsOlder(name, writechk);
       }
 
-      if (writenif) {
-	strcpy(name, nbase); strcat(name, ".nif");
+      if (writeobj) {
+	strcpy(name, nbase);
+	strcat(name, ".obj");
+
 	skip = skip && !IsOlder(name, writechk);
       }
 
       if (writedx9) {
-	strcpy(name, nbase); strcat(name, ".x");
+	strcpy(name, nbase);
+	strcat(name, ".x");
+
 	skip = skip && !IsOlder(name, writechk);
       }
 
@@ -275,14 +288,75 @@ void RevisitGeometry() {
 
 /* ---------------------------------------------------- */
 
-#ifdef	MATCH_WITH_HIRES
-void readPointsFile(SimplField& ter, const char *name) {
-  int width  = ter.getHField()->getWidth();
-  int height = ter.getHField()->getHeight();
-
+void readWaterFile(SimplField& ter, const char *name) {
   FILE *pts = fopen(name, "rb");
   if (!pts)
     return;
+
+  // round down, negative side would be smaller than positive side
+  int ox = (tilesx / 2) * (int)(rasterx / 32);
+  int oy = (tilesy / 2) * (int)(rastery / 32);
+  int gw = ter.getHField()->getWidth();
+  int gh = ter.getHField()->getHeight();
+
+  /* calculate number of lines (TODO: make it faster) */
+  char buf[512]; int lines = 0;
+  while (fgets(buf, 512, pts) != NULL)
+    lines++;
+
+  /* initialize progress */
+  fseek(pts, 0, SEEK_SET);
+  int p = (lines + 499) / 500;
+  if (lines)
+    InitProgress(lines, 0.0);
+
+  /* read in every point in the file and update progress */
+  int x, y, bv = 0, cnt = 0; long l; float f;
+  while (fgets(buf, 256, pts) != NULL) {
+//while (fscanf(pts, "%d %d\n", &x, &y) == 2) {
+    /* comments / sections allowed */
+    if ((buf[0] != '\0') &&
+	(buf[0] != ';') &&
+	(buf[0] != '[') &&
+	(buf[0] != '#')) {
+      /* can we also interprete it? */
+      if (sscanf(buf, "%4d %4d 0x%08x %f\n", &x, &y, &l, &f) == 4) {
+	/* from world-space to heightfield-space */
+	Point2d p(
+	  (x + ox) * 32,
+	  (y + oy) * 32
+	);
+
+	/* real water */
+	if ((l != 0x7F7FFFFF) && (l != 0x4F7FFFC9))
+	  RegisterWater(p, f + 14000, false);
+      }
+    }
+
+    /* advance progress */
+    if ((cnt % p) == 0)
+      SetProgress(cnt, 0.0);
+
+    cnt++;
+  }
+
+  logpf("%d water-levels added\n", bv);
+  fclose(pts);
+}
+
+/* ---------------------------------------------------- */
+
+#ifdef	MATCH_WITH_HIRES
+void readPointsFile(SimplField& ter, const char *name) {
+  FILE *pts = fopen(name, "rb");
+  if (!pts)
+    return;
+
+  // round down, negative side would be smaller than positive side
+  int ox = (tilesx / 2) * (int)(sizescale * rasterx);
+  int oy = (tilesy / 2) * (int)(sizescale * rastery);
+  int gw = ter.getHField()->getWidth();
+  int gh = ter.getHField()->getHeight();
 
   /* calculate number of lines (TODO: make it faster) */
   char buf[256]; int lines = 0;
@@ -296,7 +370,7 @@ void readPointsFile(SimplField& ter, const char *name) {
     InitProgress(lines, ter.getCurrentError());
 
   /* read in every point in the file and update progress */
-  int x, y, bv = 0, cnt = 0;
+  int x, y, bv = 0, cnt = 0; Real fx, fy;
   while (fgets(buf, 256, pts) != NULL) {
 //while (fscanf(pts, "%d %d\n", &x, &y) == 2) {
     /* comments / sections allowed */
@@ -306,12 +380,28 @@ void readPointsFile(SimplField& ter, const char *name) {
         (buf[0] != '#')) {
       /* can we also interprete it? */
       if (sscanf(buf, "%d %d\n", &x, &y) == 2) {
-	x = (int)floor((Real)x / sizescale); x = min(x, width  - 1);
-	y = (int)floor((Real)y / sizescale); y = min(y, height - 1);
+	/* from world-space to heightfield-space */
+	x = (int)floor((Real)(x + ox) / sizescale);
+	y = (int)floor((Real)(y + oy) / sizescale);
 
-	logrf("%d/%d: ", bv, cnt);
-//	bv += ter.select_new_point(x, y) ? 1 : 0;
-	bv += ter.select_fix_point(x, y) ? 1 : 0;
+	/* heightfield-space coordinates */
+	int sx = (int)floor((1.0f / rasterx) * x) * rasterx;
+	int sy = (int)floor((1.0f / rastery) * y) * rastery;
+
+	/* collect tile-border vertices only */
+	if ((x == sx) ||
+	    (y == sy) ||
+	    (x == gw) ||
+	    (y == gh)) {
+	  x = min(x, gw - 1);
+	  y = min(y, gh - 1);
+
+	  logrf("%d/%d: ", bv, cnt);
+//	  bv += ter.select_new_point(x, y) ? 1 : 0;
+	  bv += ter.select_fix_point(x, y) ? 1 : 0;
+	}
+
+	/* TODO: add fractional support (requires identification if it's a custom point file) */
       }
     }
 
@@ -331,6 +421,9 @@ void wrtePointsFile(SimplField& ter, const char *name) {
   if (!pts)
     return;
 
+  // round down, negative side would be smaller than positive side
+  int ox = (tilesx / 2) * (int)(sizescale * rasterx);
+  int oy = (tilesy / 2) * (int)(sizescale * rastery);
   int gw = ter.getHField()->getWidth();
   int gh = ter.getHField()->getHeight();
   int bv = 0;
@@ -339,6 +432,7 @@ void wrtePointsFile(SimplField& ter, const char *name) {
   for (itv = Vertices.begin(); itv != Vertices.end(); itv++) {
     class objVertex *vo = (*itv);
 
+    /* heightfield-space coordinates */
     Real sx = floor((1.0f / rasterx) * vo->vtx.x) * rasterx;
     Real sy = floor((1.0f / rastery) * vo->vtx.y) * rastery;
 
@@ -349,7 +443,8 @@ void wrtePointsFile(SimplField& ter, const char *name) {
 	(vo->vtx.y == gh)) {
       bv++;
 
-      fprintf(pts, "%d %d\n", (int)(vo->x), (int)(vo->y));
+      /* world-space coordinates */
+      fprintf(pts, "%d %d\n", (int)(vo->x - ox), (int)(vo->y - oy));
     }
   }
 
@@ -434,12 +529,12 @@ void wrteWavefront(SimplField& ter, const char *pattern) {
 
     SetTopic(emituvs ? "Saving UV tile {%d,%d}:" : "Saving non-UV tile {%d,%d}:", coordx, coordy);
 
-    char name[256];
+    char name[MAXPATH];
 
     /**/ if (wchgame == 0)	// Oblivion
-      sprintf(name, pattern, wdspace, coordx, coordy, min(resx, resy));
+      _snprintf(name, sizeof(name) - 1, pattern, wdspace, coordx, coordy, min(resx, resy));
     else if (wchgame == 1)	// Skyrim
-      sprintf(name, pattern, wdsname, min(resx, resy), coordx, coordy);
+      _snprintf(name, sizeof(name) - 1, pattern, wdsname, min(resx, resy), coordx, coordy);
 
     /* lower-case */
     strlwr(name);
@@ -517,8 +612,37 @@ void wrteWavefront(SimplField& ter) {
 #include NIFLIB_BASEDIR(include/obj/NiNode.h)
 #include NIFLIB_BASEDIR(include/obj/NiTriShape.h)
 #include NIFLIB_BASEDIR(include/obj/NiTriShapeData.h)
+#include NIFLIB_BASEDIR(include/obj/BSMultiBoundNode.h)
+#include NIFLIB_BASEDIR(include/obj/BSMultiBound.h)
+#include NIFLIB_BASEDIR(include/obj/BSMultiBoundAABB.h)
+#include NIFLIB_BASEDIR(include/obj/BSLightingShaderProperty.h)
+#include NIFLIB_BASEDIR(include/obj/BSShaderTextureSet.h)
 
 using namespace Niflib;
+
+NiObjectRef FindRoot( vector<NiObjectRef> const & objects ) {
+  //--Look for a NiNode that has no parents--//
+
+  //Find the first NiObjectNET derived object
+  NiAVObjectRef root;
+  for (unsigned int i = 0; i < objects.size(); ++i) {
+    root = DynamicCast<NiAVObject>(objects[i]);
+    if ( root != NULL ) {
+      break;
+    }
+  }
+
+  //Make sure a node was found, if not return first node
+  if ( root == NULL )
+    return objects[0];
+
+  //Move up the chain to the root node
+  while ( root->GetParent() != NULL ) {
+    root = StaticCast<NiAVObject>(root->GetParent());
+  }
+
+  return StaticCast<NiObject>(root);
+}
 
 //#define NIFLIB_LIBDIR	"../../../NIFtools/trunk/niflib/"
 #define NIFLIB_LIBDIR	"../../../NIFtools (Ethatron)/niflib/"
@@ -567,12 +691,12 @@ void wrteNIF(SimplField& ter, const char *pattern) {
 
     SetTopic(emituvs ? "Saving UV tile {%d,%d}:" : "Saving non-UV tile {%d,%d}:", coordx, coordy);
 
-    char name[256];
+    char name[MAXPATH];
 
     /**/ if (wchgame == 0)	// Oblivion
-      sprintf(name, pattern, wdspace, coordx, coordy, min(resx, resy));
+      _snprintf(name, sizeof(name) - 1, pattern, wdspace, coordx, coordy, min(resx, resy));
     else if (wchgame == 1)	// Skyrim
-      sprintf(name, pattern, wdsname, min(resx, resy), coordx, coordy);
+      _snprintf(name, sizeof(name) - 1, pattern, wdsname, min(resx, resy), coordx, coordy);
 
     /* lower-case */
     strlwr(name);
@@ -602,6 +726,7 @@ void wrteNIF(SimplField& ter, const char *pattern) {
 
 	root->SetData(data);
 	root->SetFlags(14);
+	root->SetLocalScale(0.0f);
 	root->SetLocalTranslation(Niflib::Vector3(
 	  (float)((sizescale * rasterx) * (coordx / resx)),
 	  (float)((sizescale * rastery) * (coordy / resy)),
@@ -683,6 +808,8 @@ void wrteNIF(SimplField& ter, const char *pattern) {
 	info.endian = ENDIAN_LITTLE;
 	info.userVersion = 11;
 	info.userVersion2 = 11;
+	/* mark the file to have been optimized (change version when adding more features) */
+	info.creator = "OS01";
 
 //	Real sidex = 0.5 * sizescale * rasterx;
 	Real sidex = 0.0;
@@ -707,6 +834,7 @@ void wrteNIF(SimplField& ter, const char *pattern) {
 
 	  node->SetData(data);
 	  node->SetFlags(14);
+	  node->SetLocalScale(0.0f);
 	  node->SetLocalTranslation(Niflib::Vector3(
 	    (float)((sizescale * rasterx) * (coordx / resx)),
 	    (float)((sizescale * rastery) * (coordy / resy)),
@@ -866,6 +994,458 @@ void wrteNIF(SimplField& ter) {
   wrteNIF(ter, "%02d.%02d.%02d.%02d");
 #endif
 }
+
+/* ---------------------------------------------------- */
+
+void readBTR(const char *name) {
+}
+
+void readBTR(SimplField& ter, const char *pattern) {
+  viterator itv;
+  fiterator itf;
+
+  // 1k == 32, 3k == 96, 512 == 16 */
+  int resx = rasterx / 32;
+  int resy = rastery / 32;
+  // round down, negative side would be smaller than positive side
+  int offx = tilesx / 2;
+  int offy = tilesy / 2;
+
+  /* initialize progress */
+  InitProgress((numty - minty) * (numtx - mintx));
+
+  for (int ty = minty; ty < numty; ty++) {
+  for (int tx = mintx; tx < numtx; tx++) {
+    int coordx = (tx - offx) * resx;
+    int coordy = (ty - offy) * resy;
+
+    SetTopic("Loading tile {%d,%d}:", coordx, coordy);
+
+    char name[MAXPATH];
+    char nbase[MAXPATH];
+
+    /**/ if (wchgame == 0)	// Oblivion
+      _snprintf(nbase, sizeof(nbase) - 1, pattern, wdspace, coordx, coordy, min(resx, resy));
+    else if (wchgame == 1)	// Skyrim
+      _snprintf(nbase, sizeof(nbase) - 1, pattern, wdsname, min(resx, resy), coordx, coordy);
+
+    /* lower-case */
+    strcpy(name, nbase);
+    strlwr(name);
+    strcat(name, ".btr");
+
+    if (1) {
+      vector<NiObjectRef> list;
+      vector<NiAVObjectRef> chld;
+      BSMultiBoundNodeRef root;
+      NiTriShapeRef land;
+      NiTriShapeDataRef ldta;
+      NifInfo info;
+
+      /* clear first */
+      memset(&info, 0, sizeof(info));
+
+      /* read the NIF */
+      list = ReadNifList(name, &info);
+      if (list.size()) {
+	/* find the root */
+	root = DynamicCast<BSMultiBoundNode>(FindRoot(list));
+	if (root) {
+	  chld = root->GetChildren();
+	  if (chld.size()) {
+	    land = DynamicCast<NiTriShape>(chld[0]);
+	    if (land) {
+	      ldta = DynamicCast<NiTriShapeData>(land->GetData());
+	      if (ldta) {
+		vector<Niflib::Vector3> v = ldta->GetVertices();
+		vector<Niflib::Triangle> f = ldta->GetTriangles();
+
+		vector<Niflib::Triangle>::iterator itf;
+		for (itf = f.begin(); itf != f.end(); itf++) {
+		  int i1 = (*itf).v1; Point2d p1(v[i1].x, v[i1].y); Real z1 = v[i1].z;
+		  int i2 = (*itf).v2; Point2d p2(v[i2].x, v[i2].y); Real z2 = v[i2].z;
+		  int i3 = (*itf).v3; Point2d p3(v[i3].x, v[i3].y); Real z3 = v[i3].z;
+
+		  p1.x = (p1.x * land->scale) + tx * (sizescale * rasterx);
+		  p1.y = (p1.y * land->scale) + ty * (sizescale * rasterx);
+		  z1   = (z1   * land->scale) + 14000;
+
+		  p2.x = (p2.x * land->scale) + tx * (sizescale * rasterx);
+		  p2.y = (p2.y * land->scale) + ty * (sizescale * rasterx);
+		  z2   = (z2   * land->scale) + 14000;
+
+		  p3.x = (p3.x * land->scale) + tx * (sizescale * rasterx);
+		  p3.y = (p3.y * land->scale) + ty * (sizescale * rasterx);
+		  z3   = (z3   * land->scale) + 14000;
+
+		  p1.x = (p1.x / sizescale);
+		  p1.y = (p1.y / sizescale);
+		  z1   = (z1   + heightshift) / heightscale;
+
+		  p2.x = (p2.x / sizescale);
+		  p2.y = (p2.y / sizescale);
+		  z2   = (z2   + heightshift) / heightscale;
+
+		  p3.x = (p3.x / sizescale);
+		  p3.y = (p3.y / sizescale);
+		  z3   = (z3   + heightshift) / heightscale;
+
+		  RegisterFace(p1, z1, p2, z2, p3, z3);
+		}
+	      }
+	    }
+	  }
+	}
+      }
+    }
+
+    /* advance progress */
+    SetProgress((numty - minty) * (ty - minty) + (tx - mintx) + 1);
+  }
+  }
+}
+
+void readBTR(SimplField& ter) {
+  readBTR("");
+
+#ifdef	SPLIT_ON_INJECTION
+  readBTR(ter, "%s.%02d.%02d.%02d");
+#endif
+}
+
+/* ---------------------------------------------------- */
+
+void wrteBTR(const char *name) {
+}
+
+void wrteBTR(SimplField& ter, const char *pattern) {
+  viterator itv;
+  fiterator itf;
+
+  // 1k == 32, 3k == 96, 512 == 16 */
+  int resx = rasterx / 32;
+  int resy = rastery / 32;
+  // round down, negative side would be smaller than positive side
+  int offx = tilesx / 2;
+  int offy = tilesy / 2;
+
+  /* initialize progress */
+  InitProgress((numty - minty) * (numtx - mintx));
+
+  for (int ty = minty; ty < numty; ty++) {
+  for (int tx = mintx; tx < numtx; tx++) {
+    int coordx = (tx - offx) * resx;
+    int coordy = (ty - offy) * resy;
+
+    SetTopic(emituvs ? "Saving UV tile {%d,%d}:" : "Saving non-UV tile {%d,%d}:", coordx, coordy);
+
+    char name[MAXPATH], textc[MAXPATH], textn[MAXPATH];
+    char nbase[MAXPATH], tbase[MAXPATH], *sbase;
+
+    /**/ if (wchgame == 0)	// Oblivion
+      _snprintf(nbase, sizeof(nbase) - 1, pattern, wdspace, coordx, coordy, min(resx, resy));
+    else if (wchgame == 1)	// Skyrim
+      _snprintf(nbase, sizeof(nbase) - 1, pattern, wdsname, min(resx, resy), coordx, coordy);
+
+    /* lower-case */
+    strcpy(name, nbase);
+    strlwr(name);
+    strcat(name, ".btr");
+
+    /**/ if (wchgame == 0)	// Oblivion
+      _snprintf(tbase, sizeof(tbase) - 1, "Data\\Textures\\LandscapeLOD\\Generated\\", wdsname);
+    else if (wchgame == 1)	// Skyrim
+      _snprintf(tbase, sizeof(tbase) - 1, "Data\\Textures\\Terrain\\%s\\", wdsname);
+
+    /* file-name */
+    if (!(sbase = strrchr(nbase, '\\')))
+      sbase = nbase;
+    else
+      sbase++;
+
+    strcpy(textc, tbase ); strcpy(textn, tbase   );
+    strcat(textc, sbase ); strcat(textn, sbase   );
+    strcat(textc, ".DDS"); strcat(textn, "_n.DDS");
+
+    /* check if to write */
+    if (IsOlder(name, writechk)) {
+      logrf("writing \"%s\"\r", name);
+
+      /* NIF starts on index 0 */
+      int idx = 0, ifx = 0;
+
+//    NiNodeRef root = new NiNode;
+//    root->SetName("");
+
+      /* normal treatment --------------------------------------------------------------- */
+      if ((SectorVerticeO[ty][tx].size() < 0xFFFF) &&
+	  (SectorFaceO   [ty][tx].size() < 0xFFFF)) {
+	BSMultiBoundNodeRef root = new BSMultiBoundNode;
+	BSMultiBoundRef mbnd = new BSMultiBound;
+	BSMultiBoundAABBRef aabb = new BSMultiBoundAABB;
+	NiTriShapeRef land = new NiTriShape;
+	NiTriShapeDataRef ldta = new NiTriShapeData;
+	BSLightingShaderPropertyRef lght = new BSLightingShaderProperty;
+	BSShaderTextureSetRef txst = new BSShaderTextureSet;
+	NifInfo info; bool hasw = false;
+	float lscale = (float)min(resx, resy);
+	float zmin = 0.0, zmax = -0.0;
+
+	info.version = VER_20_2_0_7;
+	info.endian = ENDIAN_LITTLE;
+	info.userVersion = 12;
+	info.userVersion2 = 83;
+	/* mark the file to have been optimized (change version when adding more features) */
+	info.creator = "OS01";
+
+	/* no interfaces */
+	lght->shaderType = 18;
+	lght->textureTranslation1 = TexCoord(0.0f, 0.0f);
+	lght->textureTranslation2 = TexCoord(1.0f, 1.0f);
+	lght->shaderFlags1 = (SkyrimLightingShaderFlags1)((1 << 12)/*SF_UNKNOWN_3*/ | (1 << 22)/*SF_TREE_BILLBOARD*/ | (1 << 31)/*SF_ZBUFFER_TEST*/);
+	lght->shaderFlags2 = (SkyrimLightingShaderFlags2)((1 << 1)/*SLSF2_1*/ | (1 << 0)/*SLSF2_ZBUFFER_WRITE*/);
+	lght->textureSet = txst;
+
+	txst->SetTexture(0, textc); // color
+	txst->SetTexture(1, textn); // normal
+
+	/* no interfaces */
+	mbnd->data = aabb;
+	root->multiBound = mbnd;
+
+	root->SetName("chunk");
+	root->AddChild((NiAVObjectRef)land);
+	land->SetName("land");
+	land->SetData(ldta);
+	land->properties[0] = lght;
+	land->unknownShort1 = 0;  // not 8
+	land->SetFlags(14);
+	land->SetLocalScale(lscale);
+	land->SetLocalTranslation(Niflib::Vector3(
+	  0.0f,
+	  0.0f,
+	  0.0f
+	));
+
+	/* NIF starts on index 0 */
+	idx = 0;
+	zmin = 0.0;
+	zmax = 0.0;
+
+	{
+	  vector<Niflib::Vector3> passv;
+
+	  for (itv = SectorVerticeO[ty][tx].begin(); itv != SectorVerticeO[ty][tx].end(); itv++) {
+      	    /* assign index the moment of writing it out */
+	    (*itv)->idx = idx++;
+
+#if 0
+	    /* record ocean-level */
+	    if ((*itv)->z < 0.0)
+	      hasw = true;
+#endif
+
+	    passv.push_back(Niflib::Vector3(
+	      (float)(((*itv)->x -     0) / lscale),
+	      (float)(((*itv)->y -     0) / lscale),
+	      (float)(((*itv)->z - 14000) / lscale))
+	    );
+
+	    zmin = min(zmin, (float)((*itv)->z - 14000));
+	    zmax = max(zmax, (float)((*itv)->z - 14000));
+	  }
+
+	  ldta->SetVertices(passv);
+	}
+
+	if (emituvs) {
+	  ldta->SetUVSetCount(1);
+
+	  vector<Niflib::TexCoord> passt;
+
+	  /* these are sort of meaning-less as we have
+	    * [0,1] texture coordinated _per tile_ later on
+	    */
+	  for (itv = SectorVerticeO[ty][tx].begin(); itv != SectorVerticeO[ty][tx].end(); itv++) {
+	    passt.push_back(Niflib::TexCoord((float)(*itv)->tx, 1.0f - (float)(*itv)->ty));
+	  }
+
+	  ldta->SetUVSet(0, passt);
+	}
+
+	if (emitnrm) {
+	  vector<Niflib::Vector3> passn;
+
+	  for (itv = SectorVerticeO[ty][tx].begin(); itv != SectorVerticeO[ty][tx].end(); itv++) {
+	    passn.push_back(Niflib::Vector3((float)(*itv)->nx, (float)(*itv)->ny, (float)(*itv)->nz));
+	  }
+
+	  ldta->SetNormals(passn);
+	}
+
+	{
+	  vector<Niflib::Triangle> passi;
+
+	  for (itf = SectorFaceO[ty][tx].begin(); itf != SectorFaceO[ty][tx].end(); itf++) {
+	    passi.push_back(Niflib::Triangle(
+	      (*itf)->v[0]->idx,
+	      (*itf)->v[1]->idx,
+	      (*itf)->v[2]->idx
+	    ));
+	  }
+
+	  ldta->SetTriangles(passi);
+	}
+
+	/* no interfaces */
+	aabb->minimum = Vector3(4096.0f * lscale * 0.5f, 4096.0f * lscale * 0.5f,        ((zmin + zmax) * 0.5f));
+	aabb->maximum = Vector3(4096.0f * lscale * 0.5f, 4096.0f * lscale * 0.5f, zmax - ((zmin + zmax) * 0.5f));
+
+	if (/*hasw ||*/ SectorWaters[ty][tx].size()) {
+	  BSMultiBoundNodeRef woot = new BSMultiBoundNode;
+	  BSMultiBoundRef mbnd = new BSMultiBound;
+	  BSMultiBoundAABBRef aabb = new BSMultiBoundAABB;
+	  NiTriShapeRef watr = new NiTriShape;
+	  NiTriShapeDataRef wdta = new NiTriShapeData;
+
+	  /* no interfaces */
+	  mbnd->data = aabb;
+	  woot->multiBound = mbnd;
+
+	  root->AddChild((NiAVObjectRef)woot);
+//	  woot->SetName("chunk");
+	  woot->SetName("water");
+	  woot->AddChild((NiAVObjectRef)watr);
+//	  watr->SetName("water");
+	  watr->SetData(wdta);
+	  watr->unknownShort1 = 0;  // not 8
+//	  watr->properties[0] = lght;
+	  watr->SetFlags(14);
+	  watr->SetLocalScale(lscale);
+	  watr->SetLocalTranslation(Niflib::Vector3(
+	    0.0f,
+	    0.0f,
+	    0.0f
+	  ));
+
+	  zmin = 0.0;
+	  zmax = 0.0;
+
+#if 0
+	  for (itv = SectorVerticeO[ty][tx].begin(); itv != SectorVerticeO[ty][tx].end(); itv++) {
+	    /* assign index the moment of writing it out */
+	    (*itv)->idx = idx++;
+
+	    /* record ocean-level (excluding far-borders) */
+	    if (((*itv)->x != 131072.0) &&
+	        ((*itv)->y != 131072.0) &&
+		((*itv)->z <       0.0)) {
+	      Point2d p(
+		(float)(floor((*itv)->x * (1.0 / 4096.0)) * 4096.0),
+		(float)(floor((*itv)->y * (1.0 / 4096.0)) * 4096.0)
+	      );
+
+	      class objWater wp;
+	      class objWater *w;
+
+	      set<class objWater *, struct W>::iterator i;
+
+	      wp.wtx = p; w = NULL;
+
+	      i = SectorWaters[ty][tx].find(&wp); if (i != SectorWaters[ty][tx].end()) w = *i;
+
+	      if (!w) {
+		w = new(&WPool) class objWater(); assert(w);
+		w->wtx = p;
+
+		w->x = p.x;
+		w->y = p.y;
+		w->z = 0.0;
+
+		SectorWaters[ty][tx].insert(w);
+	      }
+	    }
+	  }
+#endif
+
+	  vector<Niflib::Vector3> passw;
+	  vector<Niflib::Triangle> passq;
+
+	  set<class objWater *, struct W>::iterator itw;
+	  for (itw = SectorWaters[ty][tx].begin(); itw != SectorWaters[ty][tx].end(); itw++) {
+	    int idx1 = (int)passw.size();
+	    passw.push_back(Niflib::Vector3(
+	      (float)(((*itw)->x -     0) / lscale),
+	      (float)(((*itw)->y -     0) / lscale),
+	      (float)(((*itw)->z - 14000) / lscale))
+	    );
+
+	    int idx2 = (int)passw.size();
+	    passw.push_back(Niflib::Vector3(
+	      (float)(((*itw)->x +  4096) / lscale),
+	      (float)(((*itw)->y +     0) / lscale),
+	      (float)(((*itw)->z - 14000) / lscale))
+	    );
+
+	    int idx3 = (int)passw.size();
+	    passw.push_back(Niflib::Vector3(
+	      (float)(((*itw)->x +     0) / lscale),
+	      (float)(((*itw)->y +  4096) / lscale),
+	      (float)(((*itw)->z - 14000) / lscale))
+	    );
+
+	    int idx4 = (int)passw.size();
+	    passw.push_back(Niflib::Vector3(
+	      (float)(((*itw)->x +  4096) / lscale),
+	      (float)(((*itw)->y +  4096) / lscale),
+	      (float)(((*itw)->z - 14000) / lscale))
+	    );
+
+	    passq.push_back(Niflib::Triangle(
+	      idx1,
+	      idx2,
+	      idx3
+	    ));
+
+	    passq.push_back(Niflib::Triangle(
+	      idx4,
+	      idx3,
+	      idx2
+	    ));
+
+	    zmin = min(zmin, (float)((*itw)->z - 14000));
+	    zmax = max(zmax, (float)((*itw)->z - 14000));
+	  }
+
+	  wdta->SetVertices(passw);
+	  wdta->SetTriangles(passq);
+
+	  /* no interfaces */
+	  aabb->minimum = Vector3(4096.0f * lscale * 0.5f, 4096.0f * lscale * 0.5f,        ((zmin + zmax) * 0.5f));
+	  aabb->maximum = Vector3(4096.0f * lscale * 0.5f, 4096.0f * lscale * 0.5f, zmax - ((zmin + zmax) * 0.5f));
+	}
+
+	WriteNifTree(name, root, info);
+      }
+      /* special treatment --------------------------------------------------------------- */
+      else {
+	throw runtime_error("The current tile contains too much triangles.");
+      }
+    }
+
+    /* advance progress */
+    SetProgress((numty - minty) * (ty - minty) + (tx - mintx) + 1);
+  }
+  }
+}
+
+void wrteBTR(SimplField& ter) {
+  wrteBTR("");
+
+#ifdef	SPLIT_ON_INJECTION
+  wrteBTR(ter, "%s.%02d.%02d.%02d");
+#endif
+}
 #endif
 
 /* ---------------------------------------------------- */
@@ -927,12 +1507,12 @@ void wrteDXMesh(SimplField& ter, const char *pattern) {
 
     SetTopic(emituvs ? "Saving UV tile {%d,%d}:" : "Saving non-UV tile {%d,%d}:", coordx, coordy);
 
-    char name[256];
+    char name[MAXPATH];
 
     /**/ if (wchgame == 0)	// Oblivion
-      sprintf(name, pattern, wdspace, coordx, coordy, min(resx, resy));
+      _snprintf(name, sizeof(name) - 1, pattern, wdspace, coordx, coordy, min(resx, resy));
     else if (wchgame == 1)	// Skyrim
-      sprintf(name, pattern, wdsname, min(resx, resy), coordx, coordy);
+      _snprintf(name, sizeof(name) - 1, pattern, wdsname, min(resx, resy), coordx, coordy);
 
     /* lower-case */
     strlwr(name);
@@ -1044,10 +1624,15 @@ void wrteGeometry(SimplField& ter, const char *pattern) {
   if (writeobj || writedx9 || writenif) {
 //  write_mesh(ter);
 
+    if (writenif) {
+      /**/ if (wchgame == 0)	// Oblivion
+	wrteNIF(ter, pattern);
+      else if (wchgame == 1)	// Skyrim
+	wrteBTR(ter, pattern);
+    }
+
     if (writeobj)
       wrteWavefront(ter, pattern);
-    if (writenif)
-      wrteNIF(ter, pattern);
     if (writedx9)
       wrteDXMesh(ter, pattern);
   }
@@ -1059,28 +1644,42 @@ bool skipTexture(const char *pattern, const char *pfx, int coordx, int coordy, i
   bool skip = true;
 
   if (writeppm || writepng || writedds) {
-    char nbase[256], name[256];
+    char nbase[MAXPATH], name[MAXPATH];
 
     /**/ if (wchgame == 0)	// Oblivion
-      sprintf(nbase, pattern, wdspace, coordx, coordy, reso);
+      _snprintf(nbase, sizeof(nbase) - 1, pattern, wdspace, coordx, coordy, reso);
     else if (wchgame == 1)	// Skyrim
-      sprintf(nbase, pattern, wdsname, reso, coordx, coordy);
+      _snprintf(nbase, sizeof(nbase) - 1, pattern, wdsname, reso, coordx, coordy);
+
+    /* change "_fn" to "_n" for Skyrim */
+    if ((wchgame == 1))
+      if (pfx && !strcmp(pfx, "_fn"))
+	pfx = "_n";
 
     /* lower-case */
     strlwr(nbase);
 
     if (writeppm) {
-      strcpy(name, nbase); strcat(name, pfx); strcat(name, ".ppm");
+      strcpy(name, nbase);
+      strcat(name, pfx);
+      strcat(name, ".ppm");
+
       skip = skip && !IsOlder(name, writechk);
     }
 
     if (writepng) {
-      strcpy(name, nbase); strcat(name, pfx); strcat(name, ".png");
+      strcpy(name, nbase);
+      strcat(name, pfx);
+      strcat(name, ".png");
+
       skip = skip && !IsOlder(name, writechk);
     }
 
     if (writedds) {
-      strcpy(name, nbase); strcat(name, pfx); strcat(name, ".dds");
+      strcpy(name, nbase);
+      strcat(name, pfx);
+      strcat(name, ".dds");
+
       skip = skip && !IsOlder(name, writechk);
     }
   }
@@ -1121,15 +1720,20 @@ bool writedds = false;
 void wrteTexture(LPDIRECT3DTEXTURE9 tex, const char *pattern, const char *pfx, int coordx, int coordy, int reso, bool xyz) {
   if (writeppm || writepng || writedds) {
     HRESULT res;
-    char nbase[256], name[256];
+    char nbase[MAXPATH], name[MAXPATH];
 
     /**/ if (wchgame == 0)	// Oblivion
-      sprintf(nbase, pattern, wdspace, coordx, coordy, reso);
+      _snprintf(nbase, sizeof(nbase) - 1, pattern, wdspace, coordx, coordy, reso);
     else if (wchgame == 1)	// Skyrim
-      sprintf(nbase, pattern, wdsname, reso, coordx, coordy);
+      _snprintf(nbase, sizeof(nbase) - 1, pattern, wdsname, reso, coordx, coordy);
 
     /* lower-case */
     strlwr(nbase);
+
+    /* change "_fn" to "_n" for Skyrim */
+    if ((wchgame == 1))
+      if (pfx && !strcmp(pfx, "_fn"))
+	pfx = "_n";
 
     /* flip-y for Skyrim */
     if (wchgame == 1) {
@@ -1143,7 +1747,8 @@ void wrteTexture(LPDIRECT3DTEXTURE9 tex, const char *pattern, const char *pfx, i
       UCHAR *dTex = (UCHAR *)texr.pBits;
       UINT32 stride = texd.Width * 4 * (xyz ? 2 : 1);
       UCHAR *lTex = (UCHAR *)malloc(stride);
-      for (UINT32 s = 0; s < texd.Height; s++) {
+      /* do it for half of the picture, or do it twice :^P */
+      for (UINT32 s = 0; s < (texd.Height >> 1); s++) {
 	UINT32 loH = (                    s) * stride;
 	UINT32 hiH = ((texd.Height - 1) - s) * stride;
 
@@ -1158,7 +1763,9 @@ void wrteTexture(LPDIRECT3DTEXTURE9 tex, const char *pattern, const char *pfx, i
     }
 
     if (writeppm) {
-      strcpy(name, nbase); strcat(name, pfx); strcat(name, ".ppm");
+      strcpy(name, nbase);
+      strcat(name, pfx);
+      strcat(name, ".ppm");
 
       if (IsOlder(name, writechk)) {
 	res = D3DXSaveTextureToFile(name, D3DXIFF_PPM, tex, NULL);
@@ -1167,7 +1774,9 @@ void wrteTexture(LPDIRECT3DTEXTURE9 tex, const char *pattern, const char *pfx, i
     }
 
     if (writepng) {
-      strcpy(name, nbase); strcat(name, pfx); strcat(name, ".png");
+      strcpy(name, nbase);
+      strcat(name, pfx);
+      strcat(name, ".png");
 
       if (IsOlder(name, writechk)) {
 	res = D3DXSaveTextureToFile(name, D3DXIFF_PNG, tex, NULL);
@@ -1176,7 +1785,9 @@ void wrteTexture(LPDIRECT3DTEXTURE9 tex, const char *pattern, const char *pfx, i
     }
 
     if (writedds) {
-      strcpy(name, nbase); strcat(name, pfx); strcat(name, ".dds");
+      strcpy(name, nbase);
+      strcat(name, pfx);
+      strcat(name, ".dds");
 
       if (IsOlder(name, writechk)) {
 	/* preserve current textures-buffer */
@@ -1302,7 +1913,7 @@ int main(int argc,char **argv) {
   TransferGeometry();
   RevisitGeometry();
 
-    if (!nomodel) {
+  if (!nomodel) {
 #ifdef	MATCH_WITH_HIRES
     wrtePointsFile(ter);
 #endif

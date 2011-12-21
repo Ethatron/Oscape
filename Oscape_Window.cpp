@@ -73,6 +73,8 @@ wxOscape::wxOscape( wxWindow* parent, wxWindowID id, const wxString& title, cons
 	bSizer36->Add( bSizer39, 0, wxEXPAND, 5 );
 	
 	OSPluginDir = new wxDirPickerCtrl( OSPanelPlugins, wxID_ANY, wxEmptyString, wxT("Select a folder"), wxDefaultPosition, wxDefaultSize, wxDIRP_DIR_MUST_EXIST|wxDIRP_USE_TEXTCTRL );
+	OSPluginDir->SetHelpText( wxT("The directory with the plugin-files. Most often the \"Data/\"-folder.") );
+	
 	bSizer36->Add( OSPluginDir, 0, wxALL|wxEXPAND, 5 );
 	
 	wxString OSPluginListChoices[] = { wxT("a.esp"), wxT("b.esp") };
@@ -139,7 +141,7 @@ wxOscape::wxOscape( wxWindow* parent, wxWindowID id, const wxString& title, cons
 	OSPanelPlugins->SetSizer( bSizer36 );
 	OSPanelPlugins->Layout();
 	bSizer36->Fit( OSPanelPlugins );
-	OSToolSwitch->AddPage( OSPanelPlugins, wxT("Active Plugins"), true );
+	OSToolSwitch->AddPage( OSPanelPlugins, wxT("Active Plugins"), false );
 	OSPanelHeightfield = new wxPanel( OSToolSwitch, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL );
 	wxBoxSizer* bSizer37;
 	bSizer37 = new wxBoxSizer( wxVERTICAL );
@@ -354,27 +356,27 @@ wxOscape::wxOscape( wxWindow* parent, wxWindowID id, const wxString& title, cons
 	wxBoxSizer* bSizer70;
 	bSizer70 = new wxBoxSizer( wxHORIZONTAL );
 	
-	m_staticText16 = new wxStaticText( OSPanelMeshes, wxID_ANY, wxT("Resolutions:"), wxDefaultPosition, wxDefaultSize, 0 );
+	m_staticText16 = new wxStaticText( OSPanelMeshes, wxID_ANY, wxT("LODs:"), wxDefaultPosition, wxDefaultSize, 0 );
 	m_staticText16->Wrap( -1 );
 	bSizer70->Add( m_staticText16, 1, wxALIGN_CENTER_VERTICAL|wxALL, 5 );
 	
-	OSRes1 = new wxCheckBox( OSPanelMeshes, wxID_ANY, wxT("1/1"), wxDefaultPosition, wxDefaultSize, wxALIGN_RIGHT );
-	OSRes1->SetValue(true); 
-	OSRes1->Enable( false );
+	OSMlod1 = new wxCheckBox( OSPanelMeshes, wxID_ANY, wxT("1/1"), wxDefaultPosition, wxDefaultSize, wxALIGN_RIGHT );
+	OSMlod1->SetValue(true); 
+	OSMlod1->Enable( false );
 	
-	bSizer70->Add( OSRes1, 0, wxALL, 5 );
+	bSizer70->Add( OSMlod1, 0, wxALL, 5 );
 	
-	OSRes2 = new wxCheckBox( OSPanelMeshes, wxID_ANY, wxT("1/2"), wxDefaultPosition, wxDefaultSize, wxALIGN_RIGHT );
-	OSRes2->SetValue(true); 
-	bSizer70->Add( OSRes2, 0, wxALL, 5 );
+	OSMlod2 = new wxCheckBox( OSPanelMeshes, wxID_ANY, wxT("1/2"), wxDefaultPosition, wxDefaultSize, wxALIGN_RIGHT );
+	OSMlod2->SetValue(true); 
+	bSizer70->Add( OSMlod2, 0, wxALL, 5 );
 	
-	OSRes3 = new wxCheckBox( OSPanelMeshes, wxID_ANY, wxT("1/4"), wxDefaultPosition, wxDefaultSize, wxALIGN_RIGHT );
-	OSRes3->SetValue(true); 
-	bSizer70->Add( OSRes3, 0, wxALL, 5 );
+	OSMlod3 = new wxCheckBox( OSPanelMeshes, wxID_ANY, wxT("1/4"), wxDefaultPosition, wxDefaultSize, wxALIGN_RIGHT );
+	OSMlod3->SetValue(true); 
+	bSizer70->Add( OSMlod3, 0, wxALL, 5 );
 	
-	OSRes4 = new wxCheckBox( OSPanelMeshes, wxID_ANY, wxT("1/8"), wxDefaultPosition, wxDefaultSize, wxALIGN_RIGHT );
-	OSRes4->SetValue(true); 
-	bSizer70->Add( OSRes4, 0, wxALL, 5 );
+	OSMlod4 = new wxCheckBox( OSPanelMeshes, wxID_ANY, wxT("1/8"), wxDefaultPosition, wxDefaultSize, wxALIGN_RIGHT );
+	OSMlod4->SetValue(true); 
+	bSizer70->Add( OSMlod4, 0, wxALL, 5 );
 	
 	bSizer24->Add( bSizer70, 1, wxALIGN_CENTER_VERTICAL|wxEXPAND, 5 );
 	
@@ -385,23 +387,48 @@ wxOscape::wxOscape( wxWindow* parent, wxWindowID id, const wxString& title, cons
 	m_staticText28->Wrap( -1 );
 	bSizer701->Add( m_staticText28, 1, wxALL, 5 );
 	
-	OSRes5 = new wxCheckBox( OSPanelMeshes, wxID_ANY, wxT("1/16"), wxDefaultPosition, wxDefaultSize, wxALIGN_RIGHT );
-	OSRes5->SetValue(true); 
-	bSizer701->Add( OSRes5, 0, wxALL, 5 );
+	OSMlod5 = new wxCheckBox( OSPanelMeshes, wxID_ANY, wxT("1/16"), wxDefaultPosition, wxDefaultSize, wxALIGN_RIGHT );
+	OSMlod5->SetValue(true); 
+	bSizer701->Add( OSMlod5, 0, wxALL, 5 );
 	
-	OSRes6 = new wxCheckBox( OSPanelMeshes, wxID_ANY, wxT("1/32"), wxDefaultPosition, wxDefaultSize, wxALIGN_RIGHT );
-	OSRes6->SetValue(true); 
-	bSizer701->Add( OSRes6, 0, wxALL, 5 );
+	OSMlod6 = new wxCheckBox( OSPanelMeshes, wxID_ANY, wxT("1/32"), wxDefaultPosition, wxDefaultSize, wxALIGN_RIGHT );
+	OSMlod6->SetValue(true); 
+	bSizer701->Add( OSMlod6, 0, wxALL, 5 );
 	
-	OSRes7 = new wxCheckBox( OSPanelMeshes, wxID_ANY, wxT("1/64"), wxDefaultPosition, wxDefaultSize, wxALIGN_RIGHT );
-	OSRes7->SetValue(true); 
-	bSizer701->Add( OSRes7, 0, wxALL, 5 );
+	OSMlod7 = new wxCheckBox( OSPanelMeshes, wxID_ANY, wxT("1/64"), wxDefaultPosition, wxDefaultSize, wxALIGN_RIGHT );
+	OSMlod7->SetValue(true); 
+	bSizer701->Add( OSMlod7, 0, wxALL, 5 );
 	
-	OSRes8 = new wxCheckBox( OSPanelMeshes, wxID_ANY, wxT("1/128"), wxDefaultPosition, wxDefaultSize, wxALIGN_RIGHT );
-	OSRes8->SetValue(true); 
-	bSizer701->Add( OSRes8, 0, wxALL, 5 );
+	OSMlod8 = new wxCheckBox( OSPanelMeshes, wxID_ANY, wxT("1/128"), wxDefaultPosition, wxDefaultSize, wxALIGN_RIGHT );
+	OSMlod8->SetValue(true); 
+	bSizer701->Add( OSMlod8, 0, wxALL, 5 );
 	
 	bSizer24->Add( bSizer701, 1, wxALIGN_CENTER_VERTICAL|wxEXPAND, 5 );
+	
+	wxBoxSizer* bSizer7011;
+	bSizer7011 = new wxBoxSizer( wxHORIZONTAL );
+	
+	m_staticText281 = new wxStaticText( OSPanelMeshes, wxID_ANY, wxT("LOD Reduction:"), wxDefaultPosition, wxDefaultSize, 0 );
+	m_staticText281->Wrap( -1 );
+	bSizer7011->Add( m_staticText281, 1, wxALL, 5 );
+	
+	OSMlodHalf = new wxRadioButton( OSPanelMeshes, wxID_ANY, wxT("0.5"), wxDefaultPosition, wxDefaultSize, wxRB_GROUP );
+	OSMlodHalf->SetValue( true ); 
+	OSMlodHalf->SetHelpText( wxT("Adjust target each LOD by 0.5 (proportional to extent reduction)") );
+	
+	bSizer7011->Add( OSMlodHalf, 0, wxALL, 5 );
+	
+	OSMlodQuat = new wxRadioButton( OSPanelMeshes, wxID_ANY, wxT("0.5^1.5"), wxDefaultPosition, wxDefaultSize, 0 );
+	OSMlodQuat->SetHelpText( wxT("Adjust target each LOD by 0.5^1.5") );
+	
+	bSizer7011->Add( OSMlodQuat, 0, wxALL, 5 );
+	
+	OSMlodCube = new wxRadioButton( OSPanelMeshes, wxID_ANY, wxT("0.5^2"), wxDefaultPosition, wxDefaultSize, 0 );
+	OSMlodCube->SetHelpText( wxT("Adjust target each LOD by 0.5^2.0 (proportional to area reduction)") );
+	
+	bSizer7011->Add( OSMlodCube, 0, wxALL, 5 );
+	
+	bSizer24->Add( bSizer7011, 1, wxEXPAND, 5 );
 	
 	bSizer141->Add( bSizer24, 0, wxEXPAND, 5 );
 	
@@ -467,6 +494,41 @@ wxOscape::wxOscape( wxWindow* parent, wxWindowID id, const wxString& title, cons
 	wxBoxSizer* bSizer1411;
 	bSizer1411 = new wxBoxSizer( wxVERTICAL );
 	
+	wxBoxSizer* bSizer241;
+	bSizer241 = new wxBoxSizer( wxVERTICAL );
+	
+	wxBoxSizer* bSizer702;
+	bSizer702 = new wxBoxSizer( wxHORIZONTAL );
+	
+	m_staticText161 = new wxStaticText( OSPanelNormals, wxID_ANY, wxT("LODs:"), wxDefaultPosition, wxDefaultSize, 0 );
+	m_staticText161->Wrap( -1 );
+	bSizer702->Add( m_staticText161, 1, wxALIGN_CENTER_VERTICAL|wxALL, 5 );
+	
+	OSNlod1 = new wxCheckBox( OSPanelNormals, wxID_ANY, wxT("1/1"), wxDefaultPosition, wxDefaultSize, wxALIGN_RIGHT );
+	OSNlod1->SetValue(true); 
+	OSNlod1->Enable( false );
+	
+	bSizer702->Add( OSNlod1, 0, wxALL, 5 );
+	
+	OSNlod2 = new wxCheckBox( OSPanelNormals, wxID_ANY, wxT("1/2"), wxDefaultPosition, wxDefaultSize, wxALIGN_RIGHT );
+	OSNlod2->SetValue(true); 
+	bSizer702->Add( OSNlod2, 0, wxALL, 5 );
+	
+	OSNlod3 = new wxCheckBox( OSPanelNormals, wxID_ANY, wxT("1/4"), wxDefaultPosition, wxDefaultSize, wxALIGN_RIGHT );
+	OSNlod3->SetValue(true); 
+	bSizer702->Add( OSNlod3, 0, wxALL, 5 );
+	
+	OSNlod4 = new wxCheckBox( OSPanelNormals, wxID_ANY, wxT("1/8"), wxDefaultPosition, wxDefaultSize, wxALIGN_RIGHT );
+	OSNlod4->SetValue(true); 
+	bSizer702->Add( OSNlod4, 0, wxALL, 5 );
+	
+	bSizer241->Add( bSizer702, 1, wxALIGN_CENTER_VERTICAL|wxEXPAND, 5 );
+	
+	bSizer1411->Add( bSizer241, 1, wxEXPAND, 5 );
+	
+	m_staticline12 = new wxStaticLine( OSPanelNormals, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxLI_HORIZONTAL );
+	bSizer1411->Add( m_staticline12, 0, wxEXPAND | wxALL, 5 );
+	
 	OSNormalLow = new wxCheckBox( OSPanelNormals, wxID_ANY, wxT("low-resolution textures (512x512)"), wxDefaultPosition, wxDefaultSize, wxALIGN_RIGHT );
 	OSNormalLow->SetValue(true); 
 	bSizer1411->Add( OSNormalLow, 0, wxALL|wxRIGHT|wxEXPAND, 5 );
@@ -515,6 +577,41 @@ wxOscape::wxOscape( wxWindow* parent, wxWindowID id, const wxString& title, cons
 	
 	wxBoxSizer* bSizer14112;
 	bSizer14112 = new wxBoxSizer( wxVERTICAL );
+	
+	wxBoxSizer* bSizer2411;
+	bSizer2411 = new wxBoxSizer( wxVERTICAL );
+	
+	wxBoxSizer* bSizer7021;
+	bSizer7021 = new wxBoxSizer( wxHORIZONTAL );
+	
+	m_staticText1611 = new wxStaticText( OSPanelColors, wxID_ANY, wxT("LODs:"), wxDefaultPosition, wxDefaultSize, 0 );
+	m_staticText1611->Wrap( -1 );
+	bSizer7021->Add( m_staticText1611, 1, wxALIGN_CENTER_VERTICAL|wxALL, 5 );
+	
+	OSClod1 = new wxCheckBox( OSPanelColors, wxID_ANY, wxT("1/1"), wxDefaultPosition, wxDefaultSize, wxALIGN_RIGHT );
+	OSClod1->SetValue(true); 
+	OSClod1->Enable( false );
+	
+	bSizer7021->Add( OSClod1, 0, wxALL, 5 );
+	
+	OSClod2 = new wxCheckBox( OSPanelColors, wxID_ANY, wxT("1/2"), wxDefaultPosition, wxDefaultSize, wxALIGN_RIGHT );
+	OSClod2->SetValue(true); 
+	bSizer7021->Add( OSClod2, 0, wxALL, 5 );
+	
+	OSClod3 = new wxCheckBox( OSPanelColors, wxID_ANY, wxT("1/4"), wxDefaultPosition, wxDefaultSize, wxALIGN_RIGHT );
+	OSClod3->SetValue(true); 
+	bSizer7021->Add( OSClod3, 0, wxALL, 5 );
+	
+	OSClod4 = new wxCheckBox( OSPanelColors, wxID_ANY, wxT("1/8"), wxDefaultPosition, wxDefaultSize, wxALIGN_RIGHT );
+	OSClod4->SetValue(true); 
+	bSizer7021->Add( OSClod4, 0, wxALL, 5 );
+	
+	bSizer2411->Add( bSizer7021, 1, wxALIGN_CENTER_VERTICAL|wxEXPAND, 5 );
+	
+	bSizer14112->Add( bSizer2411, 1, wxEXPAND, 5 );
+	
+	m_staticline13 = new wxStaticLine( OSPanelColors, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxLI_HORIZONTAL );
+	bSizer14112->Add( m_staticline13, 0, wxEXPAND | wxALL, 5 );
 	
 	OSColorLow = new wxCheckBox( OSPanelColors, wxID_ANY, wxT("low-resolution textures (512x512)"), wxDefaultPosition, wxDefaultSize, wxALIGN_RIGHT );
 	OSColorLow->SetValue(true); 
@@ -633,7 +730,7 @@ wxOscape::wxOscape( wxWindow* parent, wxWindowID id, const wxString& title, cons
 	OSPanelGenerator->SetSizer( bSizer15 );
 	OSPanelGenerator->Layout();
 	bSizer15->Fit( OSPanelGenerator );
-	OSToolSwitch->AddPage( OSPanelGenerator, wxT("Generator"), false );
+	OSToolSwitch->AddPage( OSPanelGenerator, wxT("Generator"), true );
 	OSPanelInstaller = new wxPanel( OSToolSwitch, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL );
 	wxBoxSizer* bSizer151;
 	bSizer151 = new wxBoxSizer( wxVERTICAL );
@@ -646,6 +743,8 @@ wxOscape::wxOscape( wxWindow* parent, wxWindowID id, const wxString& title, cons
 	bSizer151->Add( OSHeightfieldFirst3, 1, wxALIGN_CENTER|wxALIGN_CENTER_HORIZONTAL|wxALIGN_CENTER_VERTICAL|wxALL, 25 );
 	
 	OSInstallWS = new wxListbook( OSPanelInstaller, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxLB_DEFAULT );
+	OSInstallWS->Hide();
+	
 	m_scrolledWindow4 = new wxScrolledWindow( OSInstallWS, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxHSCROLL|wxVSCROLL );
 	m_scrolledWindow4->SetScrollRate( 5, 5 );
 	wxBoxSizer* bSizer52;
@@ -885,6 +984,52 @@ wxOscape::wxOscape( wxWindow* parent, wxWindowID id, const wxString& title, cons
 	OSPanelInstaller->Layout();
 	bSizer151->Fit( OSPanelInstaller );
 	OSToolSwitch->AddPage( OSPanelInstaller, wxT("Installer"), false );
+	OSPanelReverse = new wxPanel( OSToolSwitch, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL );
+	wxBoxSizer* bSizer391;
+	bSizer391 = new wxBoxSizer( wxVERTICAL );
+	
+	OSLODDir = new wxDirPickerCtrl( OSPanelReverse, wxID_ANY, wxEmptyString, wxT("Select a folder"), wxDefaultPosition, wxDefaultSize, wxDIRP_DIR_MUST_EXIST|wxDIRP_USE_TEXTCTRL );
+	OSLODDir->SetHelpText( wxT("The directory with the LOD-files. Most often the \"Data/Meshes/Terrain\"-folder.") );
+	
+	bSizer391->Add( OSLODDir, 0, wxALL|wxEXPAND, 5 );
+	
+	wxString OSLODWorldspaceChoices[] = { wxT("Tamriel"), wxT("SEWorld") };
+	int OSLODWorldspaceNChoices = sizeof( OSLODWorldspaceChoices ) / sizeof( wxString );
+	OSLODWorldspace = new wxChoice( OSPanelReverse, wxID_ANY, wxDefaultPosition, wxDefaultSize, OSLODWorldspaceNChoices, OSLODWorldspaceChoices, 0 );
+	OSLODWorldspace->SetSelection( 0 );
+	bSizer391->Add( OSLODWorldspace, 0, wxALL|wxEXPAND, 5 );
+	
+	wxString OSLODResolutionChoices[] = { wxT("From 4x4 Cells"), wxT("From 8x8 Cells"), wxT("From 16x16 Cells"), wxT("From 32x32 Cells") };
+	int OSLODResolutionNChoices = sizeof( OSLODResolutionChoices ) / sizeof( wxString );
+	OSLODResolution = new wxChoice( OSPanelReverse, wxID_ANY, wxDefaultPosition, wxDefaultSize, OSLODResolutionNChoices, OSLODResolutionChoices, 0 );
+	OSLODResolution->SetSelection( 0 );
+	bSizer391->Add( OSLODResolution, 0, wxALL|wxEXPAND, 5 );
+	
+	wxString OSLODListChoices[] = { wxT("a.btr"), wxT("b.btr") };
+	int OSLODListNChoices = sizeof( OSLODListChoices ) / sizeof( wxString );
+	OSLODList = new wxCheckListBox( OSPanelReverse, wxID_ANY, wxDefaultPosition, wxDefaultSize, OSLODListNChoices, OSLODListChoices, 0 );
+	OSLODList->SetToolTip( wxT("The LODs which should be used to extract the height-field") );
+	
+	bSizer391->Add( OSLODList, 1, wxALL|wxEXPAND, 5 );
+	
+	wxBoxSizer* bSizer422;
+	bSizer422 = new wxBoxSizer( wxHORIZONTAL );
+	
+	OSFileRecoveryOut = new wxFilePickerCtrl( OSPanelReverse, wxID_ANY, wxT("./Tamriel.raw"), wxT("Select a file"), wxT("*.raw"), wxDefaultPosition, wxDefaultSize, wxFLP_OVERWRITE_PROMPT|wxFLP_SAVE|wxFLP_USE_TEXTCTRL );
+	bSizer422->Add( OSFileRecoveryOut, 1, wxALL, 5 );
+	
+	OSLODRecover = new wxButton( OSPanelReverse, wxID_ANY, wxT("Recover"), wxDefaultPosition, wxDefaultSize, 0 );
+	OSLODRecover->Enable( false );
+	OSLODRecover->SetToolTip( wxT("Recover the height-data to the given file") );
+	
+	bSizer422->Add( OSLODRecover, 0, wxALL, 5 );
+	
+	bSizer391->Add( bSizer422, 0, wxEXPAND, 5 );
+	
+	OSPanelReverse->SetSizer( bSizer391 );
+	OSPanelReverse->Layout();
+	bSizer391->Fit( OSPanelReverse );
+	OSToolSwitch->AddPage( OSPanelReverse, wxT("Recovery"), false );
 	
 	bSizer1->Add( OSToolSwitch, 1, wxEXPAND | wxALL, 0 );
 	
@@ -939,6 +1084,13 @@ wxOscape::wxOscape( wxWindow* parent, wxWindowID id, const wxString& title, cons
 	OSBaseDirIn->Connect( wxEVT_COMMAND_DIRPICKER_CHANGED, wxFileDirPickerEventHandler( wxOscape::ChangeBaseDirIn ), NULL, this );
 	OSPlugoutDir->Connect( wxEVT_COMMAND_DIRPICKER_CHANGED, wxFileDirPickerEventHandler( wxOscape::ChangePlugoutDir ), NULL, this );
 	OSHeightfieldInstall->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( wxOscape::HeightfieldInstall ), NULL, this );
+	OSLODDir->Connect( wxEVT_COMMAND_DIRPICKER_CHANGED, wxFileDirPickerEventHandler( wxOscape::ChangeLODDir ), NULL, this );
+	OSLODWorldspace->Connect( wxEVT_COMMAND_CHOICE_SELECTED, wxCommandEventHandler( wxOscape::ChangeLODWorldspace ), NULL, this );
+	OSLODResolution->Connect( wxEVT_COMMAND_CHOICE_SELECTED, wxCommandEventHandler( wxOscape::ChangeLODRes ), NULL, this );
+	OSLODList->Connect( wxEVT_COMMAND_LISTBOX_SELECTED, wxCommandEventHandler( wxOscape::ChangeActiveLODs ), NULL, this );
+	OSLODList->Connect( wxEVT_COMMAND_CHECKLISTBOX_TOGGLED, wxCommandEventHandler( wxOscape::ChangeActiveLODs ), NULL, this );
+	OSFileRecoveryOut->Connect( wxEVT_COMMAND_FILEPICKER_CHANGED, wxFileDirPickerEventHandler( wxOscape::ChangeRecoveryOut ), NULL, this );
+	OSLODRecover->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( wxOscape::HeightfieldRecover ), NULL, this );
 }
 
 wxOscape::~wxOscape()
@@ -988,6 +1140,13 @@ wxOscape::~wxOscape()
 	OSBaseDirIn->Disconnect( wxEVT_COMMAND_DIRPICKER_CHANGED, wxFileDirPickerEventHandler( wxOscape::ChangeBaseDirIn ), NULL, this );
 	OSPlugoutDir->Disconnect( wxEVT_COMMAND_DIRPICKER_CHANGED, wxFileDirPickerEventHandler( wxOscape::ChangePlugoutDir ), NULL, this );
 	OSHeightfieldInstall->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( wxOscape::HeightfieldInstall ), NULL, this );
+	OSLODDir->Disconnect( wxEVT_COMMAND_DIRPICKER_CHANGED, wxFileDirPickerEventHandler( wxOscape::ChangeLODDir ), NULL, this );
+	OSLODWorldspace->Disconnect( wxEVT_COMMAND_CHOICE_SELECTED, wxCommandEventHandler( wxOscape::ChangeLODWorldspace ), NULL, this );
+	OSLODResolution->Disconnect( wxEVT_COMMAND_CHOICE_SELECTED, wxCommandEventHandler( wxOscape::ChangeLODRes ), NULL, this );
+	OSLODList->Disconnect( wxEVT_COMMAND_LISTBOX_SELECTED, wxCommandEventHandler( wxOscape::ChangeActiveLODs ), NULL, this );
+	OSLODList->Disconnect( wxEVT_COMMAND_CHECKLISTBOX_TOGGLED, wxCommandEventHandler( wxOscape::ChangeActiveLODs ), NULL, this );
+	OSFileRecoveryOut->Disconnect( wxEVT_COMMAND_FILEPICKER_CHANGED, wxFileDirPickerEventHandler( wxOscape::ChangeRecoveryOut ), NULL, this );
+	OSLODRecover->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( wxOscape::HeightfieldRecover ), NULL, this );
 	
 }
 

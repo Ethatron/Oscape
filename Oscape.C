@@ -216,11 +216,15 @@ void RedirectIOToConsole() {
 DWORD __stdcall HeightfieldExtract(LPVOID lp);
 DWORD __stdcall HeightfieldGenerate(LPVOID lp);
 DWORD __stdcall HeightfieldInstall(LPVOID lp);
+DWORD __stdcall HeightfieldRecover(LPVOID lp);
 
 // ----------------------------------------------------------------------------
 struct pluginfile;
 typedef	map<string, pluginfile> pluginmap;
 typedef	set<string> worldset;
+
+struct lodfile;
+typedef	map<string, lodfile> lodmap;
 
 struct pluginfile {
   time_t tme;
@@ -229,6 +233,18 @@ struct pluginfile {
   static bool compare(
     const pluginmap::iterator d1,
     const pluginmap::iterator d2
+  ) {
+    return (d1->second.tme < d2->second.tme);
+  }
+};
+
+struct lodfile {
+  time_t tme;
+  bool act;
+
+  static bool compare(
+    const lodmap::iterator d1,
+    const lodmap::iterator d2
   ) {
     return (d1->second.tme < d2->second.tme);
   }
@@ -264,7 +280,7 @@ private:
 
   public:
     struct {
-      unsigned int mask; 
+      unsigned int mask;
 
       int task1R; int task1V;
       int task2R; int task2V;
@@ -598,9 +614,50 @@ public:
   worldset wspaces;
   map<int, worldset::iterator > wspacef;
 
+  int activel;
+
+  lodmap lodfils;
+  vector< lodmap::iterator > lsorted;
+
+private:
+  int GetWorldspace(wxString ph, int wsel = 0) {
+    ph = ph.MakeLower();
+    map<int, worldset::iterator >::iterator srch = wspacef.begin();
+    while (srch != wspacef.end()) {
+      wxString eq = *(srch->second);
+      eq = eq.MakeLower();
+      if (ph.IsSameAs(eq)) {
+	wsel = srch->first;
+	break;
+      }
+
+      srch++;
+    }
+
+    return wsel;
+  }
+
+  int GetWorldspacePrefix(wxString ph, int wsel = 0) {
+    ph = ph.MakeLower();
+    map<int, worldset::iterator >::iterator srch = wspacef.begin();
+    while (srch != wspacef.end()) {
+      wxString mtch = *(srch->second);
+      mtch = mtch.MakeLower();
+      if (ph.First(mtch) != wxNOT_FOUND) {
+	wsel = srch->first;
+	break;
+      }
+
+      srch++;
+    }
+
+    return wsel;
+  }
+
 private:
   // Installed Path
   char IPath[1024];
+  char LPath[1024];
   HKEY Settings;
   OscapePrg *prog;
 
@@ -644,6 +701,11 @@ private:
     OSHeightfieldInstall->Enable((OSBaseDirIn->GetPath() != "") && (OSPlugoutDir->GetPath() != ""));
     OSPointsClear1->Enable(OSFilePoints1->GetPath() != "");
     OSPointsClear1->Enable(OSFilePoints1->GetPath() != "");
+  }
+
+  void ResetLButtons() {
+    /* enable button */
+    OSLODRecover->Enable((activel != 0) && (OSFileRecoveryOut->GetPath() != ""));
   }
 
   /* ---------------------------------------------------------------------------- */
@@ -870,11 +932,154 @@ private:
   }
 
   /* ---------------------------------------------------------------------------- */
+  void ResetLPluginDir(bool init = false) {
+    if (init) {
+      LPath[0] = 0; DWORD LPL;
+      RegGetValue(Settings, GetGameKey(), "LOD Directory", RRF_RT_REG_SZ, NULL, &LPath, &LPL);
+
+      if (!LPath[0])
+	strcpy(LPath, IPath);
+
+      size_t LLen = strlen(LPath) - 1;
+      while (LPath[LLen] == '\\')
+	LPath[LLen--] = '\0';
+
+      OSLODDir->SetPath(LPath);
+    }
+
+    int ws, cx, cy, rs;
+    char PPath[1024];
+    set<int> lws;
+    set<int> lrs;
+
+    lodfils.clear();
+    lsorted.clear();
+
+//  _snprintf(PPath, sizeof(PPath) - 1, "%s\\Meshes\\Landscape\\LOD\\*.nif", LPath);
+    _snprintf(PPath, sizeof(PPath) - 1, "%s\\*.nif", LPath);
+
+    HANDLE LFiles; WIN32_FIND_DATA LFound;
+    if ((LFiles = FindFirstFileEx(PPath, FindExInfoBasic, &LFound, FindExSearchNameMatch, NULL, 0)) != INVALID_HANDLE_VALUE) {
+      do {
+	const char *subfile = LFound.cFileName;
+	if (subfile && sscanf(subfile, "%d.%d.%d.%d", &ws, &cx, &cy, &rs) == 4) {
+	  lws.insert(ws);
+
+	  time_t       tme = LFound.ftLastWriteTime.dwHighDateTime;
+	  tme <<= 32; tme |= LFound.ftLastWriteTime.dwLowDateTime;
+	  lodfile *set = &lodfils[string(LFound.cFileName)];
+
+	  set->tme = tme;
+	  set->act = true;
+	}
+      } while (FindNextFile(LFiles, &LFound));
+
+      FindClose(LFiles);
+    }
+
+//  _snprintf(PPath, sizeof(PPath) - 1, "%s\\Meshes\\Terrain\\*", LPath);
+    _snprintf(PPath, sizeof(PPath) - 1, "%s\\*.btr", LPath);
+
+    if ((LFiles = FindFirstFileEx(PPath, FindExInfoBasic, &LFound, FindExSearchNameMatch, NULL, 0)) != INVALID_HANDLE_VALUE) {
+      do {
+	const char *subfile = strchr(LFound.cFileName, '.');
+	if (subfile && sscanf(subfile, ".%d.%d.%d", &rs, &cx, &cy) == 3) {
+	  ws = GetWorldspacePrefix(LFound.cFileName);
+	  if (ws)
+	    lws.insert(ws);
+
+	  time_t       tme = LFound.ftLastWriteTime.dwHighDateTime;
+	  tme <<= 32; tme |= LFound.ftLastWriteTime.dwLowDateTime;
+	  lodfile *set = &lodfils[string(LFound.cFileName)];
+
+	  set->tme = tme;
+	  set->act = true;
+	}
+      } while (FindNextFile(LFiles, &LFound));
+
+      FindClose(LFiles);
+    }
+
+    map<string, lodfile>::iterator walk = lodfils.begin();
+    while (walk != lodfils.end())
+      lsorted.push_back(walk++);
+
+//  sort(lsorted.begin(), lsorted.end(), lodfile::compare);
+//  sort(lsorted.begin(), lsorted.end(), lodfile::compare);
+
+    OSLODWorldspace->Clear();
+    set<int>::iterator wpush = lws.begin(); int idx = 0;
+    while (wpush != lws.end()) {
+      int ws = *wpush;
+      if (wspacef.count(ws) > 0) {
+	OSLODWorldspace->Append(*(wspacef[ws]));
+	OSLODWorldspace->SetClientData(idx, (void *)ws); idx++;
+      }
+
+      wpush++;
+    }
+
+    OSLODWorldspace->SetSelection(0);
+    OSLODResolution->SetSelection(0);
+
+/*
+    OSLODResolution->Clear();
+    push = lsorted.begin(); idx = 0;
+    while (push != lsorted.end()) {
+
+      push++;
+    }
+*/
+  }
+
+  void ResetLPluginList() {
+    activel = 0;
+
+    int r = 4 << OSLODResolution->GetSelection();
+    int w = OSLODWorldspace->GetSelection();
+    int ws = (w != -1 ? (int)OSLODWorldspace->GetClientData(w) : 0);
+    wxString Sw; Sw.Printf("%s.%d.", (ws != 0 ? (*(wspacef[ws])).data() : ""), r);
+    Sw = Sw.MakeLower();
+    wxString Or; Or.Printf(".%d.nif", r);
+    wxString Ow; Ow.Printf("%d.", w);
+
+    OSLODList->Clear(); int idx = 0;
+    vector< map<string, lodfile>::iterator >::iterator push = lsorted.begin();
+    while (push != lsorted.end()) {
+      wxString file((*push)->first); file = file.MakeLower();
+      bool valid = false;
+
+      /* Oblivion */
+      if (file.StartsWith(Ow) && file.EndsWith(Or))
+	valid = true;
+      /* Skyrim */
+      if (file.StartsWith(Sw))
+	valid = true;
+
+      if (valid) {
+//	wxOwnerDrawn *id;
+
+	OSLODList->Append(file);
+	OSLODList->Check(idx, (*push)->second.act); idx++;
+//	id = OSLODList->GetItem(idx); idx++;
+//	id->SetCheckable(true);
+	if ((*push)->second.act) {
+	  activel++;
+	}
+      }
+
+      push++;
+    }
+
+    ResetLButtons();
+  }
+
+  /* ---------------------------------------------------------------------------- */
   void ChangeToOblivion(wxCommandEvent& event) {
     ResetHPluginDir();
     ResetHPluginList();
     LoadHPluginList();
-    
+
     ReadMemory();
 
     ChangeHeightfieldIn1(OSFileHeightfieldIn1->GetPath());
@@ -958,12 +1163,20 @@ private:
 	  const DWORD wrld = MAKEFOURCC('W','R','L','D');
 	  const DWORD edid = MAKEFOURCC('E','D','I','D');
 	  for (DWORD l = 0; l < len; l++) {
-	    if (*((DWORD *)(mem +  0)) == wrld)
-	    if (*((DWORD *)(mem + 20)) == edid) {
-	      DWORD fid = *((DWORD *)(mem + 12));
-	      string wdn(mem + 26);
+	    if (*((DWORD *)(mem +  0)) == wrld) {
+	      if (*((DWORD *)(mem + 20)) == edid) {
+		DWORD fid = *((DWORD *)(mem + 12));
+		string wdn(mem + 26);
 
-	      wspacef[fid] = wspaces.insert(wdn).first;
+		wspacef[fid] = wspaces.insert(wdn).first;
+	      }
+
+	      if (*((DWORD *)(mem + 24)) == edid) {
+		DWORD fid = *((DWORD *)(mem + 12));
+		string wdn(mem + 30);
+
+		wspacef[fid] = wspaces.insert(wdn).first;
+	      }
 	    }
 
 	    mem++;
@@ -1078,18 +1291,7 @@ private:
     }
 
     if (formID) {
-      int wsel = 0;
-
-      map<int, worldset::iterator >::iterator srch = wspacef.begin();
-      while (srch != wspacef.end()) {
-	if (*(srch->second) == ph) {
-	  wsel = srch->first;
-	  break;
-	}
-
-	srch++;
-      }
-
+      int wsel = GetWorldspace(ph);
       if (wsel)
 	formID->SetValueFromInt(wsel);
     }
@@ -1261,31 +1463,23 @@ public:
     wxString ph = OSFileHeightfieldOut->GetPath();
     wxFileName fnn(ph); fnn.ClearExt(); fnn.SetExt("nrm");
     wxFileName fnh(ph); fnh.ClearExt(); fnh.SetExt("raw");
+    wxFileName fnw(ph); fnw.ClearExt(); fnw.SetExt("water");
     wxFileName fnx(ph); fnx.ClearExt(); fnx.SetExt("land");
     wxFileName fnm(ph); fnm.ClearExt(); fnm.SetExt("fmap");
 
     wedata = OSPluginDir->GetPath(); weoffs = 0;
     weoutn = fnn.GetFullPath(); calcn = false;
     weouth = fnh.GetFullPath(); calch = OSCalcHeight->GetValue();
+    weoutw = fnw.GetFullPath(); calcw = OSCalcHeight->GetValue();
     weoutx = fnx.GetFullPath(); calcx = OSCalcColor->GetValue();
     weoutm = fnm.GetFullPath(); calcm = OSCalcImportance->GetValue();
-    wename = OSWorldspace->GetValue(); weid = 0;
-    
-    map<int, worldset::iterator >::iterator srch = wspacef.begin();
-    while (srch != wspacef.end()) {
-      if (*(srch->second) == wename) {
-	weid = srch->first;
-	break;
-      }
-
-      srch++;
-    }
+    wename = OSWorldspace->GetValue(); weid = GetWorldspace(wename);
 
     Collection *col = NULL;
     if (OSGame->FindItem(wxID_OBLIVON)->IsChecked())
       col = CreateCollection(IPath, eIsOblivion), weoffs = 0;
     else if (OSGame->FindItem(wxID_SKYRIM)->IsChecked())
-      col = CreateCollection(IPath, eIsSkyrim), weoffs = 18040 - 16000;
+      col = CreateCollection(IPath, eIsSkyrim), weoffs = 18040 - 16000 + 1566;
 
     int num = OSPluginList->GetCount();
     for (int n = 0; n < num; n++) {
@@ -1303,7 +1497,7 @@ public:
 	}
       }
     }
-    
+
     prog->StartProgress(3);
 
     /* configure filtering */
@@ -1337,7 +1531,119 @@ public:
       prog->Leave(0);
       return;
     }
-    
+
+    prog->Leave(666);
+  }
+
+private:
+  /* ---------------------------------------------------------------------------- */
+  void ChangeLODDir(wxFileDirPickerEvent& event) {
+    strcpy(LPath, OSLODDir->GetTextCtrlValue().data());
+//  strcat(LPath, "\\");
+
+    ResetLPluginDir();
+    ResetLPluginList();
+    ResetLButtons();
+
+    RegSetKeyValue(Settings, GetGameKey(), "LOD Directory", RRF_RT_REG_SZ, LPath, (DWORD)strlen(LPath) + 1);
+  }
+
+  void ChangeLODWorldspace(wxCommandEvent& event) {
+    ResetLButtons();
+
+#if 0
+    int w = event.GetSelection();
+    map<string, lodfile>::iterator *lw = (map<string, lodfile>::iterator *)(OSLODWorldspace->GetClientData(w));
+
+    wxString ph = (*lw)->first;
+    if (!ph.IsNull()) {
+      const char *WS = ph.data();
+      RegSetKeyValue(Settings, GetGameKey(), "Last LOD Worldspace", RRF_RT_REG_SZ, WS, (DWORD)strlen(WS) + 1);
+    }
+#endif
+
+    ResetLPluginList();
+    ResetLButtons();
+  }
+
+  void ChangeLODRes(wxCommandEvent& event) {
+    ResetLButtons();
+
+    /* make it ('1' + x) */
+    int r = 1 + event.GetSelection();
+
+    wxString ph; ph.Printf("%d", r);
+    if (!ph.IsNull()) {
+      const char *WS = ph.data();
+      RegSetKeyValue(Settings, GetGameKey(), "Last LOD Resolution", RRF_RT_REG_SZ, WS, (DWORD)strlen(WS) + 1);
+    }
+
+    ResetLPluginList();
+    ResetLButtons();
+  }
+
+  void ChangeRecoveryOut(wxFileDirPickerEvent& event) {
+    ResetHButtons();
+
+    wxString ph = event.GetPath();
+    if (!ph.IsNull()) {
+      const char *HO = ph.data();
+      RegSetKeyValue(Settings, GetGameKey(), "Recovery Out", RRF_RT_REG_SZ, HO, (DWORD)strlen(HO) + 1);
+    }
+  }
+
+  /* ---------------------------------------------------------------------------- */
+  void HeightfieldRecover(wxCommandEvent& event) {
+    OSStatusBar->SetStatusText(wxT("Running recovery ..."), 0);
+    wxBusyCursor wait;
+    prog = new OscapePrg(this);
+    int ret = prog->Enter(::HeightfieldRecover);
+    delete prog;
+    OSStatusBar->SetStatusText(wxT("Ready"), 0);
+    prog = NULL;
+    if (ret != 666)
+      return;
+  }
+
+public:
+  void HeightfieldRecover() {
+    /* move the result-file around */
+    wxString ph = OSFileRecoveryOut->GetPath();
+    wxFileName fnh(ph); fnh.ClearExt(); fnh.SetExt("raw");
+
+    wedata = OSLODDir->GetPath(); weoffs = 0;
+    int res = 4 << OSLODResolution->GetSelection();
+
+    if (OSGame->FindItem(wxID_OBLIVON)->IsChecked())
+      weoffs = 0;
+    else if (OSGame->FindItem(wxID_SKYRIM)->IsChecked())
+      weoffs = 18040 - 16000 + 1566;
+
+    int num = OSLODList->GetCount();
+    for (int n = 0; n < num; n++) {
+      if (OSLODList->IsChecked(n)) {
+	wxOwnerDrawn *id = OSLODList->GetItem(n);
+	const wxString nam = id->GetName();
+
+	;
+      }
+    }
+
+    prog->StartProgress(1);
+
+    try {
+      prog->InitProgress("Recovering:", 0, "Parsing LODs:", 0.0, 1, 1);
+    }
+    catch (exception &e) {
+      if (strcmp(e.what(), "ExitThread")) {
+	wxMessageDialog d(prog, e.what(), "Oscape error");
+	d.ShowModal();
+      }
+
+      prog->Leave(0);
+      return;
+    }
+
     prog->Leave(666);
   }
 
@@ -1423,16 +1729,17 @@ private:
     DWORD atr = GetFileAttributes(ph.data());
     if (atr == INVALID_FILE_ATTRIBUTES)
       return;
-    
-    int csze = 0;
-    int cnum = 0;
-    if (OSGame->FindItem(wxID_OBLIVON)->IsChecked())
-      csze = 32, cnum = 32;
-    else if (OSGame->FindItem(wxID_SKYRIM)->IsChecked())
-      csze =  4, cnum = 32;
 
-    int rasterx = csze * cnum;
-    int rastery = csze * cnum;
+    int tsze = 0;
+    int csze = 0;
+    if (OSGame->FindItem(wxID_OBLIVON)->IsChecked())
+      tsze = 32, csze = 32;
+    else if (OSGame->FindItem(wxID_SKYRIM)->IsChecked())
+      tsze =  4, csze = 32;	// "csze" down to 4 for the lowest LOD, up-to 32 for the highest
+
+    /* guarantee at least 32x32 LODs */
+    int rasterx = tsze * csze;
+    int rastery = tsze * csze;
     int tilesx = 1;
     int tilesy = 1;
     int offsx = 1;
@@ -1480,6 +1787,7 @@ private:
 	if (OSGame->FindItem(wxID_OBLIVON)->IsChecked())
 	  scanx = 64, scany = 64;
 	else if (OSGame->FindItem(wxID_SKYRIM)->IsChecked())
+//	  scanx = 64, scany = 64;	// "scan" down to 8 for the lowest LOD
 	  scanx = 8, scany = 8;
 
 	int pwidth  = tilesx * scanx;
@@ -1638,20 +1946,24 @@ private:
 
     wxFileName fnn(ph); fnn.ClearExt(); fnn.SetExt("nrm");
     wxFileName fnh(ph); fnh.ClearExt(); fnh.SetExt("raw");
+    wxFileName fnw(ph); fnw.ClearExt(); fnw.SetExt("water");
     wxFileName fnx(ph); fnx.ClearExt(); fnx.SetExt("land");
     wxFileName fnm(ph); fnm.ClearExt(); fnm.SetExt("fmap");
 
     wxString snn = fnn.GetFullPath();
     wxString snh = fnh.GetFullPath();
+    wxString snw = fnw.GetFullPath();
     wxString snx = fnx.GetFullPath();
     wxString snm = fnm.GetFullPath();
 
     atr = GetFileAttributes(snn.data()); bool bnn = (atr != INVALID_FILE_ATTRIBUTES);
     atr = GetFileAttributes(snh.data()); bool bnh = (atr != INVALID_FILE_ATTRIBUTES);
+    atr = GetFileAttributes(snw.data()); bool bnw = (atr != INVALID_FILE_ATTRIBUTES);
     atr = GetFileAttributes(snx.data()); bool bnx = (atr != INVALID_FILE_ATTRIBUTES);
     atr = GetFileAttributes(snm.data()); bool bnm = (atr != INVALID_FILE_ATTRIBUTES);
 
     if (bnh) OSPreviewSelector->Append("Heightfield");
+//  if (bnw) OSPreviewSelector->Append("Water");
     if (bnn) OSPreviewSelector->Append("Normals");
     if (bnm) OSPreviewSelector->Append("Features");
     if (bnx) OSPreviewSelector->Append("Surface");
@@ -1661,15 +1973,17 @@ private:
     OSHeightfieldFirst1->Hide();
     OSHeightfieldFirst1->GetParent()->Layout();
 
+    int tlim = 0;
+    int tsze = 0;
     int csze = 0;
-    int cnum = 0;
     if (OSGame->FindItem(wxID_OBLIVON)->IsChecked())
-      csze = 32, cnum = 32;
+      tlim = 1, tsze = 32, csze = 32;
     else if (OSGame->FindItem(wxID_SKYRIM)->IsChecked())
-      csze =  4, cnum = 32;
+      tlim = 8, tsze =  4, csze = 32;	// "csze" down to 4 for the lowest LOD, up-to 32 for the highest
 
-    int rasterx = csze * cnum;
-    int rastery = csze * cnum;
+    /* guarantee at least 32x32 LODs */
+    int rasterx = tsze * csze;
+    int rastery = tsze * csze;
     int tilesx = 1;
     int tilesy = 1;
     int offsx = 1;
@@ -1680,41 +1994,16 @@ private:
 
     /* search from this field first */
     string wsn = OSWorldspace->GetValue();
-    map<int, worldset::iterator >::iterator srch = wspacef.begin();
-    while (srch != wspacef.end()) {
-      if (*(srch->second) == wsn) {
-	wdscape = srch->first;
-	break;
-      }
-
-      srch++;
-    }
+    wdscape = GetWorldspace(wsn, wdscape);
 
     /* then check against a file-fragment */
     wxFileName fn(ph); fn.ClearExt();
     wxString wsf = fn.GetName();
-    srch = wspacef.begin();
-    while (srch != wspacef.end()) {
-      wxString mtch = *(srch->second);
-      if (wsf.First(mtch) != wxNOT_FOUND) {
-	wdscape = srch->first;
-	break;
-      }
-
-      srch++;
-    }
+    wdscape = GetWorldspacePrefix(wsf, wdscape);
 
     /* then check against the file-name */
     wsn = fn.GetName();
-    srch = wspacef.begin();
-    while (srch != wspacef.end()) {
-      if (*(srch->second) == wsn) {
-	wdscape = srch->first;
-	break;
-      }
-
-      srch++;
-    }
+    wdscape = GetWorldspace(wsn, wdscape);
 
     {
       OSStatusBar->SetStatusText(wxT("Analyzing heightfield ..."), 0);
@@ -1760,18 +2049,18 @@ private:
 
     OSHeightfieldInfos->AppendCategory("Dimensions");
     OSHeightfieldInfos->Append(p = wxIntProperty("Worldspace FormID", wxPG_LABEL, wdscape)); formID = p;
-    OSHeightfieldInfos->Append(p = wxIntProperty("Tilesize (in cells)", wxPG_LABEL, csze)); tSize = p;
-    OSHeightfieldInfos->Append(p = wxIntProperty("Cellsize (in units)", wxPG_LABEL, cnum)); cSize = p;
+    OSHeightfieldInfos->Append(p = wxIntProperty("Tilesize (in cells)", wxPG_LABEL, tsze)); tSize = p;
+    OSHeightfieldInfos->Append(p = wxIntProperty("Cellsize (in units)", wxPG_LABEL, csze)); cSize = p;
     wxPGId valProp =
     OSHeightfieldInfos->Append(wxParentProperty("Total", wxPG_LABEL));
     OSHeightfieldInfos->AppendIn(valProp, p = wxIntProperty("Width", wxPG_LABEL, width)); rWidth = p;
     OSHeightfieldInfos->AppendIn(valProp, p = wxIntProperty("Height", wxPG_LABEL, height)); rHeight = p;
     wxPGId tileProp =
     OSHeightfieldInfos->Append(wxParentProperty("Cells", wxPG_LABEL));
-    OSHeightfieldInfos->AppendIn(tileProp, p = wxIntProperty("Left", wxPG_LABEL, (-offsx) * csze)); tLeft = p;
-    OSHeightfieldInfos->AppendIn(tileProp, p = wxIntProperty("Top", wxPG_LABEL, (-offsy) * csze)); tTop = p;
-    OSHeightfieldInfos->AppendIn(tileProp, p = wxIntProperty("Right", wxPG_LABEL, (tilesx - offsx - 1) * csze)); tRight = p;
-    OSHeightfieldInfos->AppendIn(tileProp, p = wxIntProperty("Bottom", wxPG_LABEL, (tilesy - offsy - 1) * csze)); tBottom = p;
+    OSHeightfieldInfos->AppendIn(tileProp, p = wxIntProperty("Left", wxPG_LABEL, (-offsx) * tsze)); tLeft = p;
+    OSHeightfieldInfos->AppendIn(tileProp, p = wxIntProperty("Top", wxPG_LABEL, (-offsy) * tsze)); tTop = p;
+    OSHeightfieldInfos->AppendIn(tileProp, p = wxIntProperty("Right", wxPG_LABEL, (tilesx - offsx - 1) * tsze)); tRight = p;
+    OSHeightfieldInfos->AppendIn(tileProp, p = wxIntProperty("Bottom", wxPG_LABEL, (tilesy - offsy - 1) * tsze)); tBottom = p;
     OSHeightfieldInfos->AppendCategory("Stats");
     OSHeightfieldInfos->Append(p = wxIntProperty("Minimum", wxPG_LABEL, -8192)); p->SetFlag(wxPG_PROP_READONLY);
     OSHeightfieldInfos->Append(p = wxIntProperty("Seallevel", wxPG_LABEL, 0)); p->SetFlag(wxPG_PROP_READONLY);
@@ -1797,10 +2086,16 @@ private:
 
   void ChangeHeightfieldInfos(wxPropertyGridEvent& event) {
     wxPGId p = event.GetProperty();
-    
+
     if ((p == rWidth ->GetId()) ||
         (p == rHeight->GetId()))
       RedrawH();
+
+    if ((p == tLeft  ->GetId()) ||
+	(p == tTop   ->GetId()) ||
+	(p == tRight ->GetId()) ||
+	(p == tBottom->GetId()))
+      VerifyHeightfieldIn();
   }
 
   void HeightfieldAccept(wxCommandEvent& event) {
@@ -1929,11 +2224,13 @@ private:
 
     wxFileName fnn(ph); fnn.ClearExt(); fnn.SetExt("nrm");
     wxFileName fnh(ph); fnh.ClearExt(); fnh.SetExt("raw");
+    wxFileName fnw(ph); fnw.ClearExt(); fnw.SetExt("water");
     wxFileName fnx(ph); fnx.ClearExt(); fnx.SetExt("land");
     wxFileName fnm(ph); fnm.ClearExt(); fnm.SetExt("fmap");
 
     wxString snn = fnn.GetFullPath();
     wxString snh = fnh.GetFullPath();
+    wxString snw = fnw.GetFullPath();
     wxString snx = fnx.GetFullPath();
     wxString snm = fnm.GetFullPath();
 
@@ -2071,55 +2368,102 @@ private:
 
     OSTarget->Clear();
 
-    OSTarget->Append("220000 (~3/2 of vanilla Cyrodiil)");
-    OSTarget->Append("155000 (~3/3 of vanilla Cyrodiil)");
-    OSTarget->Append("110000 (~2/3 of vanilla Cyrodiil)");
-    OSTarget->Append("55000 (~1/3 of vanilla Cyrodiil)");
-    OSTarget->Append("615000 (~4/3 of vanilla TWMP)");
-    OSTarget->Append("450000 (~3/3 of vanilla TWMP)");
-    OSTarget->Append("290000 (~2/3 of vanilla TWMP)");
-    OSTarget->Append("150000 (~1/3 of vanilla TWMP)");
-
     /* -------------------------------------------------------------------- */
     int maxp, maxx, ntls; MaxTarget(maxp, maxx, ntls);
     int maxs, maxm, it; maxm = maxp;
 
-    /* multiplied by number of resolutions (limited by available tiles) */
-    maxp = 12288;
-    while ((maxp * 2) <= (12288 * ntls))
-      maxp *= 2;
+    if (OSGame->FindItem(wxID_OBLIVON)->IsChecked()) {
+      OSTarget->Append("220000 (~3/2 of vanilla Cyrodiil)");
+      OSTarget->Append("155000 (~3/3 of vanilla Cyrodiil)");
+      OSTarget->Append("110000 (~2/3 of vanilla Cyrodiil)");
+      OSTarget->Append("55000 (~1/3 of vanilla Cyrodiil)");
+      OSTarget->Append("615000 (~4/3 of vanilla TWMP)");
+      OSTarget->Append("450000 (~3/3 of vanilla TWMP)");
+      OSTarget->Append("290000 (~2/3 of vanilla TWMP)");
+      OSTarget->Append("150000 (~1/3 of vanilla TWMP)");
 
-    if (maxp != (12288 * ntls)) {
-      maxs = maxp / ntls; it = 1;
-      while (maxp > 1024) {
-	char buf[64]; sprintf(buf, "%d (1/%d of %d per tile)", maxp, it, maxs); maxp = (maxp + 1) >> 1; it *= 2;
+      /* multiplied by number of resolutions (limited by available tiles) */
+      maxp = 12288;
+      while ((maxp * 2) <= (12288 * ntls))
+	maxp *= 2;
 
-	OSTarget->Append(buf);
+      if (maxp != (12288 * ntls)) {
+	maxs = maxp / ntls; it = 1;
+	while (maxp > 1024) {
+	  char buf[64]; sprintf(buf, "%d (1/%d of %d per tile)", maxp, it, maxs); maxp = (maxp + 1) >> 1; it *= 2;
+
+	  OSTarget->Append(buf);
+	}
+      }
+
+      /* multiplied by number of available tiles */
+      maxp = 12288;
+      maxp *= ntls;
+
+      /**/ {
+	maxs = maxp / ntls; it = 1;
+	while (maxp > 1024) {
+	  char buf[64]; sprintf(buf, "%d (1/%d of %d per tile)", maxp, it, maxs); maxp = (maxp + 1) >> 1; it *= 2;
+
+	  OSTarget->Append(buf);
+	}
+      }
+
+      /* total maximum */
+      maxp = maxm;
+
+      /**/ {
+	maxs = maxp / ntls; it = 1;
+	while (maxp > 1024) {
+	  char buf[64]; sprintf(buf, "%d (1/%d of %d per tile)", maxp, it, maxs); maxp = (maxp + 1) >> 1; it *= 2;
+
+	  OSTarget->Append(buf);
+	}
       }
     }
+    else if (OSGame->FindItem(wxID_SKYRIM)->IsChecked()) {
+      OSTarget->Append("1500000 (~3/2 of vanilla Skyrim)");
+      OSTarget->Append("1000000 (~3/3 of vanilla Skyrim)");
+      OSTarget->Append("650000 (~2/3 of vanilla Skyrim)");
+      OSTarget->Append("320000 (~1/3 of vanilla Skyrim)");
 
-    /* multiplied by number of available tiles */
-    maxp = 12288;
-    maxp *= ntls;
+      /* multiplied by number of resolutions (limited by available tiles) */
+      maxp = 1000;
+      while ((maxp * 2) <= (1000 * ntls))
+	maxp *= 2;
 
-    /**/ {
-      maxs = maxp / ntls; it = 1;
-      while (maxp > 1024) {
-	char buf[64]; sprintf(buf, "%d (1/%d of %d per tile)", maxp, it, maxs); maxp = (maxp + 1) >> 1; it *= 2;
+      if (maxp != (1000 * ntls)) {
+	maxs = maxp / ntls; it = 1;
+	while (maxp > 1000) {
+	  char buf[64]; sprintf(buf, "%d (1/%d of %d per tile)", maxp, it, maxs); maxp = (maxp + 1) >> 1; it *= 2;
 
-	OSTarget->Append(buf);
+	  OSTarget->Append(buf);
+	}
       }
-    }
 
-    /* total maximum */
-    maxp = maxm;
+      /* multiplied by number of available tiles */
+      maxp = 1000;
+      maxp *= ntls;
 
-    /**/ {
-      maxs = maxp / ntls; it = 1;
-      while (maxp > 1024) {
-	char buf[64]; sprintf(buf, "%d (1/%d of %d per tile)", maxp, it, maxs); maxp = (maxp + 1) >> 1; it *= 2;
+      /**/ {
+	maxs = maxp / ntls; it = 1;
+	while (maxp > 1000) {
+	  char buf[64]; sprintf(buf, "%d (1/%d of %d per tile)", maxp, it, maxs); maxp = (maxp + 1) >> 1; it *= 2;
 
-	OSTarget->Append(buf);
+	  OSTarget->Append(buf);
+	}
+      }
+
+      /* total maximum */
+      maxp = maxm;
+
+      /**/ {
+	maxs = maxp / ntls; it = 1;
+	while (maxp > 1000) {
+	  char buf[64]; sprintf(buf, "%d (1/%d of %d per tile)", maxp, it, maxs); maxp = (maxp + 1) >> 1; it *= 2;
+
+	  OSTarget->Append(buf);
+	}
       }
     }
 
@@ -2130,6 +2474,8 @@ private:
 
       OSTarget->SetValue(buf);
     }
+
+    VerifyTarget(l);
   }
 
   void VerifyHeightfieldOut() {
@@ -2145,6 +2491,8 @@ private:
 
     long l = 0; if (GetTarget().ToLong(&l)) limit = l;
     double r = 0.0; if (OSTermination->GetValue().ToDouble(&r)) termination = r;
+
+    VerifyTarget(l);
 
     /* -------------------------------------------------------------------- */
     wxString dataPth = OSFileHeightfieldIn1->GetPath();
@@ -2165,9 +2513,9 @@ private:
 
       /* newer seed-resolution */
       if (hex && rex && (*((__int64 *)&infoh.ftLastWriteTime) < *((__int64 *)&infor.ftLastWriteTime)))
-	OSRes1->Enable(true);
+	OSMlod1->Enable(true);
       else
-	OSRes1->Enable(false), OSRes1->SetValue(true);
+	OSMlod1->Enable(false), OSMlod1->SetValue(true);
     }
   }
 
@@ -2176,15 +2524,6 @@ private:
   }
 
   void ChangeTarget(wxCommandEvent& event) {
-    OSRes1->Enable(false);
-    OSRes2->Enable(false);
-    OSRes3->Enable(false);
-    OSRes4->Enable(false);
-    OSRes5->Enable(false);
-    OSRes6->Enable(false);
-    OSRes7->Enable(false);
-    OSRes8->Enable(false);
-
     wxString ph;
     long l = 0;
 
@@ -2206,22 +2545,60 @@ private:
       RegSetKeyValue(Settings, GetGameKey(), "Target", RRF_RT_REG_DWORD, TG, (DWORD)strlen(TG) + 1);
     }
 
+    VerifyHeightfieldOut();
+  }
+
+  void VerifyTarget(int target) {
+    OSMlod1->Enable(false);
+    OSMlod2->Enable(false);
+    OSMlod3->Enable(false);
+    OSMlod4->Enable(false);
+    OSMlod5->Enable(false);
+    OSMlod6->Enable(false);
+    OSMlod7->Enable(false);
+    OSMlod8->Enable(false);
+    OSNlod1->Enable(false);
+    OSNlod2->Enable(false);
+    OSNlod3->Enable(false);
+    OSNlod4->Enable(false);
+    OSClod1->Enable(false);
+    OSClod2->Enable(false);
+    OSClod3->Enable(false);
+    OSClod4->Enable(false);
+
     int r = 0;
-    while (l > 1024) {
-      l = (l + 1) >> 1;
+    while (target > 1024) {
+      target = (target + 1) >> 1;
       r++;
     }
 
-  /*OSRes1->Enable(r > 0); if (r <= 0) OSRes1->SetValue(false);*/
-    OSRes2->Enable(r > 1); if (r <= 1) OSRes2->SetValue(false);
-    OSRes3->Enable(r > 2); if (r <= 2) OSRes3->SetValue(false);
-    OSRes4->Enable(r > 3); if (r <= 3) OSRes4->SetValue(false);
-    OSRes5->Enable(r > 4); if (r <= 4) OSRes5->SetValue(false);
-    OSRes6->Enable(r > 5); if (r <= 5) OSRes6->SetValue(false);
-    OSRes7->Enable(r > 6); if (r <= 6) OSRes7->SetValue(false);
-    OSRes8->Enable(r > 7); if (r <= 7) OSRes8->SetValue(false);
+    /* Skyrim has a native limit of 4 (32,16,8,4), could be extended */
+    if (OSGame->FindItem(wxID_SKYRIM)->IsChecked())
+      r = min(4, r);
 
-    VerifyHeightfieldOut();
+/*  OSMlod1->Enable(r > 0); if (r <= 0) OSMlod1->SetValue(false);*/
+    OSMlod2->Enable(r > 1); if (r <= 1) OSMlod2->SetValue(false);
+    OSMlod3->Enable(r > 2); if (r <= 2) OSMlod3->SetValue(false);
+    OSMlod4->Enable(r > 3); if (r <= 3) OSMlod4->SetValue(false);
+    OSMlod5->Enable(r > 4); if (r <= 4) OSMlod5->SetValue(false);
+    OSMlod6->Enable(r > 5); if (r <= 5) OSMlod6->SetValue(false);
+    OSMlod7->Enable(r > 6); if (r <= 6) OSMlod7->SetValue(false);
+    OSMlod8->Enable(r > 7); if (r <= 7) OSMlod8->SetValue(false);
+
+    OSMeshUVs->Enable(true);
+    if (OSGame->FindItem(wxID_SKYRIM)->IsChecked()) {
+      OSMeshUVs->Enable(false);
+      OSMeshUVs->SetValue(true);
+
+      OSNlod1->Enable(r > 0);
+      OSNlod2->Enable(r > 1);
+      OSNlod3->Enable(r > 2);
+      OSNlod4->Enable(r > 3);
+      OSClod1->Enable(r > 0);
+      OSClod2->Enable(r > 1);
+      OSClod3->Enable(r > 2);
+      OSClod4->Enable(r > 3);
+    }
   }
 
   /* ---------------------------------------------------------------------------- */
@@ -2392,15 +2769,9 @@ public:
     return true;
   }
 
-  void HeightfieldGenerate() {
-    if (!SanitizeGeneration()) {
-      prog->Leave(666);
-      return;
-    }
-
-    /* -------------------------------------------------------------------- */
-    rasterx = tSize->GetValueAsVariant().GetInteger() * cSize->GetValueAsVariant().GetInteger();
-    rastery = tSize->GetValueAsVariant().GetInteger() * cSize->GetValueAsVariant().GetInteger();
+  void DefineDimensions(int tsze, int csze) {
+    rasterx = tsze * csze;
+    rastery = tsze * csze;
 
     rwsizex = rWidth ->GetValueAsVariant().GetInteger();
     rwsizey = rHeight->GetValueAsVariant().GetInteger();
@@ -2411,25 +2782,52 @@ public:
     tilesx  = width  / rasterx;
     tilesy  = height / rastery;
 
-    dotilex = tLeft->GetValueAsVariant().GetInteger() / tSize->GetValueAsVariant().GetInteger();
-    dotiley = tTop ->GetValueAsVariant().GetInteger() / tSize->GetValueAsVariant().GetInteger();
+    dotilex = tLeft->GetValueAsVariant().GetInteger() / tsze;
+    dotiley = tTop ->GetValueAsVariant().GetInteger() / tsze;
 
-    nmtilex = tRight ->GetValueAsVariant().GetInteger() / tSize->GetValueAsVariant().GetInteger() - dotilex + 1;
-    nmtiley = tBottom->GetValueAsVariant().GetInteger() / tSize->GetValueAsVariant().GetInteger() - dotiley + 1;
+    nmtilex = tRight ->GetValueAsVariant().GetInteger() / tsze - dotilex + 1;
+    nmtiley = tBottom->GetValueAsVariant().GetInteger() / tsze - dotiley + 1;
 
     dotilex = dotilex + (tilesx >> 1);
     dotiley = dotiley + (tilesy >> 1);
+  }
 
+  void HeightfieldGenerate() {
+    if (!SanitizeGeneration()) {
+      prog->Leave(666);
+      return;
+    }
+
+    /* -------------------------------------------------------------------- */
     wdspace = formID->GetValueAsVariant().GetInteger();
+
+#define BASINSHIFT_OBLIVION	(8192 -     0 -  512) / (2 * 4)
+#define BASINSHIFT_SKYRIM	(8192 + 0 -  512) / (2 * 4)
+
+#define HEIGHTSHIFT_OBLIVION	(8192.0f -     0.0f)
+#define HEIGHTSHIFT_SKYRIM	(8192.0f + 14848.0f)  // 18040 + 5000 (why?)
 
     /* put the string there and identify the game */
     if (OSGame->FindItem(wxID_OBLIVON)->IsChecked())
-      wpattern = "%02d.%02d.%02d.%02d", wchgame = 0, sprintf(wdsname, "%02d", wdspace);
+      sprintf(wdsname, "%02d", wdspace),
+      wpattern = "%02d.%02d.%02d.%02d",
+      wchgame = 0,
+      basinshift = BASINSHIFT_OBLIVION,
+      heightshift = HEIGHTSHIFT_OBLIVION;
     else if (OSGame->FindItem(wxID_SKYRIM)->IsChecked())
-      wpattern = "%s.%d.%d.%d", wchgame = 1, sprintf(wdsname, "%s", wspacef[wdspace]->data());
+      sprintf(wdsname, "%s", wspacef[wdspace]->data()),
+      wpattern = "%s.%d.%d.%d",
+      wchgame = 1,
+      basinshift = BASINSHIFT_SKYRIM,
+      heightshift = HEIGHTSHIFT_SKYRIM;
 
     /* -------------------------------------------------------------------- */
     long l = 0; double r = 0.0;
+    int tlmt, tsze, csze;
+
+    tlmt = (OSGame->FindItem(wxID_SKYRIM)->IsChecked() ? 8 : 1);
+    tsze = tSize->GetValueAsVariant().GetInteger();
+    csze = cSize->GetValueAsVariant().GetInteger();
 
     optimizemesh = OSMeshOpt->GetValue();
     nobasin = !OSMeshBasin->GetValue();
@@ -2443,10 +2841,10 @@ public:
 
     if (GetTarget().ToLong(&l)) limit = l;
 
-    if (OSQThreshold->GetValue().ToDouble(&r)) qual_thresh = max(0.001, min(r, 0.999));
-    if (OSAThreshold->GetValue().ToDouble(&r)) area_thresh = max(0.0, r);
+    if (OSQThreshold ->GetValue().ToDouble(&r)) qual_thresh = max(0.001, min(r, 0.999));
+    if (OSAThreshold ->GetValue().ToDouble(&r)) area_thresh = max(0.0, r);
     if (OSTermination->GetValue().ToDouble(&r)) termination = max(0.0, r);
-    if (OSEmphasis->GetValue().ToDouble(&r)) emphasis = max(0.0, min(r, 1.0));
+    if (OSEmphasis   ->GetValue().ToDouble(&r)) emphasis = max(0.0, min(r, 1.0));
 
     if (!OSEmphasis->IsEnabled()) emphasis = 0.0;
 
@@ -2457,17 +2855,20 @@ public:
 
     wxFileName fnn(dataPth); fnn.ClearExt(); fnn.SetExt("nrm");
     wxFileName fnh(dataPth); fnh.ClearExt(); fnh.SetExt("raw");
+    wxFileName fnw(dataPth); fnw.ClearExt(); fnw.SetExt("water");
     wxFileName fnx(dataPth); fnx.ClearExt(); fnx.SetExt("land");
     wxFileName fnm(dataPth); fnm.ClearExt(); fnm.SetExt("fmap");
 
     wxString greyFPth = fnm.GetFullPath();
     wxString dataFPth = fnh.GetFullPath();
+    wxString watrFPth = fnw.GetFullPath();
     wxString colrFPth = fnx.GetFullPath();
 
     texFile = NULL;
     greyFile = greyFPth.data();
     colrFile = colrFPth.data();
     dataFile = dataFPth.data();
+    watrFile = watrFPth.data();
 
 //  if (currentRes != maxResolution_in_dataDir)
 //  if (is_selected_1/1)
@@ -2500,19 +2901,24 @@ public:
 	if (OSHeightmapHigh   ->GetValue()) m++;
       }
 
-      if (OSRes1->GetValue()) majortasks += m;
-      if (OSRes2->GetValue()) majortasks += m + 1;
-      if (OSRes3->GetValue()) majortasks += m + 1;
-      if (OSRes4->GetValue()) majortasks += m + 1;
-      if (OSRes5->GetValue()) majortasks += m + 1;
-      if (OSRes6->GetValue()) majortasks += m + 1;
-      if (OSRes7->GetValue()) majortasks += m + 1;
-      if (OSRes8->GetValue()) majortasks += m + 1;
+      if (OSMlod1->GetValue()) majortasks += m;
+      if (OSMlod2->GetValue()) majortasks += m + 1;
+      if (OSMlod3->GetValue()) majortasks += m + 1;
+      if (OSMlod4->GetValue()) majortasks += m + 1;
+      if (OSMlod5->GetValue()) majortasks += m + 1;
+      if (OSMlod6->GetValue()) majortasks += m + 1;
+      if (OSMlod7->GetValue()) majortasks += m + 1;
+      if (OSMlod8->GetValue()) majortasks += m + 1;
     }
 
     /* generate textures (PPM, DDS, PNG) */
     if (OSNormals->GetValue()) {
-      int m = 1;
+      int m = 0;
+
+      if (OSNlod1->GetValue() && (tlmt >=   1)) m += 1;
+      if (OSNlod2->GetValue() && (tlmt >=   2)) m += 1;
+      if (OSNlod3->GetValue() && (tlmt >=   4)) m += 1;
+      if (OSNlod4->GetValue() && (tlmt >=   8)) m += 1;
 
 //    if (OSNormalPPM    ->GetValue()) m++;
 //    if (OSNormalDDS    ->GetValue()) m++;
@@ -2529,7 +2935,12 @@ public:
 
     /* generate textures (PPM, DDS, PNG) */
     if (OSColors->GetValue()) {
-      int m = 1;
+      int m = 0;
+
+      if (OSClod1->GetValue() && (tlmt >=   1)) m += 1;
+      if (OSClod2->GetValue() && (tlmt >=   2)) m += 1;
+      if (OSClod3->GetValue() && (tlmt >=   4)) m += 1;
+      if (OSClod4->GetValue() && (tlmt >=   8)) m += 1;
 
 //    if (OSColorPPM    ->GetValue()) m++;
 //    if (OSColorDDS    ->GetValue()) m++;
@@ -2550,6 +2961,13 @@ public:
 	OSHeightmap->GetValue()) {
       prog->InitProgress("Initializing:", 0, "Reading heightfield:", 0.0, majordone++, 1);
 
+      /* -------------------------------------------------------------------- */
+      tlmt = (OSGame->FindItem(wxID_SKYRIM)->IsChecked() ? 8 : 1);
+      tsze = tSize->GetValueAsVariant().GetInteger();
+      csze = cSize->GetValueAsVariant().GetInteger();
+
+      DefineDimensions(tsze, csze);
+
       ifstream mntns(dataFile, ios::binary);
       HField H(mntns, texFile, greyFile);
 
@@ -2566,29 +2984,43 @@ public:
 	writenif = OSMeshNIF->GetValue();
 	writedx9 = OSMeshDX ->GetValue();
 
-	vector< pair<int, Real> > ress; size_t r = 0;
+	class _tripple {
+public:
+	  _tripple(int l, Real t, int s) :
+	  limit(l), termination(t), tsze(s) {}
+	  int limit; Real termination; int tsze;
+	};
 
-	if (OSRes1->GetValue()) ress.push_back(pair<int, Real>(limit / 1, termination * 1));
-	if (OSRes2->GetValue()) ress.push_back(pair<int, Real>(limit / 2, termination * 2));
-	if (OSRes3->GetValue()) ress.push_back(pair<int, Real>(limit / 4, termination * 4));
-	if (OSRes4->GetValue()) ress.push_back(pair<int, Real>(limit / 8, termination * 8));
-	if (OSRes5->GetValue()) ress.push_back(pair<int, Real>(limit / 16, termination * 16));
-	if (OSRes6->GetValue()) ress.push_back(pair<int, Real>(limit / 32, termination * 32));
-	if (OSRes7->GetValue()) ress.push_back(pair<int, Real>(limit / 64, termination * 64));
-	if (OSRes8->GetValue()) ress.push_back(pair<int, Real>(limit / 128, termination * 128));
+	vector< _tripple > ress; size_t r = 0; Real pw;
+
+	if (OSMlodHalf->GetValue()) pw = 1.0;
+	if (OSMlodQuat->GetValue()) pw = 1.5;
+	if (OSMlodCube->GetValue()) pw = 2.0;
+
+	if (OSMlod1->GetValue()) ress.push_back(_tripple((int)floor((1.0 * limit) / pow(  1.0, pw)), termination *   1, tsze * min(  1, tlmt)));
+	if (OSMlod2->GetValue()) ress.push_back(_tripple((int)floor((1.0 * limit) / pow(  2.0, pw)), termination *   2, tsze * min(  2, tlmt)));
+	if (OSMlod3->GetValue()) ress.push_back(_tripple((int)floor((1.0 * limit) / pow(  4.0, pw)), termination *   4, tsze * min(  4, tlmt)));
+	if (OSMlod4->GetValue()) ress.push_back(_tripple((int)floor((1.0 * limit) / pow(  8.0, pw)), termination *   8, tsze * min(  8, tlmt)));
+	if (OSMlod5->GetValue()) ress.push_back(_tripple((int)floor((1.0 * limit) / pow( 16.0, pw)), termination *  16, tsze * min( 16, tlmt)));
+	if (OSMlod6->GetValue()) ress.push_back(_tripple((int)floor((1.0 * limit) / pow( 32.0, pw)), termination *  32, tsze * min( 32, tlmt)));
+	if (OSMlod7->GetValue()) ress.push_back(_tripple((int)floor((1.0 * limit) / pow( 64.0, pw)), termination *  64, tsze * min( 64, tlmt)));
+	if (OSMlod8->GetValue()) ress.push_back(_tripple((int)floor((1.0 * limit) / pow(128.0, pw)), termination * 128, tsze * min(128, tlmt)));
 
 	if ((r = ress.size()) > 0) {
 	  char temps[256], base[1024];
 	  int target = limit;
 
 	  for (size_t n = 0; n < r; n++) {
-	    limit       = ress[n].first;
-	    termination = ress[n].second;
+	    tsze        = ress[n].tsze;
+	    limit       = ress[n].limit;
+	    termination = ress[n].termination;
 
+	    /* -------------------------------------------------------------------- */
+	    DefineDimensions(tsze, csze);
 	    srandom(limit);
 
-	    _controlfp(_RC_DOWN, _MCW_RC);    // round to -8
-//	    _controlfp(_PC_53, _MCW_PC);    // round to -8
+	    _controlfp(_RC_DOWN, _MCW_RC);	// round to -8
+//	    _controlfp(_PC_53, _MCW_PC);	// round to -8
 
 #if 0
 	    // replace default output buffer with string buffer
@@ -2632,10 +3064,37 @@ public:
 	      SimplField ter(&H);
 
 #ifdef	SPLIT_ON_INJECTION
-	      /* damit, the heightfield is [0,width), not inclusive */
+	      /* add highest resolution raster-points */
 	      for (int h = 0; h <= height; h += rastery)
 	      for (int w = 0; w <=  width; w += rasterx)
+		/* damit, the heightfield is [0,width), not inclusive */
 		ter.select_new_point(min(w, width - 1), min(h, height - 1));
+
+	      /* add water-point for cells crossing 0.0 */
+	      for (int h = 0; h <  height; h += 32)
+	      for (int w = 0; w <   width; w += 32) {
+		/* TODO: this is not really correct, as from the simplification
+		 *       a triangle can cross zero in this cell even though there
+		 *       is no water in this cell
+		 */
+		for (int hh = h; hh <= (h + 32); hh += 1)
+		for (int ww = w; ww <= (w + 32); ww += 1) {
+		  /* damit, the heightfield is [0,width), not inclusive */
+		  Real z = H.getZ(min(ww, width - 1), min(hh, height - 1));
+		  z = z * heightscale - heightshift;
+
+		  /* must cross (means smaller than 0.0) */
+		  if (z < 0.0) {
+		    Point2d p(w, h);
+
+		    RegisterWater(p, 0.0, true);
+
+		    /* bail out */
+		    hh = h + 32;
+		    ww = w + 32;
+		  }
+		}
+	      }
 #endif
 
 #if 0
@@ -2647,6 +3106,13 @@ public:
 
 	      /* parallel insertion (consume all above given error) */
 //	      greedy_insert_error(ter);
+
+	      /* water read the points in */
+	      {
+		prog->InitProgress("Resolution %d, generating mesh:", limit, "Placing water levels:", 0.0, majordone, 1);
+
+		readWaterFile(ter, watrFile);
+	      }
 
 	      /* low resolutions read the points in */
 	      if (limit < target) {
@@ -2744,66 +3210,100 @@ public:
       }
 
       /* -------------------------------------------------------------------- */
-      if (OSNormals->GetValue()) {
-	char temps[256], base[1024];
+      tlmt = (OSGame->FindItem(wxID_SKYRIM)->IsChecked() ? 8 : 1);
+      tsze = tSize->GetValueAsVariant().GetInteger();
+      csze = cSize->GetValueAsVariant().GetInteger();
 
+      DefineDimensions(tsze, csze);
+
+      if (OSNormals->GetValue()) {
 	writeppm = OSNormalPPM->GetValue();
 	writepng = OSNormalPNG->GetValue();
 	writedds = OSNormalDDS->GetValue();
 
-	try {
+	class _single {
+public:
+	  _single(int s) :
+	  tsze(s) {}
+	  int tsze;
+	};
 
-	  if (OSNormalLow    ->GetValue()) {
-	    /* create the base directory */
-	    sprintf(base, "%s\\TEX-%d", dataDir.data(), 512);
-	    CreateDirectory(base, NULL);
+	vector< _single > ress; size_t r = 0;
 
-	    strcpy(temps, base);
-	    strcat(temps, "\\");
-	    strcat(temps, wpattern);
+	if (OSNlod1->GetValue() && (tlmt >=   1)) ress.push_back(_single(tsze *   1));
+	if (OSNlod2->GetValue() && (tlmt >=   2)) ress.push_back(_single(tsze *   2));
+	if (OSNlod3->GetValue() && (tlmt >=   4)) ress.push_back(_single(tsze *   4));
+	if (OSNlod4->GetValue() && (tlmt >=   8)) ress.push_back(_single(tsze *   8));
 
-	    prog->InitProgress("Resolution %d, calculating normal-maps:", 512, "Tiling normals:", 0.0, majordone++, 1);
-	    wrteNormals0(false, OSNormalLow    ->GetValue(), false, H, temps);
+	if ((r = ress.size()) > 0) {
+	  char temps[256], base[1024];
+	  int target = limit;
+
+	  for (size_t n = 0; n < r; n++) {
+	    tsze       = ress[n].tsze;
+
+	    /* -------------------------------------------------------------------- */
+	    DefineDimensions(tsze, csze);
+	    srandom(limit);
+
+	    _controlfp(_RC_DOWN, _MCW_RC);	// round to -8
+//	    _controlfp(_PC_53, _MCW_PC);	// round to -8
+
+	    try {
+
+	      if (OSNormalLow    ->GetValue()) {
+		/* create the base directory */
+		sprintf(base, "%s\\TEX-%d", dataDir.data(), 512);
+		CreateDirectory(base, NULL);
+
+		strcpy(temps, base);
+		strcat(temps, "\\");
+		strcat(temps, wpattern);
+
+		prog->InitProgress("Resolution %d, calculating normal-maps:", 512, "Tiling normals:", 0.0, majordone++, 1);
+		wrteNormals0(false, OSNormalLow    ->GetValue(), false, H, temps);
+	      }
+
+	      if (OSNormalRegular->GetValue()) {
+		/* create the base directory */
+		sprintf(base, "%s\\TEX-%d", dataDir.data(), 1024);
+		CreateDirectory(base, NULL);
+
+		strcpy(temps, base);
+		strcat(temps, "\\");
+		strcat(temps, wpattern);
+
+		prog->InitProgress("Resolution %d, calculating normal-maps:", 1024, "Tiling normals:", 0.0, majordone++, 1);
+		wrteNormals1(false, OSNormalRegular->GetValue(), false, H, temps);
+	      }
+
+	      if (OSNormalHigh   ->GetValue()) {
+		/* create the base directory */
+		sprintf(base, "%s\\TEX-%d", dataDir.data(), 2048);
+		CreateDirectory(base, NULL);
+
+		strcpy(temps, base);
+		strcat(temps, "\\");
+		strcat(temps, wpattern);
+
+		prog->InitProgress("Resolution %d, calculating normal-maps:", 2048, "Tiling normals:", 0.0, majordone++, 1);
+		wrteNormals2(false, OSNormalHigh   ->GetValue(), false, H, temps);
+	      }
+
+	      freeTexture();
+	    }
+	    catch (exception &e) {
+	      freeTexture();
+
+	      if (strcmp(e.what(), "ExitThread")) {
+		wxMessageDialog d(prog, e.what(), "Oscape error");
+		d.ShowModal();
+	      }
+
+	      prog->Leave(0);
+	      return;
+	    }
 	  }
-
-	  if (OSNormalRegular->GetValue()) {
-	    /* create the base directory */
-	    sprintf(base, "%s\\TEX-%d", dataDir.data(), 1024);
-	    CreateDirectory(base, NULL);
-
-	    strcpy(temps, base);
-	    strcat(temps, "\\");
-	    strcat(temps, wpattern);
-
-	    prog->InitProgress("Resolution %d, calculating normal-maps:", 1024, "Tiling normals:", 0.0, majordone++, 1);
-	    wrteNormals1(false, OSNormalRegular->GetValue(), false, H, temps);
-	  }
-
-	  if (OSNormalHigh   ->GetValue()) {
-	    /* create the base directory */
-	    sprintf(base, "%s\\TEX-%d", dataDir.data(), 2048);
-	    CreateDirectory(base, NULL);
-
-	    strcpy(temps, base);
-	    strcat(temps, "\\");
-	    strcat(temps, wpattern);
-
-	    prog->InitProgress("Resolution %d, calculating normal-maps:", 2048, "Tiling normals:", 0.0, majordone++, 1);
-	    wrteNormals2(false, OSNormalHigh   ->GetValue(), false, H, temps);
-	  }
-
-	  freeTexture();
-	}
-	catch (exception &e) {
-	  freeTexture();
-
-	  if (strcmp(e.what(), "ExitThread")) {
-	    wxMessageDialog d(prog, e.what(), "Oscape error");
-	    d.ShowModal();
-	  }
-
-	  prog->Leave(0);
-	  return;
 	}
       }
     }
@@ -2812,83 +3312,118 @@ public:
     if (OSColors->GetValue()) {
       prog->InitProgress("Initializing:", 0, "Reading surface-map:", 0.0, majordone++, 1);
 
+      /* -------------------------------------------------------------------- */
+      tlmt = (OSGame->FindItem(wxID_SKYRIM)->IsChecked() ? 8 : 1);
+      tsze = tSize->GetValueAsVariant().GetInteger();
+      csze = cSize->GetValueAsVariant().GetInteger();
+
+      DefineDimensions(tsze, csze);
+
       ifstream mntns(colrFile, ios::binary);
       CField C(mntns);
 
       /* -------------------------------------------------------------------- */
       if (OSColors->GetValue()) {
-	char temps[256], base[1024];
-
 	writeppm = OSColorPPM->GetValue();
 	writepng = OSColorPNG->GetValue();
 	writedds = OSColorDDS->GetValue();
 
-	try {
+	class _single {
+public:
+	  _single(int s) :
+	  tsze(s) {}
+	  int tsze;
+	};
 
-	  if (OSColorLow    ->GetValue()) {
-	    /* create the base directory */
-	    sprintf(base, "%s\\TEX-%d", dataDir.data(), 512);
-	    CreateDirectory(base, NULL);
+	vector< _single > ress; size_t r = 0;
 
-	    strcpy(temps, base);
-	    strcat(temps, "\\");
-	    strcat(temps, wpattern);
+	if (OSClod1->GetValue() && (tlmt >=   1)) ress.push_back(_single(tsze *   1));
+	if (OSClod2->GetValue() && (tlmt >=   2)) ress.push_back(_single(tsze *   2));
+	if (OSClod3->GetValue() && (tlmt >=   4)) ress.push_back(_single(tsze *   4));
+	if (OSClod4->GetValue() && (tlmt >=   8)) ress.push_back(_single(tsze *   8));
 
-	    prog->InitProgress("Resolution %d, calculating color-maps:", 512, "Tiling colors:", 0.0, majordone++, 1);
-	    wrteColors0(OSColorLow    ->GetValue(), C, temps);
+	if ((r = ress.size()) > 0) {
+	  char temps[256], base[1024];
+	  int target = limit;
+
+	  for (size_t n = 0; n < r; n++) {
+	    tsze       = ress[n].tsze;
+
+	    /* -------------------------------------------------------------------- */
+	    DefineDimensions(tsze, csze);
+	    srandom(limit);
+
+	    _controlfp(_RC_DOWN, _MCW_RC);	// round to -8
+//	    _controlfp(_PC_53, _MCW_PC);	// round to -8
+
+	    try {
+
+	      if (OSColorLow    ->GetValue()) {
+		/* create the base directory */
+		sprintf(base, "%s\\TEX-%d", dataDir.data(), 512);
+		CreateDirectory(base, NULL);
+
+		strcpy(temps, base);
+		strcat(temps, "\\");
+		strcat(temps, wpattern);
+
+		prog->InitProgress("Resolution %d, calculating color-maps:", 512, "Tiling colors:", 0.0, majordone++, 1);
+		wrteColors0(OSColorLow    ->GetValue(), C, temps);
+	      }
+
+	      if (OSColorRegular->GetValue()) {
+		/* create the base directory */
+		sprintf(base, "%s\\TEX-%d", dataDir.data(), 1024);
+		CreateDirectory(base, NULL);
+
+		strcpy(temps, base);
+		strcat(temps, "\\");
+		strcat(temps, wpattern);
+
+		prog->InitProgress("Resolution %d, calculating color-maps:", 1024, "Tiling colors:", 0.0, majordone++, 1);
+		wrteColors1(OSColorRegular->GetValue(), C, temps);
+	      }
+
+	      if (OSColorHigh   ->GetValue()) {
+		/* create the base directory */
+		sprintf(base, "%s\\TEX-%d", dataDir.data(), 2048);
+		CreateDirectory(base, NULL);
+
+		strcpy(temps, base);
+		strcat(temps, "\\");
+		strcat(temps, wpattern);
+
+		prog->InitProgress("Resolution %d, calculating color-maps:", 2048, "Tiling colors:", 0.0, majordone++, 1);
+		wrteColors2(OSColorHigh   ->GetValue(), C, temps);
+	      }
+
+	      if (OSColorUltra  ->GetValue()) {
+		/* create the base directory */
+		sprintf(base, "%s\\TEX-%d", dataDir.data(), 4096);
+		CreateDirectory(base, NULL);
+
+		strcpy(temps, base);
+		strcat(temps, "\\");
+		strcat(temps, wpattern);
+
+		prog->InitProgress("Resolution %d, calculating color-maps:", 4096, "Tiling colors:", 0.0, majordone++, 1);
+		wrteColors3(OSColorUltra  ->GetValue(), C, temps);
+	      }
+
+	      freeTexture();
+	    }
+	    catch (exception &e) {
+	      freeTexture();
+
+	      if (strcmp(e.what(), "ExitThread")) {
+		wxMessageDialog d(prog, e.what(), "Oscape error");
+		d.ShowModal();
+	      }
+
+	      prog->Leave(0);
+	      return;
+	    }
 	  }
-
-	  if (OSColorRegular->GetValue()) {
-	    /* create the base directory */
-	    sprintf(base, "%s\\TEX-%d", dataDir.data(), 1024);
-	    CreateDirectory(base, NULL);
-
-	    strcpy(temps, base);
-	    strcat(temps, "\\");
-	    strcat(temps, wpattern);
-
-	    prog->InitProgress("Resolution %d, calculating color-maps:", 1024, "Tiling colors:", 0.0, majordone++, 1);
-	    wrteColors1(OSColorRegular->GetValue(), C, temps);
-	  }
-
-	  if (OSColorHigh   ->GetValue()) {
-	    /* create the base directory */
-	    sprintf(base, "%s\\TEX-%d", dataDir.data(), 2048);
-	    CreateDirectory(base, NULL);
-
-	    strcpy(temps, base);
-	    strcat(temps, "\\");
-	    strcat(temps, wpattern);
-
-	    prog->InitProgress("Resolution %d, calculating color-maps:", 2048, "Tiling colors:", 0.0, majordone++, 1);
-	    wrteColors2(OSColorHigh   ->GetValue(), C, temps);
-	  }
-
-	  if (OSColorUltra  ->GetValue()) {
-	    /* create the base directory */
-	    sprintf(base, "%s\\TEX-%d", dataDir.data(), 4096);
-	    CreateDirectory(base, NULL);
-
-	    strcpy(temps, base);
-	    strcat(temps, "\\");
-	    strcat(temps, wpattern);
-
-	    prog->InitProgress("Resolution %d, calculating color-maps:", 4096, "Tiling colors:", 0.0, majordone++, 1);
-	    wrteColors3(OSColorUltra  ->GetValue(), C, temps);
-	  }
-
-	  freeTexture();
-	}
-	catch (exception &e) {
-	  freeTexture();
-
-	  if (strcmp(e.what(), "ExitThread")) {
-	    wxMessageDialog d(prog, e.what(), "Oscape error");
-	    d.ShowModal();
-	  }
-
-	  prog->Leave(0);
-	  return;
 	}
       }
     }
@@ -3168,7 +3703,7 @@ private:
     if (buf[0]) OSInstallLevel3->SetValue(buf[0] == '1'); bufl = 1023;
 
     /* --------------------------------------------------------------------- */
-    unsigned long int res_;
+    unsigned long int res_, rs;
     int numN, numY;
     int addm = 0, fndn = 0, fndc = 0, divm = 1, texn = 0, texc = 0,
 	ackm = 0, tckn = 0, tckc = 0, resm = 0, resn = 0, resc = 0;
@@ -3177,26 +3712,34 @@ private:
     while (walk != config->seed.end()) {
       divm = 1, addm = 0;
 
+      /**/ if (OSGame->FindItem(wxID_OBLIVON)->IsChecked())
+	rs = 32;
+      else if (OSGame->FindItem(wxID_SKYRIM)->IsChecked())
+	rs = 4;
+
       res_ = *walk;
       while (res_ > 1024) {
-	if ((numN = config->mesh_nu_n[res_]) > 0) {
+	numN = config->mesh_nu_n[(res_ << 8) | rs];
+	numY = config->mesh_yu_n[(res_ << 8) | rs];
+
+	if (numN > 0) {
 	  sprintf(buf, "1/%d: %d points, no UVs, %d tiles", divm, res_, numN);
 
 	  OSInstallLevel0MeshRes->Append(buf, (void *)-((int)res_));
 	  if ((ackm == 0) || ((ackm == 1) && (res_ > resm)))
 	    OSInstallLevel0MeshRes->SetSelection(OSInstallLevel0MeshRes->GetCount() - 1), ackm = 1;
 
-	   resm = max(resm, res_);
+	  resm = max(resm, res_);
 	}
 
-	if ((numY = config->mesh_yu_n[res_]) > 0) {
+	if (numY > 0) {
 	  sprintf(buf, "1/%d: %d points, UVs, %d tiles", divm, res_, numY);
 
 	  OSInstallLevel0MeshRes->Append(buf, (void *) ((int)res_));
 	  if ((ackm == 0) || ((ackm == 1) && (res_ > resm)))
 	    OSInstallLevel0MeshRes->SetSelection(OSInstallLevel0MeshRes->GetCount() - 1), ackm = 1;
 
-	   resm = max(resm, res_);
+	  resm = max(resm, res_);
 	}
 
 	addm += (numN || numY) ? 1 : 0;
@@ -3208,14 +3751,22 @@ private:
     }
 
     {
+      /**/ if (OSGame->FindItem(wxID_OBLIVON)->IsChecked())
+	rs = 32;
+      else if (OSGame->FindItem(wxID_SKYRIM)->IsChecked())
+	rs = 4;
+
       res_ = 2048, fndn = 0;
       while (res_ > 64) {
-	numN = config->textn_d[res_];
-	numY = config->textn_p[res_];
+	numN = config->textn_d[(res_ << 8) | rs];
+	numY = config->textn_p[(res_ << 8) | rs];
 
 	/* if there are resolution, all lower ones are available as well */
 	if ((numN + numY + fndn) > 0) {
-	  sprintf(buf, "%dx%d normals, %d tiles", res_, res_, max(numN, numY));
+	  if (!max(numN, numY))
+	    sprintf(buf, "%dx%d normals, automatic", (res_ * rs) / 32, (res_ * rs) / 32);
+	  else
+	    sprintf(buf, "%dx%d normals, %d tiles", (res_ * rs) / 32, (res_ * rs) / 32, max(numN, numY));
 
 	  OSInstallLevel0TextResN->Append(buf, (void *) ((int)res_));
 	  if ((tckn == 0) || ((tckn == 1) && (res_ > resn)))
@@ -3231,12 +3782,15 @@ private:
 
       res_ = 4096, fndc = 0;
       while (res_ > 64) {
-	numN = config->textc_d[res_];
-	numY = config->textc_p[res_];
+	numN = config->textc_d[(res_ << 8) | rs];
+	numY = config->textc_p[(res_ << 8) | rs];
 
 	/* if there are resolution, all lower ones are available as well */
 	if ((numN + numY + fndc) > 0) {
-	  sprintf(buf, "%dx%d colors, %d tiles", res_, res_, max(numN, numY));
+	  if (!max(numN, numY))
+	    sprintf(buf, "%dx%d colors, automatic", (res_ * rs) / 32, (res_ * rs) / 32);
+	  else
+	    sprintf(buf, "%dx%d colors, %d tiles", (res_ * rs) / 32, (res_ * rs) / 32, max(numN, numY));
 
 	  OSInstallLevel0TextResC->Append(buf, (void *) ((int)res_));
 	  if ((tckc == 0) || ((tckc == 1) && (res_ > resc)))
@@ -3264,28 +3818,58 @@ private:
 
       res_ = *walk;
       while (res_ > 1024) {
-	if ((numN = config->mesh_nu_x[res_]) > 0) {
-	  sprintf(buf, "1/%d: %d points, no UVs, %d tiles", divm, res_, numN);
+	/**/ if (OSGame->FindItem(wxID_OBLIVON)->IsChecked()) {
+	  rs = 32;
 
-	  OSInstallLevel1MeshRes->Append(buf, (void *)-((int)res_));
-	  OSInstallLevel2MeshRes->Append(buf, (void *)-((int)res_));
-	  OSInstallLevel3MeshRes->Append(buf, (void *)-((int)res_));
+	  /* DirectX */
+	  numN = config->mesh_nu_x[(res_ << 8) | rs];
+	  numY = config->mesh_yu_x[(res_ << 8) | rs];
+	}
+	else if (OSGame->FindItem(wxID_SKYRIM)->IsChecked()) {
+	  rs = 4 << ackm;
 
-	  if ((ackm == 3) && (res_ < resm))
-	    OSInstallLevel3MeshRes->SetSelection(OSInstallLevel3MeshRes->GetCount() - 1), ackm = 4;
-	  if ((ackm == 2) && (res_ < resm))
-	    OSInstallLevel2MeshRes->SetSelection(OSInstallLevel2MeshRes->GetCount() - 1), ackm = 3;
-	  if ((ackm == 1) && (res_ < resm))
-	    OSInstallLevel1MeshRes->SetSelection(OSInstallLevel1MeshRes->GetCount() - 1), ackm = 2;
+	  /* BTR */
+	  numN = config->mesh_nu_n[(res_ << 8) | rs];
+	  numY = config->mesh_yu_n[(res_ << 8) | rs];
 	}
 
-	if ((numY = config->mesh_yu_x[res_]) > 0) {
+	if (numN > 0) {
+	  sprintf(buf, "1/%d: %d points, no UVs, %d tiles", divm, res_, numN);
+
+	  /**/ if (OSGame->FindItem(wxID_OBLIVON)->IsChecked()) {
+	    OSInstallLevel1MeshRes->Append(buf, (void *)-((int)res_));
+	    OSInstallLevel2MeshRes->Append(buf, (void *)-((int)res_));
+	    OSInstallLevel3MeshRes->Append(buf, (void *)-((int)res_));
+	  }
+	  else if (OSGame->FindItem(wxID_SKYRIM)->IsChecked()) {
+	    if ((ackm == 1) && (res_ < resm))
+	      OSInstallLevel1MeshRes->Append(buf, (void *) ((int)res_));
+	    if ((ackm == 2) && (res_ < resm))
+	      OSInstallLevel2MeshRes->Append(buf, (void *) ((int)res_));
+	    if ((ackm == 3) && (res_ < resm))
+	      OSInstallLevel3MeshRes->Append(buf, (void *) ((int)res_));
+	  }
+	}
+
+	if (numY > 0) {
 	  sprintf(buf, "1/%d: %d points, UVs, %d tiles", divm, res_, numY);
 
-	  OSInstallLevel1MeshRes->Append(buf, (void *) ((int)res_));
-	  OSInstallLevel2MeshRes->Append(buf, (void *) ((int)res_));
-	  OSInstallLevel3MeshRes->Append(buf, (void *) ((int)res_));
+	  /**/ if (OSGame->FindItem(wxID_OBLIVON)->IsChecked()) {
+	    OSInstallLevel1MeshRes->Append(buf, (void *) ((int)res_));
+	    OSInstallLevel2MeshRes->Append(buf, (void *) ((int)res_));
+	    OSInstallLevel3MeshRes->Append(buf, (void *) ((int)res_));
+	  }
+	  else if (OSGame->FindItem(wxID_SKYRIM)->IsChecked()) {
+	    if ((ackm == 1) && (res_ < resm))
+	      OSInstallLevel1MeshRes->Append(buf, (void *) ((int)res_));
+	    if ((ackm == 2) && (res_ < resm))
+	      OSInstallLevel2MeshRes->Append(buf, (void *) ((int)res_));
+	    if ((ackm == 3) && (res_ < resm))
+	      OSInstallLevel3MeshRes->Append(buf, (void *) ((int)res_));
+	  }
+	}
 
+	if (numN + numY) {
 	  if ((ackm == 3) && (res_ < resm))
 	    OSInstallLevel3MeshRes->SetSelection(OSInstallLevel3MeshRes->GetCount() - 1), ackm = 4;
 	  if ((ackm == 2) && (res_ < resm))
@@ -3303,23 +3887,83 @@ private:
     }
 
     {
-      res_ = 2048, fndn = 0;
+      res_ = resn, fndn = (resn ? 1 : 0);
       while (res_ > 64) {
-	numN = config->textn_d[res_];
-	numY = config->textn_p[res_];
+	/**/ if (OSGame->FindItem(wxID_OBLIVON)->IsChecked()) {
+	  rs = 32;
 
-	/* if there are resolution, all lower ones are available as well */
+	  numN = config->textn_d[(res_ << 8) | rs];
+	  numY = config->textn_p[(res_ << 8) | rs];
+
+	  /* if there are resolution, all lower ones are available as well */
+	  if ((numN + numY + fndn) > 0) {
+	    /* if there is a higher resolution and this one got none, we can calculate them */
+	    if (!max(numN, numY))
+	      sprintf(buf, "%dx%d normals, automatic", (res_ * rs) / 32, (res_ * rs) / 32);
+	    else
+	      sprintf(buf, "%dx%d normals, %d tiles", (res_ * rs) / 32, (res_ * rs) / 32, max(numN, numY));
+
+	    OSInstallLevel1TextResN->Append(buf, (void *) ((int)res_));
+	    OSInstallLevel2TextResN->Append(buf, (void *) ((int)res_));
+	    OSInstallLevel3TextResN->Append(buf, (void *) ((int)res_));
+	  }
+	}
+	else if (OSGame->FindItem(wxID_SKYRIM)->IsChecked()) {
+	  rs = 8;
+
+	  numN = config->textn_d[(res_ << 8) | rs];
+	  numY = config->textn_p[(res_ << 8) | rs];
+
+	  /* if there are resolution, all lower ones are available as well */
+	  if ((numN + numY + fndn) > 0) {
+	    /* if there is a higher resolution and this one got none, we can calculate them */
+	    if (!max(numN, numY))
+	      sprintf(buf, "%dx%d normals, automatic", (res_ * rs) / 32, (res_ * rs) / 32);
+	    else
+	      sprintf(buf, "%dx%d normals, %d tiles", (res_ * rs) / 32, (res_ * rs) / 32, max(numN, numY));
+
+	    OSInstallLevel1TextResN->Append(buf, (void *) ((int)res_));
+	  }
+
+	  rs = 16;
+
+	  numN = config->textn_d[(res_ << 8) | rs];
+	  numY = config->textn_p[(res_ << 8) | rs];
+
+	  /* if there are resolution, all lower ones are available as well */
+	  if ((numN + numY + fndn) > 0) {
+	    /* if there is a higher resolution and this one got none, we can calculate them */
+	    if (!max(numN, numY))
+	      sprintf(buf, "%dx%d normals, automatic", (res_ * rs) / 32, (res_ * rs) / 32);
+	    else
+	      sprintf(buf, "%dx%d normals, %d tiles", (res_ * rs) / 32, (res_ * rs) / 32, max(numN, numY));
+
+	    OSInstallLevel2TextResN->Append(buf, (void *) ((int)res_));
+	  }
+
+	  rs = 32;
+
+	  numN = config->textn_d[(res_ << 8) | rs];
+	  numY = config->textn_p[(res_ << 8) | rs];
+
+	  /* if there are resolution, all lower ones are available as well */
+	  if ((numN + numY + fndn) > 0) {
+	    /* if there is a higher resolution and this one got none, we can calculate them */
+	    if (!max(numN, numY))
+	      sprintf(buf, "%dx%d normals, automatic", (res_ * rs) / 32, (res_ * rs) / 32);
+	    else
+	      sprintf(buf, "%dx%d normals, %d tiles", (res_ * rs) / 32, (res_ * rs) / 32, max(numN, numY));
+
+	    OSInstallLevel3TextResN->Append(buf, (void *) ((int)res_));
+	  }
+
+	  rs = 4 << tckn;
+
+	  numN = config->textn_d[(res_ << 8) | 8];
+	  numY = config->textn_p[(res_ << 8) | 8];
+	}
+
 	if ((numN + numY + fndn) > 0) {
-	  /* if there is a higher resolution and this one got none, we can calculate them */
-	  if (resn && !(numN + numY))
-	    sprintf(buf, "%dx%d normals, automatic", res_, res_);
-	  else
-	    sprintf(buf, "%dx%d normals, %d tiles", res_, res_, max(numN, numY));
-
-	  OSInstallLevel1TextResN->Append(buf, (void *) ((int)res_));
-	  OSInstallLevel2TextResN->Append(buf, (void *) ((int)res_));
-	  OSInstallLevel3TextResN->Append(buf, (void *) ((int)res_));
-
 	  if ((tckn == 3) && (res_ < resn))
 	    OSInstallLevel3TextResN->SetSelection(OSInstallLevel3TextResN->GetCount() - 1), tckn = 4;
 	  if ((tckn == 2) && (res_ < resn))
@@ -3333,23 +3977,83 @@ private:
 	res_ /= 2;
       }
 
-      res_ = 4096, fndc = 0;
+      res_ = resc, fndc = (resc ? 1 : 0);
       while (res_ > 64) {
-	numN = config->textc_d[res_];
-	numY = config->textc_p[res_];
+	/**/ if (OSGame->FindItem(wxID_OBLIVON)->IsChecked()) {
+	  rs = 32;
 
-	/* if there are resolution, all lower ones are available as well */
+	  numN = config->textc_d[(res_ << 8) | rs];
+	  numY = config->textc_p[(res_ << 8) | rs];
+
+	  /* if there are resolution, all lower ones are available as well */
+	  if ((numN + numY + fndc) > 0) {
+	    /* if there is a higher resolution and this one got none, we can calculate them */
+	    if (!max(numN, numY))
+	      sprintf(buf, "%dx%d colors, automatic", (res_ * rs) / 32, (res_ * rs) / 32);
+	    else
+	      sprintf(buf, "%dx%d colors, %d tiles", (res_ * rs) / 32, (res_ * rs) / 32, max(numN, numY));
+
+	    OSInstallLevel1TextResC->Append(buf, (void *) ((int)res_));
+	    OSInstallLevel2TextResC->Append(buf, (void *) ((int)res_));
+	    OSInstallLevel3TextResC->Append(buf, (void *) ((int)res_));
+	  }
+	}
+	else if (OSGame->FindItem(wxID_SKYRIM)->IsChecked()) {
+	  rs = 8;
+
+	  numN = config->textc_d[(res_ << 8) | rs];
+	  numY = config->textc_p[(res_ << 8) | rs];
+
+	  /* if there are resolution, all lower ones are available as well */
+	  if ((numN + numY + fndc) > 0) {
+	    /* if there is a higher resolution and this one got none, we can calculate them */
+	    if (!max(numN, numY))
+	      sprintf(buf, "%dx%d colors, automatic", (res_ * rs) / 32, (res_ * rs) / 32);
+	    else
+	      sprintf(buf, "%dx%d colors, %d tiles", (res_ * rs) / 32, (res_ * rs) / 32, max(numN, numY));
+
+	    OSInstallLevel1TextResC->Append(buf, (void *) ((int)res_));
+	  }
+
+	  rs = 16;
+
+	  numN = config->textc_d[(res_ << 8) | rs];
+	  numY = config->textc_p[(res_ << 8) | rs];
+
+	  /* if there are resolution, all lower ones are available as well */
+	  if ((numN + numY + fndc) > 0) {
+	    /* if there is a higher resolution and this one got none, we can calculate them */
+	    if (!max(numN, numY))
+	      sprintf(buf, "%dx%d colors, automatic", (res_ * rs) / 32, (res_ * rs) / 32);
+	    else
+	      sprintf(buf, "%dx%d colors, %d tiles", (res_ * rs) / 32, (res_ * rs) / 32, max(numN, numY));
+
+	    OSInstallLevel2TextResC->Append(buf, (void *) ((int)res_));
+	  }
+
+	  rs = 32;
+
+	  numN = config->textc_d[(res_ << 8) | rs];
+	  numY = config->textc_p[(res_ << 8) | rs];
+
+	  /* if there are resolution, all lower ones are available as well */
+	  if ((numN + numY + fndc) > 0) {
+	    /* if there is a higher resolution and this one got none, we can calculate them */
+	    if (!max(numN, numY))
+	      sprintf(buf, "%dx%d colors, automatic", (res_ * rs) / 32, (res_ * rs) / 32);
+	    else
+	      sprintf(buf, "%dx%d colors, %d tiles", (res_ * rs) / 32, (res_ * rs) / 32, max(numN, numY));
+
+	    OSInstallLevel3TextResC->Append(buf, (void *) ((int)res_));
+	  }
+
+	  rs = 4 << tckc;
+
+	  numN = config->textc_d[(res_ << 8) | rs];
+	  numY = config->textc_p[(res_ << 8) | rs];
+	}
+
 	if ((numN + numY + fndc) > 0) {
-	  /* if there is a higher resolution and this one got none, we can calculate them */
-	  if (resc && !(numN + numY))
-	    sprintf(buf, "%dx%d colors, automatic", res_, res_);
-	  else
-	    sprintf(buf, "%dx%d colors, %d tiles", res_, res_, max(numN, numY));
-
-	  OSInstallLevel1TextResC->Append(buf, (void *) ((int)res_));
-	  OSInstallLevel2TextResC->Append(buf, (void *) ((int)res_));
-	  OSInstallLevel3TextResC->Append(buf, (void *) ((int)res_));
-
 	  if ((tckc == 3) && (res_ < resc))
 	    OSInstallLevel3TextResC->SetSelection(OSInstallLevel3TextResC->GetCount() - 1), tckc = 4;
 	  if ((tckc == 2) && (res_ < resc))
@@ -3366,7 +4070,7 @@ private:
 
     /* --------------------------------------------------------------------- */
     {
-      if (addm <= 1) {
+      if (ackm <= 1) {
 	if (!texn && !texc)
 	           OSLevel1->ShowItems(FALSE),
 		   OSInstallLevel1->SetValue(FALSE);
@@ -3374,7 +4078,7 @@ private:
       if (!texn)   OSInstallLevel1TextResN->Enable(FALSE);
       if (!texc)   OSInstallLevel1TextResC->Enable(FALSE);
 
-      if (addm <= 2) {
+      if (ackm <= 2) {
 	if (!texn && !texc)
 		   OSLevel2->ShowItems(FALSE),
 		   OSInstallLevel2->SetValue(FALSE);
@@ -3382,7 +4086,7 @@ private:
       if (!texn)   OSInstallLevel2TextResN->Enable(FALSE);
       if (!texc)   OSInstallLevel2TextResC->Enable(FALSE);
 
-      if (addm <= 3) {
+      if (ackm <= 3) {
 	if (!texn && !texc)
 		   OSLevel3->ShowItems(FALSE),
 		   OSInstallLevel3->SetValue(FALSE);
@@ -3424,7 +4128,7 @@ private:
     /* look for all the directories */
     char temp[1024], base[1024];
     sprintf(base, "%s\\*", ph.data(), 1024);
-    long res; int ws, cx, xy, rs;
+    long res; int ws, cx, cy, rs;
 
     HANDLE IFiles; WIN32_FIND_DATA IFound;
     HANDLE RFiles; WIN32_FIND_DATA RFound;
@@ -3439,6 +4143,7 @@ private:
 	      sprintf(temp, "%s\\LOD-%d\\*.pts", ph.data(), res);
 	      if ((RFiles = FindFirstFileEx(temp, FindExInfoBasic, &RFound, FindExSearchNameMatch, NULL, 0)) != INVALID_HANDLE_VALUE) {
 		do {
+		  /* Any */
 		  const char *subfile = RFound.cFileName;
 		  if (sscanf(subfile, "%d.pts", &ws) == 1) {
 		    struct sset *match = &wsset[ws];
@@ -3453,10 +4158,25 @@ private:
 	      if ((RFiles = FindFirstFileEx(temp, FindExInfoBasic, &RFound, FindExSearchNameMatch, NULL, 0)) != INVALID_HANDLE_VALUE) {
 		do {
 		  const char *subfile = RFound.cFileName;
-		  if (sscanf(subfile, "%d.%d.%d.%d", &ws, &cx, &xy, &rs) == 4) {
-		    struct sset *match = &wsset[ws];
-		    if (stristr(subfile, ".x"  )) match->mesh_yu_x[res]++;
-		    if (stristr(subfile, ".nif")) match->mesh_yu_n[res]++;
+
+		  /* Oblivion */
+		  if (OSGame->FindItem(wxID_OBLIVON)->IsChecked()) {
+		    if (sscanf(subfile, "%d.%d.%d.%d", &ws, &cx, &cy, &rs) == 4) {
+		      struct sset *match = &wsset[ws];
+		      if (stristr(subfile, ".x"  )) match->mesh_yu_x[(res << 8) | rs]++;
+		      if (stristr(subfile, ".nif")) match->mesh_yu_n[(res << 8) | rs]++;
+		    }
+		  }
+
+		  /* Skyrim */
+		  if (OSGame->FindItem(wxID_SKYRIM)->IsChecked()) {
+		    if ((subfile = strchr(RFound.cFileName, '.')))
+		    if ((ws = GetWorldspacePrefix(RFound.cFileName)))
+		    if (sscanf(subfile, ".%d.%d.%d", &rs, &cx, &cy) == 3) {
+		      struct sset *match = &wsset[ws];
+		      if (stristr(subfile, ".x"  )) match->mesh_yu_x[(res << 8) | rs]++;
+		      if (stristr(subfile, ".btr")) match->mesh_yu_n[(res << 8) | rs]++;
+		    }
 		  }
 		} while (FindNextFile(RFiles, &RFound));
 
@@ -3467,10 +4187,25 @@ private:
 	      if ((RFiles = FindFirstFileEx(temp, FindExInfoBasic, &RFound, FindExSearchNameMatch, NULL, 0)) != INVALID_HANDLE_VALUE) {
 		do {
 		  const char *subfile = RFound.cFileName;
-		  if (sscanf(subfile, "%d.%d.%d.%d", &ws, &cx, &xy, &rs) == 4) {
-		    struct sset *match = &wsset[ws];
-		    if (stristr(subfile, ".x"  )) match->mesh_nu_x[res]++;
-		    if (stristr(subfile, ".nif")) match->mesh_nu_n[res]++;
+
+		  /* Oblivion */
+		  if (OSGame->FindItem(wxID_OBLIVON)->IsChecked()) {
+		    if (sscanf(subfile, "%d.%d.%d.%d", &ws, &cx, &cy, &rs) == 4) {
+		      struct sset *match = &wsset[ws];
+		      if (stristr(subfile, ".x"  )) match->mesh_nu_x[(res << 8) | rs]++;
+		      if (stristr(subfile, ".nif")) match->mesh_nu_n[(res << 8) | rs]++;
+		    }
+		  }
+
+		  /* Skyrim */
+		  if (OSGame->FindItem(wxID_SKYRIM)->IsChecked()) {
+		    if ((subfile = strchr(RFound.cFileName, '.')))
+		    if ((ws = GetWorldspacePrefix(RFound.cFileName)))
+		    if (sscanf(subfile, ".%d.%d.%d", &rs, &cx, &cy) == 3) {
+		      struct sset *match = &wsset[ws];
+		      if (stristr(subfile, ".x"  )) match->mesh_nu_x[(res << 8) | rs]++;
+		      if (stristr(subfile, ".btr")) match->mesh_nu_n[(res << 8) | rs]++;
+		    }
 		  }
 		} while (FindNextFile(RFiles, &RFound));
 
@@ -3490,23 +4225,52 @@ private:
 	      if ((RFiles = FindFirstFileEx(temp, FindExInfoBasic, &RFound, FindExSearchNameMatch, NULL, 0)) != INVALID_HANDLE_VALUE) {
 		do {
 		  const char *subfile = RFound.cFileName;
-		  if (sscanf(subfile, "%d.%d.%d.%d", &ws, &cx, &xy, &rs) == 4) {
-		    struct sset *match = &wsset[ws];
 
-		    /* a bit weak, but works */
-		    if (stristr(subfile, ".dds")) {
-		      if (stristr(subfile, "_fn"))
-			match->textn_d[res]++;
-		      else
-			match->textc_d[res]++;
+		  /* Oblivion */
+		  if (OSGame->FindItem(wxID_OBLIVON)->IsChecked()) {
+		    if (sscanf(subfile, "%d.%d.%d.%d", &ws, &cx, &cy, &rs) == 4) {
+		      struct sset *match = &wsset[ws];
+
+		      /* a bit weak, but works */
+		      if (stristr(subfile, ".dds")) {
+			if (stristr(subfile, "_fn"))
+			  match->textn_d[(res << 8) | rs]++;
+			else
+			  match->textc_d[(res << 8) | rs]++;
+		      }
+
+		      /* a bit weak, but works */
+		      if (stristr(subfile, ".png")) {
+			if (stristr(subfile, "_fn"))
+			  match->textn_p[(res << 8) | rs]++;
+			else
+			  match->textc_p[(res << 8) | rs]++;
+		      }
 		    }
+		  }
 
-		    /* a bit weak, but works */
-		    if (stristr(subfile, ".png")) {
-		      if (stristr(subfile, "_fn"))
-			match->textn_p[res]++;
-		      else
-			match->textc_p[res]++;
+		  /* Skyrim */
+		  if (OSGame->FindItem(wxID_SKYRIM)->IsChecked()) {
+		    if ((subfile = strchr(RFound.cFileName, '.')))
+		    if ((ws = GetWorldspacePrefix(RFound.cFileName)))
+		    if (sscanf(subfile, ".%d.%d.%d", &rs, &cx, &cy) == 3) {
+		      struct sset *match = &wsset[ws];
+
+		      /* a bit weak, but works */
+		      if (stristr(subfile, ".dds")) {
+			if (stristr(subfile, "_n"))
+			  match->textn_d[(res << 8) | rs]++;
+			else
+			  match->textc_d[(res << 8) | rs]++;
+		      }
+
+		      /* a bit weak, but works */
+		      if (stristr(subfile, ".png")) {
+			if (stristr(subfile, "_n"))
+			  match->textn_p[(res << 8) | rs]++;
+			else
+			  match->textc_p[(res << 8) | rs]++;
+		      }
 		    }
 		  }
 		} while (FindNextFile(RFiles, &RFound));
@@ -3570,12 +4334,13 @@ private:
 public:
   int installdone;
 
-  bool SynchronizeInstall(int wsv, int res, const char *subdir, const char *lid) {
+  bool SynchronizeInstall(int wsv, int res, const char *subdir, int rs, const char *lid) {
     wxString ph = OSBaseDirIn->GetPath();
     HANDLE RFiles; WIN32_FIND_DATA RFound;
     vector< pair<string, string> > copy;
     vector< pair<string, string> >::const_iterator walk;
-    int dne = 0; 
+    int dne = 0;
+    wxString wss = *(wspacef[wsv]);
     char tpc[256], trgm[261];
     char base[1024], temp[1024];
 
@@ -3583,17 +4348,32 @@ public:
     sprintf(tpc, "Level %s meshes:", lid);
     prog->InitProgress(NULL, 0, tpc, 0.0, installdone++, 1);
 
-    strcpy(trgm, OSPlugoutDir->GetPath().data());
-    strcat(trgm, "\\Meshes\\Landscape\\LOD");
-    if (subdir)
-      strcat(trgm, "\\"),
-      strcat(trgm, subdir);
-    CreateDirectoryRecursive(trgm);
-    strcat(trgm, "\\");
+    /**/ if (OSGame->FindItem(wxID_OBLIVON)->IsChecked()) {
+      strcpy(trgm, OSPlugoutDir->GetPath().data());
+      strcat(trgm, "\\Meshes\\Landscape\\LOD");
+      if (subdir)
+	strcat(trgm, "\\"),
+	strcat(trgm, subdir);
+      CreateDirectoryRecursive(trgm);
+      strcat(trgm, "\\");
 
-    /* look for all the directories */
-    sprintf(temp, "%s\\LOD-%d\\%s\\"         , ph.data(), abs(res), res > 0 ? "UVon" : "UVoff"                           );
-    sprintf(base, "%s\\LOD-%d\\%s\\%02d.*.%s", ph.data(), abs(res), res > 0 ? "UVon" : "UVoff", wsv, subdir ? "x" : "nif");
+      /* look for all the directories */
+      sprintf(temp, "%s\\LOD-%d\\%s\\"         , ph.data(), abs(res), res > 0 ? "UVon" : "UVoff"                           );
+      sprintf(base, "%s\\LOD-%d\\%s\\%02d.*.%s", ph.data(), abs(res), res > 0 ? "UVon" : "UVoff", wsv, subdir ? "x" : "nif");
+    }
+    else if (OSGame->FindItem(wxID_SKYRIM)->IsChecked()) {
+      strcpy(trgm, OSPlugoutDir->GetPath().data());
+      strcat(trgm, "\\Meshes\\Terrain");
+      if (wss.length())
+	strcat(trgm, "\\"),
+	strcat(trgm, wss.data());
+      CreateDirectoryRecursive(trgm);
+      strcat(trgm, "\\");
+
+      /* look for all the directories */
+      sprintf(temp, "%s\\LOD-%d\\%s\\"          , ph.data(), abs(res), res > 0 ? "UVon" : "UVoff"                       );
+      sprintf(base, "%s\\LOD-%d\\%s\\%s.%d.*.%s", ph.data(), abs(res), res > 0 ? "UVon" : "UVoff", wss.data(), rs, "btr");
+    }
 
     copy.clear();
     if ((RFiles = FindFirstFileEx(base, FindExInfoBasic, &RFound, FindExSearchNameMatch, NULL, 0)) != INVALID_HANDLE_VALUE) {
@@ -3610,6 +4390,7 @@ public:
       FindClose(RFiles);
     }
 
+    /* --------------------------------------------------------------------- */
     prog->InitProgress((int)copy.size());
     dne = 0; walk = copy.begin();
     while (walk != copy.end()) {
@@ -3630,30 +4411,51 @@ public:
     return true;
   }
 
-  bool SynchronizeInstall(int wsv, bool n, int res, const char *subdir, const char *lid) {
+  bool SynchronizeInstall(int wsv, bool n, int res, const char *subdir, int rs, const char *lid) {
     wxString ph = OSBaseDirIn->GetPath();
     HANDLE RFiles; WIN32_FIND_DATA RFound;
     vector< pair<string, string> > copy;
     vector< pair<string, string> >::const_iterator walk;
-    int dne = 0; 
+    int dne = 0;
+    wxString wss = *(wspacef[wsv]);
     char tpc[256], trgt[261];
     char base[1024], temp[1024];
+    const char *ext = "";
 
     /* --------------------------------------------------------------------- */
     sprintf(tpc, "Level %s %s textures:", lid, n ? "normal" : "color");
     prog->InitProgress(NULL, 0, tpc, 0.0, installdone++, 1);
 
-    strcpy(trgt, OSPlugoutDir->GetPath().data());
-    strcat(trgt, "\\Textures\\LandscapeLOD\\Generated");
-    if (subdir)
-      strcat(trgt, "\\"),
-      strcat(trgt, subdir);
-    CreateDirectoryRecursive(trgt);
-    strcat(trgt, "\\");
+    /**/ if (OSGame->FindItem(wxID_OBLIVON)->IsChecked()) {
+      strcpy(trgt, OSPlugoutDir->GetPath().data());
+      strcat(trgt, "\\Textures\\LandscapeLOD\\Generated");
+      if (subdir)
+	strcat(trgt, "\\"),
+	strcat(trgt, subdir);
+      CreateDirectoryRecursive(trgt);
+      strcat(trgt, "\\");
 
-    /* look for all the directories */
-    sprintf(temp, "%s\\TEX-%d\\"          , ph.data(), abs(res));
-    sprintf(base, "%s\\TEX-%d\\%02d.*.dds", ph.data(), abs(res), wsv);
+      /* look for all the directories */
+      sprintf(temp, "%s\\TEX-%d\\"          , ph.data(), abs(res)     );
+      sprintf(base, "%s\\TEX-%d\\%02d.*.dds", ph.data(), abs(res), wsv);
+
+      ext = "_fn";
+    }
+    else if (OSGame->FindItem(wxID_SKYRIM)->IsChecked()) {
+      strcpy(trgt, OSPlugoutDir->GetPath().data());
+      strcat(trgt, "\\Textures\\Terrain");
+      if (wss.length())
+	strcat(trgt, "\\"),
+	strcat(trgt, wss.data());
+      CreateDirectoryRecursive(trgt);
+      strcat(trgt, "\\");
+
+      /* look for all the directories */
+      sprintf(temp, "%s\\TEX-%d\\"           , ph.data(), abs(res)                );
+      sprintf(base, "%s\\TEX-%d\\%s.%d.*.dds", ph.data(), abs(res), wss.data(), rs);
+
+      ext = "_n";
+    }
 
     copy.clear();
     if ((RFiles = FindFirstFileEx(base, FindExInfoBasic, &RFound, FindExSearchNameMatch, NULL, 0)) != INVALID_HANDLE_VALUE) {
@@ -3661,8 +4463,8 @@ public:
       string ou = trgt;
 
       do {
-	if (( n &&  stristr(RFound.cFileName, "_fn")) ||
-	    (!n && !stristr(RFound.cFileName, "_fn")))
+	if (( n &&  stristr(RFound.cFileName, ext)) ||
+	    (!n && !stristr(RFound.cFileName, ext)))
 	  copy.push_back(pair<string, string>(
 	    in + RFound.cFileName,
 	    ou + RFound.cFileName
@@ -3672,6 +4474,7 @@ public:
       FindClose(RFiles);
     }
 
+    /* --------------------------------------------------------------------- */
     prog->InitProgress((int)copy.size());
     dne = 0; walk = copy.begin();
     while (walk != copy.end()) {
@@ -3692,9 +4495,11 @@ public:
     /* --------------------------------------------------------------------- */
     if (copy.size() == 0) {
       /* recalculate levels after conversion */
+      int w = (res * rs) / 32;
+      int h = (res * rs) / 32;
       int levels = 1; {
-	int ww = res;
-	int hh = res;
+	int ww = w;
+	int hh = h;
 	while ((ww > 1) && (hh > 1)) {
 	  ww = (ww + 1) >> 1;
 	  hh = (hh + 1) >> 1;
@@ -3712,8 +4517,14 @@ public:
       int tmax = n ? 2048 : 4096;
       while (tcnv <= tmax) {
 	/* higher resolution PPMs? */
-	sprintf(temp, "%s\\TEX-%d\\", ph.data(), abs(tcnv));
-	sprintf(base, "%s\\TEX-%d\\%02d.*.ppm", ph.data(), abs(tcnv), wsv);
+	/**/ if (OSGame->FindItem(wxID_OBLIVON)->IsChecked()) {
+	  sprintf(temp, "%s\\TEX-%d\\"          , ph.data(), abs(tcnv)     );
+	  sprintf(base, "%s\\TEX-%d\\%02d.*.ppm", ph.data(), abs(tcnv), wsv);
+	}
+	else if (OSGame->FindItem(wxID_SKYRIM)->IsChecked()) {
+	  sprintf(temp, "%s\\TEX-%d\\"           , ph.data(), abs(tcnv)                );
+	  sprintf(base, "%s\\TEX-%d\\%s.%d.*.ppm", ph.data(), abs(tcnv), wss.data(), rs);
+	}
 
 	copy.clear();
 	if ((RFiles = FindFirstFileEx(base, FindExInfoBasic, &RFound, FindExSearchNameMatch, NULL, 0)) != INVALID_HANDLE_VALUE) {
@@ -3721,8 +4532,8 @@ public:
 	  string ou = trgt;
 
 	  do {
-	    if (( n &&  stristr(RFound.cFileName, "_fn")) ||
-		(!n && !stristr(RFound.cFileName, "_fn")))
+	    if (( n &&  stristr(RFound.cFileName, ext)) ||
+		(!n && !stristr(RFound.cFileName, ext)))
 	      copy.push_back(pair<string, string>(
 		in + RFound.cFileName,
 		ou + RFound.cFileName
@@ -3736,8 +4547,14 @@ public:
 	  break;
 
 	/* higher resolution PNGs? */
-	sprintf(temp, "%s\\TEX-%d\\", ph.data(), abs(tcnv));
-	sprintf(base, "%s\\TEX-%d\\%02d.*.png", ph.data(), abs(tcnv), wsv);
+	/**/ if (OSGame->FindItem(wxID_OBLIVON)->IsChecked()) {
+	  sprintf(temp, "%s\\TEX-%d\\"          , ph.data(), abs(tcnv)     );
+	  sprintf(base, "%s\\TEX-%d\\%02d.*.png", ph.data(), abs(tcnv), wsv);
+	}
+	else if (OSGame->FindItem(wxID_SKYRIM)->IsChecked()) {
+	  sprintf(temp, "%s\\TEX-%d\\"           , ph.data(), abs(tcnv)                );
+	  sprintf(base, "%s\\TEX-%d\\%s.%d.*.png", ph.data(), abs(tcnv), wss.data(), rs);
+	}
 
 	copy.clear();
 	if ((RFiles = FindFirstFileEx(base, FindExInfoBasic, &RFound, FindExSearchNameMatch, NULL, 0)) != INVALID_HANDLE_VALUE) {
@@ -3745,8 +4562,8 @@ public:
 	  string ou = trgt;
 
 	  do {
-	    if (( n &&  stristr(RFound.cFileName, "_fn")) ||
-		(!n && !stristr(RFound.cFileName, "_fn")))
+	    if (( n &&  stristr(RFound.cFileName, ext)) ||
+		(!n && !stristr(RFound.cFileName, ext)))
 	      copy.push_back(pair<string, string>(
 		in + RFound.cFileName,
 		ou + RFound.cFileName
@@ -3760,8 +4577,14 @@ public:
 	  break;
 
 	/* higher resolution DDSs? */
-	sprintf(temp, "%s\\TEX-%d\\", ph.data(), abs(tcnv));
-	sprintf(base, "%s\\TEX-%d\\%02d.*.dds", ph.data(), abs(tcnv), wsv);
+	/**/ if (OSGame->FindItem(wxID_OBLIVON)->IsChecked()) {
+	  sprintf(temp, "%s\\TEX-%d\\"          , ph.data(), abs(tcnv)     );
+	  sprintf(base, "%s\\TEX-%d\\%02d.*.dds", ph.data(), abs(tcnv), wsv);
+	}
+	else if (OSGame->FindItem(wxID_SKYRIM)->IsChecked()) {
+	  sprintf(temp, "%s\\TEX-%d\\"           , ph.data(), abs(tcnv)                );
+	  sprintf(base, "%s\\TEX-%d\\%s.%d.*.dds", ph.data(), abs(tcnv), wss.data(), rs);
+	}
 
 	copy.clear();
 	if ((RFiles = FindFirstFileEx(base, FindExInfoBasic, &RFound, FindExSearchNameMatch, NULL, 0)) != INVALID_HANDLE_VALUE) {
@@ -3769,8 +4592,8 @@ public:
 	  string ou = trgt;
 
 	  do {
-	    if (( n &&  stristr(RFound.cFileName, "_fn")) ||
-	        (!n && !stristr(RFound.cFileName, "_fn")))
+	    if (( n &&  stristr(RFound.cFileName, ext)) ||
+	        (!n && !stristr(RFound.cFileName, ext)))
 	      copy.push_back(pair<string, string>(
 		in + RFound.cFileName,
 		ou + RFound.cFileName
@@ -3824,14 +4647,14 @@ public:
 
 	    if ((ret = D3DXCreateTexture(
 	      pD3DDevice,
-	      res, res, 0,
+	      w, h, 0,
 	      0, based.Format, D3DPOOL_SYSTEMMEM, &trns
 	    )) != D3D_OK)
 	      goto terminal_error;
 
 	    int baselvl = 0;
 	    int trnslvl = 0;
-	    while (based.Width > (UINT)res) {
+	    while (based.Width > (UINT)w) {
 	      based.Width = (based.Width + 1) >> 1;
 	      baselvl++;
 	    }
@@ -3865,7 +4688,7 @@ public:
 
 	    if ((ret = D3DXCreateTexture(
 		pD3DDevice,
-		res, res, 0,
+		w, h, 0,
 		0, based.Format, D3DPOOL_SYSTEMMEM, &trns
 	      )) != D3D_OK)
 	      goto terminal_error;
@@ -3943,14 +4766,14 @@ terminal_error: {
     return true;
   }
 
-  bool SynchronizeInstall(int wsv, int mres, int tres, int cres, const char *subdir, const char *lid) {
+  bool SynchronizeInstall(int wsv, int mres, int tres, int cres, const char *subdir, int rs, const char *lid) {
     installdone -= 2;
 
-    if (!SynchronizeInstall(wsv, mres, subdir, lid))
+    if (!SynchronizeInstall(wsv,        mres, subdir, rs, lid))
       return false;
-    if (!SynchronizeInstall(wsv, true, tres, subdir, lid))
+    if (!SynchronizeInstall(wsv, true , tres, subdir, rs, lid))
       return false;
-    if (!SynchronizeInstall(wsv, false, cres, subdir, lid))
+    if (!SynchronizeInstall(wsv, false, cres, subdir, rs, lid))
       return false;
 
     return true;
@@ -4020,25 +4843,31 @@ terminal_error: {
 	int cres3 = (c3 && c3->GetCount() ? (int)c3->GetClientData(c3->GetSelection()) : -1);
 
 	try {
+	  int cap = 0;
 
-	  prog->InitProgress(tpc, 0, "Level zero:", 0.0, installdone, 1), installdone += 3;
+	  /**/ if (OSGame->FindItem(wxID_OBLIVON)->IsChecked())
+	    cap = 32;
+	  else if (OSGame->FindItem(wxID_SKYRIM)->IsChecked())
+	    cap = 4;
+
+	  prog->InitProgress(tpc, 0, "Level zero:", 0.0, installdone, 1); installdone += 3;
 	  if (inst0)
-	    if (!SynchronizeInstall(wsv, mres0, tres0, cres0, NULL, "zero"))
+	    if (!SynchronizeInstall(wsv, mres0, tres0, cres0, NULL     , max(cap,  4), "zero"))
 	      break;
 
-	  prog->InitProgress(tpc, 0, "Level one:", 0.0, installdone, 1), installdone += 3;
+	  prog->InitProgress(tpc, 0, "Level one:", 0.0, installdone, 1); installdone += 3;
 	  if (inst1)
-	    if (!SynchronizeInstall(wsv, mres1, tres1, cres1, "farnear", "one"))
+	    if (!SynchronizeInstall(wsv, mres1, tres1, cres1, "farnear", max(cap,  8), "one"))
 	      break;
 
-	  prog->InitProgress(tpc, 0, "Level two:", 0.0, installdone, 1), installdone += 3;
+	  prog->InitProgress(tpc, 0, "Level two:", 0.0, installdone, 1); installdone += 3;
 	  if (inst2)
-	    if (!SynchronizeInstall(wsv, mres2, tres2, cres2, "farfar", "two"))
+	    if (!SynchronizeInstall(wsv, mres2, tres2, cres2, "farfar" , max(cap, 16), "two"))
 	      break;
 
-	  prog->InitProgress(tpc, 0, "Level three:", 0.0, installdone, 1), installdone += 3;
+	  prog->InitProgress(tpc, 0, "Level three:", 0.0, installdone, 1); installdone += 3;
 	  if (inst3)
-	    if (!SynchronizeInstall(wsv, mres3, tres3, cres3, "farinf", "three"))
+	    if (!SynchronizeInstall(wsv, mres3, tres3, cres3, "farinf" , max(cap, 32), "three"))
 	      break;
 
 	  freeTexture();
@@ -4074,6 +4903,12 @@ private:
 
   void ReadMemory() {
     char TS[1024]; DWORD TSL = 1023;
+    TS[0] = 0; RegGetValue(Settings, GetGameKey(), "Last LOD Resolution", RRF_RT_REG_SZ, NULL, TS, &TSL);
+    if (TS[0]) OSLODResolution->SetSelection(TS[0] - '1'); TSL = 1023;
+    TS[0] = 0; RegGetValue(Settings, GetGameKey(), "LOD Directory", RRF_RT_REG_SZ, NULL, TS, &TSL);
+    if (TS[0]) OSLODDir->SetPath(TS); TSL = 1023;
+    TS[0] = 0; RegGetValue(Settings, GetGameKey(), "Recovery Out", RRF_RT_REG_SZ, NULL, TS, &TSL);
+    if (TS[0]) OSFileRecoveryOut->SetPath(TS); TSL = 1023;
     TS[0] = 0; RegGetValue(Settings, GetGameKey(), "Last worldspace", RRF_RT_REG_SZ, NULL, TS, &TSL);
     if (TS[0]) OSWorldspace->SetValue(TS); TSL = 1023;
     TS[0] = 0; RegGetValue(Settings, GetGameKey(), "Heightfield Out", RRF_RT_REG_SZ, NULL, TS, &TSL);
@@ -4102,29 +4937,45 @@ private:
     TS[0] = 0; RegGetValue(Settings, GetGameKey(), "Defaults", RRF_RT_REG_SZ, NULL, TS, &TSL);
     switch (TS[0]) {
       default:
+	OSMeshUVs->SetValue(true);
+	OSMeshNIF->SetValue(true);
+	OSMeshDX->SetValue(false);
+	OSMlod1->SetValue(true ); OSMlod2->SetValue(true ); OSMlod3->SetValue(true ); OSMlod4->SetValue(true );
+	OSMlod5->SetValue(false); OSMlod6->SetValue(false); OSMlod7->SetValue(false); OSMlod8->SetValue(false);
+	OSNlod1->SetValue(true ); OSNlod2->SetValue(true ); OSNlod3->SetValue(true ); OSNlod4->SetValue(true );
+	OSClod1->SetValue(true ); OSClod2->SetValue(true ); OSClod3->SetValue(true ); OSClod4->SetValue(true );
+	if (OSGame->FindItem(wxID_SKYRIM)->IsChecked())
+	  return;
+
       case '0':
 	OSDefaults->FindItem(wxID_DEFV, NULL)->Check(true);
 	OSMeshUVs->SetValue(true);
 	OSMeshNIF->SetValue(true);
 	OSMeshDX->SetValue(false);
-	OSRes1->SetValue(true ); OSRes2->SetValue(false); OSRes3->SetValue(false); OSRes4->SetValue(false);
-	OSRes5->SetValue(false); OSRes6->SetValue(false); OSRes7->SetValue(false); OSRes8->SetValue(false);
+	OSMlod1->SetValue(true ); OSMlod2->SetValue(false); OSMlod3->SetValue(false); OSMlod4->SetValue(false);
+	OSMlod5->SetValue(false); OSMlod6->SetValue(false); OSMlod7->SetValue(false); OSMlod8->SetValue(false);
+	OSNlod1->SetValue(true ); OSNlod2->SetValue(false); OSNlod3->SetValue(false); OSNlod4->SetValue(false);
+	OSClod1->SetValue(true ); OSClod2->SetValue(false); OSClod3->SetValue(false); OSClod4->SetValue(false);
 	break;
       case '1':
 	OSDefaults->FindItem(wxID_DEFT, NULL)->Check(true);
 	OSMeshUVs->SetValue(true);
 	OSMeshNIF->SetValue(true);
 	OSMeshDX->SetValue(false);
-	OSRes1->SetValue(true ); OSRes2->SetValue(false); OSRes3->SetValue(false); OSRes4->SetValue(false);
-	OSRes5->SetValue(false); OSRes6->SetValue(false); OSRes7->SetValue(false); OSRes8->SetValue(false);
+	OSMlod1->SetValue(true ); OSMlod2->SetValue(false); OSMlod3->SetValue(false); OSMlod4->SetValue(false);
+	OSMlod5->SetValue(false); OSMlod6->SetValue(false); OSMlod7->SetValue(false); OSMlod8->SetValue(false);
+	OSNlod1->SetValue(true ); OSNlod2->SetValue(false); OSNlod3->SetValue(false); OSNlod4->SetValue(false);
+	OSClod1->SetValue(true ); OSClod2->SetValue(false); OSClod3->SetValue(false); OSClod4->SetValue(false);
 	break;
       case '2':
 	OSDefaults->FindItem(wxID_DEFL, NULL)->Check(true);
 	OSMeshUVs->SetValue(false);
 	OSMeshNIF->SetValue(true);
 	OSMeshDX->SetValue(true);
-	OSRes1->SetValue(true); OSRes2->SetValue(true); OSRes3->SetValue(true); OSRes4->SetValue(true);
-	OSRes5->SetValue(true); OSRes6->SetValue(true); OSRes7->SetValue(true); OSRes8->SetValue(true);
+	OSMlod1->SetValue(true ); OSMlod2->SetValue(true ); OSMlod3->SetValue(true ); OSMlod4->SetValue(true );
+	OSMlod5->SetValue(true ); OSMlod6->SetValue(true ); OSMlod7->SetValue(true ); OSMlod8->SetValue(true );
+	OSNlod1->SetValue(true ); OSNlod2->SetValue(false); OSNlod3->SetValue(false); OSNlod4->SetValue(false);
+	OSClod1->SetValue(true ); OSClod2->SetValue(false); OSClod3->SetValue(false); OSClod4->SetValue(false);
 	break;
     }
     TS[0] = 0; RegGetValue(Settings, GetGameKey(), "Orientation", RRF_RT_REG_SZ, NULL, TS, &TSL);
@@ -4136,12 +4987,17 @@ private:
   }
 
   void ChangeDefaults(wxCommandEvent& event) {
+    if (OSGame->FindItem(wxID_SKYRIM)->IsChecked())
+      return;
+
     if (OSDefaults->FindItem(wxID_DEFV, NULL)->IsChecked()) {
       OSMeshUVs->SetValue(true);
       OSMeshNIF->SetValue(true);
       OSMeshDX->SetValue(false);
-      OSRes1->SetValue(true ); OSRes2->SetValue(false); OSRes3->SetValue(false); OSRes4->SetValue(false);
-      OSRes5->SetValue(false); OSRes6->SetValue(false); OSRes7->SetValue(false); OSRes8->SetValue(false);
+      OSMlod1->SetValue(true ); OSMlod2->SetValue(false); OSMlod3->SetValue(false); OSMlod4->SetValue(false);
+      OSMlod5->SetValue(false); OSMlod6->SetValue(false); OSMlod7->SetValue(false); OSMlod8->SetValue(false);
+      OSNlod1->SetValue(true ); OSNlod2->SetValue(false); OSNlod3->SetValue(false); OSNlod4->SetValue(false);
+      OSClod1->SetValue(true ); OSClod2->SetValue(false); OSClod3->SetValue(false); OSClod4->SetValue(false);
 
       RegSetKeyValue(Settings, GetGameKey(), "Defaults", RRF_RT_REG_SZ, "0", 2);
     }
@@ -4149,8 +5005,10 @@ private:
       OSMeshUVs->SetValue(true);
       OSMeshNIF->SetValue(true);
       OSMeshDX->SetValue(false);
-      OSRes1->SetValue(true ); OSRes2->SetValue(false); OSRes3->SetValue(false); OSRes4->SetValue(false);
-      OSRes5->SetValue(false); OSRes6->SetValue(false); OSRes7->SetValue(false); OSRes8->SetValue(false);
+      OSMlod1->SetValue(true ); OSMlod2->SetValue(false); OSMlod3->SetValue(false); OSMlod4->SetValue(false);
+      OSMlod5->SetValue(false); OSMlod6->SetValue(false); OSMlod7->SetValue(false); OSMlod8->SetValue(false);
+      OSNlod1->SetValue(true ); OSNlod2->SetValue(false); OSNlod3->SetValue(false); OSNlod4->SetValue(false);
+      OSClod1->SetValue(true ); OSClod2->SetValue(false); OSClod3->SetValue(false); OSClod4->SetValue(false);
 
       RegSetKeyValue(Settings, GetGameKey(), "Defaults", RRF_RT_REG_SZ, "1", 2);
     }
@@ -4158,8 +5016,10 @@ private:
       OSMeshUVs->SetValue(false);
       OSMeshNIF->SetValue(true);
       OSMeshDX->SetValue(true);
-      OSRes1->SetValue(true); OSRes2->SetValue(true); OSRes3->SetValue(true); OSRes4->SetValue(true);
-      OSRes5->SetValue(true); OSRes6->SetValue(true); OSRes7->SetValue(true); OSRes8->SetValue(true);
+      OSMlod1->SetValue(true ); OSMlod2->SetValue(true ); OSMlod3->SetValue(true ); OSMlod4->SetValue(true );
+      OSMlod5->SetValue(true ); OSMlod6->SetValue(true ); OSMlod7->SetValue(true ); OSMlod8->SetValue(true );
+      OSNlod1->SetValue(true ); OSNlod2->SetValue(false); OSNlod3->SetValue(false); OSNlod4->SetValue(false);
+      OSClod1->SetValue(true ); OSClod2->SetValue(false); OSClod3->SetValue(false); OSClod4->SetValue(false);
 
       RegSetKeyValue(Settings, GetGameKey(), "Defaults", RRF_RT_REG_SZ, "2", 2);
     }
@@ -4178,7 +5038,7 @@ public:
     else if (RegCreateKeyEx(HKEY_LOCAL_MACHINE, "Software\\Bethesda Softworks\\Oscape", 0, NULL, REG_OPTION_NON_VOLATILE, KEY_READ | KEY_WRITE | KEY_WOW64_32KEY, NULL, &Settings, NULL) == ERROR_SUCCESS) {
     }
 
-    char TS[1024]; DWORD TSL = 1023; TS[0] = 0; 
+    char TS[1024]; DWORD TSL = 1023; TS[0] = 0;
     RegGetValue(Settings, NULL, "Game", RRF_RT_REG_SZ, NULL, TS, &TSL);
     if ((TS[0] == '0') || (TS[0] == 0))
       OSGame->FindItem(wxID_OBLIVON, NULL)->Check(true);
@@ -4190,6 +5050,9 @@ public:
     LoadHPluginList();
 //  WorldspacesFromPlugins();
 //  ResetHButtons();
+
+    ResetLPluginDir(true);
+    ResetLPluginList();
 
     OSFilePoints1->SetPath("");
     OSFilePoints2->SetPath("");
@@ -4411,6 +5274,12 @@ DWORD __stdcall HeightfieldGenerate(LPVOID lp) {
 DWORD __stdcall HeightfieldInstall(LPVOID lp) {
   if (gui)
     gui->HeightfieldInstall();
+  return 0;
+}
+
+DWORD __stdcall HeightfieldRecover(LPVOID lp) {
+  if (gui)
+    gui->HeightfieldRecover();
   return 0;
 }
 

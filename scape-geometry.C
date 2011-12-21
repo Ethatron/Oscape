@@ -45,19 +45,42 @@
 int dimx = 1024;
 int dimy = 1024;
 
+class objWater;
 class objVertex;
 class objFace;
 
 #include "libmemory.hpp"
 
+extern class MemQueue<4> WPool;
 extern class MemQueue<4> VPool;
 extern class MemQueue<4> FPool;
 
+typedef	std::vector<class objWater  *, MemAllocator<class objWater  *> >	wvector;
 typedef	std::vector<class objVertex *, MemAllocator<class objVertex *> >	vvector;
 typedef	std::vector<class objFace   *, MemAllocator<class objFace   *> >	fvector;
 
+//class MemAllocator<objWater  *> WAllc(&WPool);
 //class MemAllocator<objVertex *> VAllc(&VPool);
 //class MemAllocator<objFace   *> FAllc(&FPool);
+
+class objWater : public MemQueueable {
+public:
+  objWater() { }
+
+  /* the set's key, can change to whatever */
+  Point2d wtx;
+  /* the vertex's local object coordinates */
+  Point2d op; Real oz;
+
+  Real x, y, z;
+
+  bool ocean;
+
+  bool operator < (const class objWater &other) const
+  {
+    return memcmp(&this->wtx, &other.wtx, sizeof(Point2d)) < 0;
+  }
+};
 
 class objVertex : public MemQueueable {
 public:
@@ -183,6 +206,13 @@ void objFace::fill() {
   narea = 0.5f * fabs(mag);
 };
 
+struct W {
+  bool operator()(const class objWater *s1, const class objWater *s2) const
+  {
+    return memcmp(&s1->wtx, &s2->wtx, sizeof(Point2d)) < 0;
+  }
+};
+
 struct V {
   bool operator()(const class objVertex *s1, const class objVertex *s2) const
   {
@@ -204,6 +234,7 @@ struct V {
   }
 };
 
+class MemQueue<4> WPool(sizeof(objWater ), 0x7FFFFFFF);
 class MemQueue<4> VPool(sizeof(objVertex), 0x7FFFFFFF);
 class MemQueue<4> FPool(sizeof(objFace  ), 0x7FFFFFFF);
 
@@ -221,8 +252,174 @@ int tri_sectd = 0;
 
 /* ---------------------------------------------------- */
 
+std::set<class objWater *, struct W> Waters;
 std::set<class objVertex *, struct V> Vertices;
 std::vector<class objFace *> Faces;
+
+void RegisterWater(const Point2d& _p, Real lvl, bool o) {
+  Point2d p;
+
+  /* allow only grid positions for waters */
+  p.x = floor(_p.x * (1.0 / 32.0)) * 32.0;
+  p.y = floor(_p.y * (1.0 / 32.0)) * 32.0;
+
+  class objWater wp;
+  class objWater *w;
+
+  set<class objWater *, struct W>::iterator i;
+
+  wp.wtx = p; w = NULL;
+
+  i = Waters.find(&wp); if (i != Waters.end()) w = *i;
+
+  if (!w) {
+    w = new(&WPool) class objWater(); assert(w);
+    w->wtx = p;
+    w->ocean = o;
+
+    w->x = (w->op.x = p.x) * sizescale;
+    w->y = (w->op.y = p.y) * sizescale;
+    w->z = (w->oz = lvl) /* * heightscale - heightshift */;
+
+    Waters.insert(w);
+  }
+}
+
+void RegisterFace(const Point2d& _p1, Real _z1,
+		  const Point2d& _p2, Real _z2,
+		  const Point2d& _p3, Real _z3) {
+
+    /* orient CCW */
+    if (getArea2x(_p1, _p2, _p3) < 0.0) {
+      RegisterFace(_p1, _z1, _p3, _z3, _p2, _z2); return; }
+
+    Point2d p1, p2, p3;
+
+    /* allow any position for points */
+    p1 = _p1;
+    p2 = _p2;
+    p3 = _p3;
+
+    class objVertex vp1, vp2, vp3;
+    class objVertex *v1, *v2, *v3;
+
+    set<class objVertex *, struct V>::iterator i1;
+    set<class objVertex *, struct V>::iterator i2;
+    set<class objVertex *, struct V>::iterator i3;
+
+    vp1.vtx = p1; v1 = NULL;
+    vp2.vtx = p2; v2 = NULL;
+    vp3.vtx = p3; v3 = NULL;
+
+    i1 = Vertices.find(&vp1); if (i1 != Vertices.end()) v1 = *i1;
+    i2 = Vertices.find(&vp2); if (i2 != Vertices.end()) v2 = *i2;
+    i3 = Vertices.find(&vp3); if (i3 != Vertices.end()) v3 = *i3;
+
+#ifdef SPLIT_ON_INJECTION_SNAP
+    /* all three vertices exist already, look
+     * if they share a common face
+     */
+    if (v1 && v2 && v3) {
+      /* remove degenerate face cases, the surface is a closed
+       * mesh, so the adjacent vertices will snap as well and
+       * close this "hole"
+       */
+      if (v1 == v2)
+	return;
+      if (v1 == v3)
+	return;
+      if (v2 == v3)
+	return;
+
+      fvector::const_iterator f1, f2, f3;
+
+      /* compare each face for vertex 1 with the faces of vertex 2 */
+      for (f1 = v1->f.begin(); f1 != v1->f.end(); f1++) {
+	for (f2 = v2->f.begin(); f2 != v2->f.end(); f2++) {
+	  /* if they have a shared faced, search that one for vertex 3 */
+	  if ((*f1) == (*f2)) {
+	    for (f3 = v3->f.begin(); f3 != v3->f.end(); f3++) {
+	      /* the face is shared by all three vertices, which means we got a double */
+	      if ((*f1) == (*f3))
+		return;
+	    }
+	  }
+	}
+      }
+    }
+    /* not all of the vertices have been allocated,
+     * still this can be a degenerate case
+     */
+    else {
+      /* remove degenerate face cases, the surface is a closed
+       * mesh, so the adjacent vertices will snap as well and
+       * close this "hole"
+       */
+      if ((p1.x == p2.x) && (p1.y == p2.y))
+	return;
+      if ((p1.x == p3.x) && (p1.y == p3.y))
+	return;
+      if ((p2.x == p3.x) && (p2.y == p3.y))
+	return;
+    }
+#endif
+
+    if (!v1) {
+	v1 = new(&VPool) class objVertex(); assert(v1);
+	v1->vtx = p1;
+
+    	v1->tx = 0.0f;
+    	v1->ty = 0.0f;
+
+    	v1->x = (v1->op.x = p1.x) * sizescale;
+    	v1->y = (v1->op.y = p1.y) * sizescale;
+    	v1->z = (v1->oz = _z1) * heightscale - heightshift;
+
+    	Vertices.insert(v1);
+    }
+
+    if (!v2) {
+	v2 = new(&VPool) class objVertex(); assert(v2);
+	v2->vtx = p2;
+
+	v2->tx = 0.0f;
+	v2->ty = 0.0f;
+
+    	v2->x = (v2->op.x = p2.x) * sizescale;
+    	v2->y = (v2->op.y = p2.y) * sizescale;
+    	v2->z = (v2->oz = _z2) * heightscale - heightshift;
+
+	Vertices.insert(v2);
+    }
+
+    if (!v3) {
+	v3 = new(&VPool) class objVertex(); assert(v3);
+	v3->vtx = p3;
+
+	v3->tx = 0.0f;
+	v3->ty = 0.0f;
+
+    	v3->x = (v3->op.x = p3.x) * sizescale;
+    	v3->y = (v3->op.y = p3.y) * sizescale;
+
+    	v3->z = (v3->oz = _z3) * heightscale - heightshift;
+
+	Vertices.insert(v3);
+    }
+
+    assert(v1 != v2);
+    assert(v1 != v3);
+    assert(v2 != v3);
+
+    class objFace *f;
+
+    f = new(&FPool) class objFace(); assert(f);
+    f->v[0] = v1; v1->f.push_back(f);
+    f->v[1] = v2; v2->f.push_back(f);
+    f->v[2] = v3; v3->f.push_back(f);
+
+    Faces.push_back(f);
+}
 
 void RegisterFace(const Point2d& _p1,
 		  const Point2d& _p2,
@@ -660,6 +857,7 @@ void CalculateGeometryNormals() {
 /* ---------------------------------------------------- */
 
 #ifdef	SPLIT_ON_INJECTION
+std::set<class objWater *, struct W> SectorWaters[128][128];
 std::set<class objVertex *, struct V> SectorVertices[128][128];
 std::vector<class objFace *> SectorFaces[128][128];
 
@@ -667,6 +865,7 @@ std::vector<class objFace *> SectorFaces[128][128];
 omp_lock_t SectorLocks[128][128];
 
 void TileGeometry() {
+    set<class objWater *, struct W>::const_iterator itw;
     set<class objVertex *, struct V>::const_iterator itv;
     vector<class objFace *>::const_iterator itf;
 
@@ -683,6 +882,46 @@ void TileGeometry() {
     for (int ty = minty; ty < numty; ty++)
     for (int tx = mintx; tx < numtx; tx++)
       omp_init_lock(&SectorLocks[ty][tx]);
+
+    for (itw = Waters.begin(); itw != Waters.end(); itw++) {
+      class objWater wo = *(*itw), *w;
+
+      int sx = (int)floor((1.0f / rasterx) * wo.wtx.x);
+      int sy = (int)floor((1.0f / rastery) * wo.wtx.y);
+
+      if ((sy >= minty) && (sy < numty)) {
+      if ((sx >= mintx) && (sx < numtx)) {
+	int coordx = (sx - offx) * resx;
+	int coordy = (sy - offy) * resy;
+
+	wo.wtx.x = (float)(wo.x - sx * (sizescale * rasterx));
+	wo.wtx.y = (float)(wo.y - sy * (sizescale * rastery));
+
+	/* --------------------------------------------- */
+	set<class objWater *, struct W>::const_iterator i;
+
+	w = NULL; i = SectorWaters[sy][sx].find(&wo); if (i != SectorWaters[sy][sx].end()) w = *i;
+
+	if (!w) {
+	  w = new(&WPool) class objWater(); assert(w);
+	  w->wtx = wo.wtx;
+
+	  w->x = wo.x - (sizescale * rasterx) * sx;
+	  w->y = wo.y - (sizescale * rastery) * sy;
+	  w->z = wo.z;
+
+	  assert(w->x >= 0); assert(w->x <= sizescale * rasterx);
+	  assert(w->y >= 0); assert(w->y <= sizescale * rastery);
+
+	  w->op.x = wo.op.x - (rasterx * sx);
+	  w->op.y = wo.op.y - (rastery * sy);
+	  w->oz = wo.oz;
+
+	  SectorWaters[sy][sx].insert(w);
+	}
+      }
+      }
+    }
 
     int faces = (int)Faces.size();
 #pragma omp parallel for schedule(runtime) shared(Faces, Vertices, SectorFaces, SectorVertices)
@@ -883,6 +1122,7 @@ std::vector<class objVertex *> SectorVerticeO[128][128];
 std::vector<class objFace *> SectorFaceO[128][128];
 std::vector<unsigned int> SectorRemapO;
 
+typedef std::vector<class objWater *>::iterator witerator;
 typedef std::vector<class objVertex *>::iterator viterator;
 typedef std::vector<class objFace *>::iterator fiterator;
 
@@ -1490,10 +1730,10 @@ void OptimizeGeometry() {
 #endif
 
 void freeGeometry() {
+#if 0
   set<class objVertex *, struct V>::iterator itv;
   vector<class objFace *>::iterator itf;
 
-#if 0
   for (itf = Faces.begin(); itf != Faces.end(); itf++)
     delete(&FPool) (*itf);
   for (itv = Vertices.begin(); itv != Vertices.end(); itv++)
@@ -1510,12 +1750,14 @@ void freeGeometry() {
 #endif
 
   /* raw containers */
+  Waters.clear();
   Faces.clear();
   Vertices.clear();
 
   for (int ty = minty; ty < numty; ty++) {
   for (int tx = mintx; tx < numtx; tx++) {
     /* unoptimized containers */
+    SectorWaters[ty][tx].clear();
     SectorFaces[ty][tx].clear();
     SectorVertices[ty][tx].clear();
 
@@ -1528,6 +1770,7 @@ void freeGeometry() {
   SectorRemapO.clear();
 
   /* get rid of the pools */
+  WPool.releaseMemAllocated();
   FPool.releaseMemAllocated();
   VPool.releaseMemAllocated();
 }

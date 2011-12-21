@@ -74,95 +74,111 @@ typedef double  Real;
 
 class Point2d : public MemQueueable {
 public:
-	Real x, y;
+  Real x, y;
 
-	Point2d()			{ x = 0; y = 0; }
-	Point2d(Real a, Real b)		{ x = a; y = b; }
-	Point2d(int a, int b)		{ x = (Real)a; y = (Real)b; }
-	Point2d(const Point2d& p)	{ *this = p; }
+  Point2d()			{ x = 0; y = 0; }
+  Point2d(Real a, Real b)	{ x = a; y = b; }
+  Point2d(int a, int b)		{ x = (Real)a; y = (Real)b; }
+  Point2d(const Point2d& p)	{ *this = p; }
 
-	Real norm() const;
-	void normalize();
+  Real norm() const;
+  void normalize();
 
-	Point2d operator+(const Point2d&) const;
-	Point2d operator-(const Point2d&) const;
-	int operator==(const Point2d&) const;
-	friend Point2d operator*(Real, const Point2d&);
-	friend Point2d operator+(const Point2d&, Real);
-	friend Real dot(const Point2d&, const Point2d&);
-	friend Point2d floor(const Point2d&);
-	friend istream& operator>>(istream&, Point2d&);
-	friend ostream& operator<<(ostream&, const Point2d&);
+  Point2d operator+(const Point2d&) const;
+  Point2d operator-(const Point2d&) const;
+  int operator==(const Point2d&) const;
+  friend Point2d operator*(Real, const Point2d&);
+  friend Point2d operator+(const Point2d&, Real);
+  friend Real dot(const Point2d&, const Point2d&);
+  friend Point2d floor(const Point2d&);
+  friend istream& operator>>(istream&, Point2d&);
+  friend ostream& operator<<(ostream&, const Point2d&);
+};
+
+class Point3d : public MemQueueable {
+public:
+  Real x, y, z;
+
+  Point3d()				{ x = 0; y = 0; z = 0; }
+  Point3d(Real a, Real b, Real c)	{ x = a; y = b; z = c; }
+  Point3d(int a, int b, int c)		{ x = (Real)a; y = (Real)b; z = (Real)c; }
+  Point3d(const Point3d& p)		{ *this = p; }
+  Point3d(const Point2d& p)		{ x = p.x; y = p.y; z = 0; }
+
+  Real norm() const;
+  void normalize();
+
+  /*
+  Point3d operator+(const Point3d&) const;
+  Point3d operator-(const Point3d&) const;
+  int operator==(const Point3d&) const;
+  friend Point3d operator*(Real, const Point3d&);
+  friend Point3d operator+(const Point3d&, Real);
+  friend Real dot(const Point3d&, const Point3d&);
+  friend Point3d floor(const Point3d&);
+  friend istream& operator>>(istream&, Point3d&);
+  friend ostream& operator<<(ostream&, const Point3d&);
+  */
 };
 
 class Line : public MemQueueable {
 public:
-	Line()	{}
-	Line(const Point2d&, const Point2d&);
+  Line()	{}
+  Line(const Point2d&, const Point2d&);
 
-	Real eval(const Point2d&) const;
-	int classify(const Point2d&) const;
-	friend void intersect(const Line &k, const Line &l, Point2d &p);
+  Real eval(const Point2d&) const;
+  int classify(const Point2d&) const;
+  friend void intersect(const Line &k, const Line &l, Point2d &p);
 
-	friend ostream& operator<<(ostream&, const Line&);
+  friend ostream& operator<<(ostream&, const Line&);
 private:
-	Real a, b, c;
+  Real a, b, c;
 };
 
-inline Real Point2d::norm() const
-{
-	return sqrt(x * x + y * y);
+inline Real Point2d::norm() const {
+  return sqrt(x * x + y * y);
 }
 
-inline void Point2d::normalize()
-{
-	Real len;
+inline void Point2d::normalize() {
+  Real len;
 
-	if ((len = sqrt(x * x + y * y)) == 0.0)
-		cerr << "Point2d::normalize: Division by 0\n";
-	else {
-		x /= len;
-		y /= len;
-	}
+  if ((len = sqrt(x * x + y * y)) == 0.0)
+    cerr << "Point2d::normalize: Division by 0\n";
+  else {
+    x /= len;
+    y /= len;
+  }
 }
 
-inline Point2d operator*(Real c, const Point2d& v)
-{
-	return Point2d(c * v.x, c * v.y);
+inline Point2d operator*(Real c, const Point2d& v) {
+  return Point2d(c * v.x, c * v.y);
 }
 
-inline Point2d operator+(const Point2d& v, Real c)
-{
+inline Point2d operator+(const Point2d& v, Real c) {
   return Point2d(v.x + c, v.y + c);
 }
 
-inline Real dot(const Point2d& u, const Point2d& v)
-{
-	return u.x * v.x + u.y * v.y;
+inline Real dot(const Point2d& u, const Point2d& v) {
+  return u.x * v.x + u.y * v.y;
 }
 
-inline Point2d floor(const Point2d& p)
-{
-	return Point2d(floor(p.x), floor(p.y));
+inline Point2d floor(const Point2d& p) {
+  return Point2d(floor(p.x), floor(p.y));
 }
 
-inline Point2d Point2d::operator+(const Point2d& v) const
-{
+inline Point2d Point2d::operator+(const Point2d& v) const {
   return Point2d(x + v.x, y + v.y);
 }
 
-inline Point2d Point2d::operator-(const Point2d& p) const
-{
+inline Point2d Point2d::operator-(const Point2d& p) const {
   return Point2d(x - p.x, y - p.y);
 }
 
-inline int Point2d::operator==(const Point2d& p) const
-{
+inline int Point2d::operator==(const Point2d& p) const {
   return ((*this - p).norm() < EPS);
 }
 
-inline istream& operator>>(istream& is, Point2d& p)
-{
+inline istream& operator>>(istream& is, Point2d& p) {
   is >> p.x >> p.y;
   return is;
 }

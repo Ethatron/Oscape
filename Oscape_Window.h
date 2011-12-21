@@ -35,6 +35,7 @@
 #endif //__VISUALC__
 #include <wx/listctrl.h>
 #include <wx/textctrl.h>
+#include <wx/radiobut.h>
 #include <wx/scrolwin.h>
 #include <wx/statbox.h>
 #include <wx/listbook.h>
@@ -137,15 +138,19 @@ class wxOscape : public wxFrame
 		wxCheckBox* OSMeshes;
 		wxPanel* OSPanelMeshes;
 		wxStaticText* m_staticText16;
-		wxCheckBox* OSRes1;
-		wxCheckBox* OSRes2;
-		wxCheckBox* OSRes3;
-		wxCheckBox* OSRes4;
+		wxCheckBox* OSMlod1;
+		wxCheckBox* OSMlod2;
+		wxCheckBox* OSMlod3;
+		wxCheckBox* OSMlod4;
 		wxStaticText* m_staticText28;
-		wxCheckBox* OSRes5;
-		wxCheckBox* OSRes6;
-		wxCheckBox* OSRes7;
-		wxCheckBox* OSRes8;
+		wxCheckBox* OSMlod5;
+		wxCheckBox* OSMlod6;
+		wxCheckBox* OSMlod7;
+		wxCheckBox* OSMlod8;
+		wxStaticText* m_staticText281;
+		wxRadioButton* OSMlodHalf;
+		wxRadioButton* OSMlodQuat;
+		wxRadioButton* OSMlodCube;
 		wxStaticLine* m_staticline6;
 		wxCheckBox* OSMeshBasin;
 		wxCheckBox* OSMeshUVs;
@@ -156,6 +161,12 @@ class wxOscape : public wxFrame
 		wxCheckBox* OSMeshOBJ;
 		wxCheckBox* OSNormals;
 		wxPanel* OSPanelNormals;
+		wxStaticText* m_staticText161;
+		wxCheckBox* OSNlod1;
+		wxCheckBox* OSNlod2;
+		wxCheckBox* OSNlod3;
+		wxCheckBox* OSNlod4;
+		wxStaticLine* m_staticline12;
 		wxCheckBox* OSNormalLow;
 		wxCheckBox* OSNormalRegular;
 		wxCheckBox* OSNormalHigh;
@@ -165,6 +176,12 @@ class wxOscape : public wxFrame
 		wxCheckBox* OSNormalPNG;
 		wxCheckBox* OSColors;
 		wxPanel* OSPanelColors;
+		wxStaticText* m_staticText1611;
+		wxCheckBox* OSClod1;
+		wxCheckBox* OSClod2;
+		wxCheckBox* OSClod3;
+		wxCheckBox* OSClod4;
+		wxStaticLine* m_staticline13;
 		wxCheckBox* OSColorLow;
 		wxCheckBox* OSColorRegular;
 		wxCheckBox* OSColorHigh;
@@ -226,6 +243,13 @@ class wxOscape : public wxFrame
 		wxStaticLine* m_staticline7111;
 		wxDirPickerCtrl* OSPlugoutDir;
 		wxButton* OSHeightfieldInstall;
+		wxPanel* OSPanelReverse;
+		wxDirPickerCtrl* OSLODDir;
+		wxChoice* OSLODWorldspace;
+		wxChoice* OSLODResolution;
+		wxCheckListBox* OSLODList;
+		wxFilePickerCtrl* OSFileRecoveryOut;
+		wxButton* OSLODRecover;
 		wxStatusBar* OSStatusBar;
 		
 		// Virtual event handlers, overide them in your derived class
@@ -267,6 +291,12 @@ class wxOscape : public wxFrame
 		virtual void ChangeBaseDirIn( wxFileDirPickerEvent& event ) { event.Skip(); }
 		virtual void ChangePlugoutDir( wxFileDirPickerEvent& event ) { event.Skip(); }
 		virtual void HeightfieldInstall( wxCommandEvent& event ) { event.Skip(); }
+		virtual void ChangeLODDir( wxFileDirPickerEvent& event ) { event.Skip(); }
+		virtual void ChangeLODWorldspace( wxCommandEvent& event ) { event.Skip(); }
+		virtual void ChangeLODRes( wxCommandEvent& event ) { event.Skip(); }
+		virtual void ChangeActiveLODs( wxCommandEvent& event ) { event.Skip(); }
+		virtual void ChangeRecoveryOut( wxFileDirPickerEvent& event ) { event.Skip(); }
+		virtual void HeightfieldRecover( wxCommandEvent& event ) { event.Skip(); }
 		
 	
 	public:

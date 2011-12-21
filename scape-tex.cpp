@@ -922,7 +922,7 @@ static bool TextureConvert<float>(int minlevel, LPDIRECT3DTEXTURE9 *tex, bool di
   return TextureConvert(minlevel, tex, dither, true, target);
 };
 
-static bool TextureCollapse(LPDIRECT3DTEXTURE9 *tex, D3DFORMAT target) {
+static bool TextureCollapse(LPDIRECT3DTEXTURE9 *tex, D3DFORMAT target, bool swizzle) {
   LPDIRECT3DTEXTURE9 replct;
   LPDIRECT3DSURFACE9 stex, srep;
   DWORD filter = D3DX_FILTER_BOX | D3DX_FILTER_DITHER;
@@ -944,6 +944,23 @@ static bool TextureCollapse(LPDIRECT3DTEXTURE9 *tex, D3DFORMAT target) {
   if (res == D3D_OK) {
     (*tex)->Release();
     (*tex) = replct;
+
+#if 1
+    /* put a custom default alpha-value */
+    if (swizzle) {
+      D3DLOCKED_RECT texs;
+
+      replct->LockRect(0, &texs, NULL, 0);
+      ULONG *sTex = (ULONG *)texs.pBits;
+
+      /* swizzle ARGB -> ARBG */
+      ULONG t = sTex[0];
+      sTex[0] = (t & 0xFFFF0000) | ((t >> 8) & 0x00FF) | ((t & 0x00FF) << 8);
+//    sTex[0] = (t & 0xFF0000FF) | ((t >> 8) & 0xFF00) | ((t & 0xFF00) << 8);
+
+      replct->UnlockRect(0);
+    }
+#endif
 
     return true;
   }
@@ -1109,7 +1126,7 @@ static bool TextureConvertRAW(int minlevel, LPDIRECT3DTEXTURE9 *tex, bool optimi
 	(histn[3] == 1)) {
       addnote(" Planar image detected, collapsing to size 1x1.\n");
 
-      return TextureCollapse(tex, D3DFMT_A8R8G8B8);
+      return TextureCollapse(tex, D3DFMT_A8R8G8B8, TCOMPRESS_SWIZZL(format));
     }
 
     bool white = ((histn[0] == 1) && histo[0][0xFF]);
@@ -1751,7 +1768,7 @@ static bool TextureCompressDXT(int minlevel, LPDIRECT3DTEXTURE9 *tex, bool optim
 	(histn[3] == 1)) {
       addnote(" Planar image detected, collapsing to size 1x1.\n");
 
-      return TextureCollapse(tex, D3DFMT_A8R8G8B8);
+      return TextureCollapse(tex, D3DFMT_A8R8G8B8, TCOMPRESS_SWIZZL(format));
     }
 
     bool white = ((histn[0] == 1) && histo[0][0xFF]);
