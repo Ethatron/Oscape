@@ -45,6 +45,41 @@ wxOscape::wxOscape( wxWindow* parent, wxWindowID id, const wxString& title, cons
 	
 	OSMenuBar->Append( OSDefaults, wxT("Defaults") ); 
 	
+	OSSettings = new wxMenu();
+	OSTSampling = new wxMenu();
+	wxMenuItem* OSTS1x1;
+	OSTS1x1 = new wxMenuItem( OSTSampling, wxID_TS1, wxString( wxT("1x1") ) , wxEmptyString, wxITEM_RADIO );
+	OSTSampling->Append( OSTS1x1 );
+	OSTS1x1->Check( true );
+	
+	wxMenuItem* OSTS2x2;
+	OSTS2x2 = new wxMenuItem( OSTSampling, wxID_TS2, wxString( wxT("2x2") ) , wxEmptyString, wxITEM_RADIO );
+	OSTSampling->Append( OSTS2x2 );
+	
+	wxMenuItem* OSTS4x4;
+	OSTS4x4 = new wxMenuItem( OSTSampling, wxID_TS4, wxString( wxT("4x4") ) , wxEmptyString, wxITEM_RADIO );
+	OSTSampling->Append( OSTS4x4 );
+	
+	OSSettings->Append( -1, wxT("Texture super-sampling"), OSTSampling );
+	
+	OSSSampling = new wxMenu();
+	wxMenuItem* OSS1x;
+	OSS1x = new wxMenuItem( OSSSampling, wxID_SS1, wxString( wxT("1x") ) , wxEmptyString, wxITEM_RADIO );
+	OSSSampling->Append( OSS1x );
+	OSS1x->Check( true );
+	
+	wxMenuItem* OSS2x;
+	OSS2x = new wxMenuItem( OSSSampling, wxID_SS2, wxString( wxT("2x") ) , wxEmptyString, wxITEM_RADIO );
+	OSSSampling->Append( OSS2x );
+	
+	wxMenuItem* OSS4x;
+	OSS4x = new wxMenuItem( OSSSampling, wxID_SS4, wxString( wxT("4x") ) , wxEmptyString, wxITEM_RADIO );
+	OSSSampling->Append( OSS4x );
+	
+	OSSettings->Append( -1, wxT("Surface up-sampling"), OSSSampling );
+	
+	OSMenuBar->Append( OSSettings, wxT("Settings") ); 
+	
 	this->SetMenuBar( OSMenuBar );
 	
 	wxBoxSizer* bSizer1;
@@ -141,7 +176,7 @@ wxOscape::wxOscape( wxWindow* parent, wxWindowID id, const wxString& title, cons
 	OSPanelPlugins->SetSizer( bSizer36 );
 	OSPanelPlugins->Layout();
 	bSizer36->Fit( OSPanelPlugins );
-	OSToolSwitch->AddPage( OSPanelPlugins, wxT("Active Plugins"), false );
+	OSToolSwitch->AddPage( OSPanelPlugins, wxT("Active Plugins"), true );
 	OSPanelHeightfield = new wxPanel( OSToolSwitch, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL );
 	wxBoxSizer* bSizer37;
 	bSizer37 = new wxBoxSizer( wxVERTICAL );
@@ -410,20 +445,25 @@ wxOscape::wxOscape( wxWindow* parent, wxWindowID id, const wxString& title, cons
 	
 	m_staticText281 = new wxStaticText( OSPanelMeshes, wxID_ANY, wxT("LOD Reduction:"), wxDefaultPosition, wxDefaultSize, 0 );
 	m_staticText281->Wrap( -1 );
+	m_staticText281->Hide();
+	
 	bSizer7011->Add( m_staticText281, 1, wxALL, 5 );
 	
 	OSMlodHalf = new wxRadioButton( OSPanelMeshes, wxID_ANY, wxT("0.5"), wxDefaultPosition, wxDefaultSize, wxRB_GROUP );
 	OSMlodHalf->SetValue( true ); 
+	OSMlodHalf->Hide();
 	OSMlodHalf->SetHelpText( wxT("Adjust target each LOD by 0.5 (proportional to extent reduction)") );
 	
 	bSizer7011->Add( OSMlodHalf, 0, wxALL, 5 );
 	
 	OSMlodQuat = new wxRadioButton( OSPanelMeshes, wxID_ANY, wxT("0.5^1.5"), wxDefaultPosition, wxDefaultSize, 0 );
+	OSMlodQuat->Hide();
 	OSMlodQuat->SetHelpText( wxT("Adjust target each LOD by 0.5^1.5") );
 	
 	bSizer7011->Add( OSMlodQuat, 0, wxALL, 5 );
 	
 	OSMlodCube = new wxRadioButton( OSPanelMeshes, wxID_ANY, wxT("0.5^2"), wxDefaultPosition, wxDefaultSize, 0 );
+	OSMlodCube->Hide();
 	OSMlodCube->SetHelpText( wxT("Adjust target each LOD by 0.5^2.0 (proportional to area reduction)") );
 	
 	bSizer7011->Add( OSMlodCube, 0, wxALL, 5 );
@@ -730,7 +770,7 @@ wxOscape::wxOscape( wxWindow* parent, wxWindowID id, const wxString& title, cons
 	OSPanelGenerator->SetSizer( bSizer15 );
 	OSPanelGenerator->Layout();
 	bSizer15->Fit( OSPanelGenerator );
-	OSToolSwitch->AddPage( OSPanelGenerator, wxT("Generator"), true );
+	OSToolSwitch->AddPage( OSPanelGenerator, wxT("Generator"), false );
 	OSPanelInstaller = new wxPanel( OSToolSwitch, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL );
 	wxBoxSizer* bSizer151;
 	bSizer151 = new wxBoxSizer( wxVERTICAL );
@@ -740,11 +780,11 @@ wxOscape::wxOscape( wxWindow* parent, wxWindowID id, const wxString& title, cons
 	
 	OSHeightfieldFirst3 = new wxStaticText( OSPanelInstaller, wxID_ANY, wxT("Select a directory first"), wxDefaultPosition, wxDefaultSize, 0 );
 	OSHeightfieldFirst3->Wrap( -1 );
+	OSHeightfieldFirst3->Hide();
+	
 	bSizer151->Add( OSHeightfieldFirst3, 1, wxALIGN_CENTER|wxALIGN_CENTER_HORIZONTAL|wxALIGN_CENTER_VERTICAL|wxALL, 25 );
 	
 	OSInstallWS = new wxListbook( OSPanelInstaller, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxLB_DEFAULT );
-	OSInstallWS->Hide();
-	
 	m_scrolledWindow4 = new wxScrolledWindow( OSInstallWS, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxHSCROLL|wxVSCROLL );
 	m_scrolledWindow4->SetScrollRate( 5, 5 );
 	wxBoxSizer* bSizer52;
@@ -766,37 +806,40 @@ wxOscape::wxOscape( wxWindow* parent, wxWindowID id, const wxString& title, cons
 	
 	OSLevel0->Add( bSizer28, 1, wxEXPAND, 5 );
 	
-	wxGridSizer* gSizer4;
-	gSizer4 = new wxGridSizer( 2, 2, 0, 0 );
+	wxFlexGridSizer* fgSizer1;
+	fgSizer1 = new wxFlexGridSizer( 1, 2, 0, 0 );
+	fgSizer1->AddGrowableCol( 0 );
+	fgSizer1->SetFlexibleDirection( wxBOTH );
+	fgSizer1->SetNonFlexibleGrowMode( wxFLEX_GROWMODE_SPECIFIED );
 	
 	m_staticText40 = new wxStaticText( m_scrolledWindow4, wxID_ANY, wxT("Mesh-resolution:"), wxDefaultPosition, wxDefaultSize, 0 );
 	m_staticText40->Wrap( -1 );
-	gSizer4->Add( m_staticText40, 0, wxALIGN_CENTER_VERTICAL|wxALL, 5 );
+	fgSizer1->Add( m_staticText40, 0, wxALIGN_CENTER_VERTICAL|wxALL, 5 );
 	
 	wxArrayString OSInstallLevel0MeshResChoices;
 	OSInstallLevel0MeshRes = new wxChoice( m_scrolledWindow4, wxID_LEVEL0_MRES, wxDefaultPosition, wxDefaultSize, OSInstallLevel0MeshResChoices, 0 );
 	OSInstallLevel0MeshRes->SetSelection( 0 );
-	gSizer4->Add( OSInstallLevel0MeshRes, 0, wxALL|wxEXPAND, 5 );
+	fgSizer1->Add( OSInstallLevel0MeshRes, 0, wxALL|wxEXPAND, 5 );
 	
 	m_staticText401 = new wxStaticText( m_scrolledWindow4, wxID_ANY, wxT("Texture-resolution:"), wxDefaultPosition, wxDefaultSize, 0 );
 	m_staticText401->Wrap( -1 );
-	gSizer4->Add( m_staticText401, 0, wxALIGN_CENTER_VERTICAL|wxALL, 5 );
+	fgSizer1->Add( m_staticText401, 0, wxALIGN_CENTER_VERTICAL|wxALL, 5 );
 	
 	wxArrayString OSInstallLevel0TextResNChoices;
 	OSInstallLevel0TextResN = new wxChoice( m_scrolledWindow4, wxID_LEVEL0N_TRES, wxDefaultPosition, wxDefaultSize, OSInstallLevel0TextResNChoices, 0 );
 	OSInstallLevel0TextResN->SetSelection( 0 );
-	gSizer4->Add( OSInstallLevel0TextResN, 0, wxALL|wxEXPAND, 5 );
+	fgSizer1->Add( OSInstallLevel0TextResN, 0, wxALL|wxEXPAND, 5 );
 	
 	m_staticText4014 = new wxStaticText( m_scrolledWindow4, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, 0 );
 	m_staticText4014->Wrap( -1 );
-	gSizer4->Add( m_staticText4014, 0, wxALL, 5 );
+	fgSizer1->Add( m_staticText4014, 0, wxALL, 5 );
 	
 	wxArrayString OSInstallLevel0TextResCChoices;
 	OSInstallLevel0TextResC = new wxChoice( m_scrolledWindow4, wxID_LEVEL0C_TRES, wxDefaultPosition, wxDefaultSize, OSInstallLevel0TextResCChoices, 0 );
 	OSInstallLevel0TextResC->SetSelection( 0 );
-	gSizer4->Add( OSInstallLevel0TextResC, 0, wxALL|wxEXPAND, 5 );
+	fgSizer1->Add( OSInstallLevel0TextResC, 0, wxALL|wxEXPAND, 5 );
 	
-	OSLevel0->Add( gSizer4, 0, wxEXPAND, 5 );
+	OSLevel0->Add( fgSizer1, 0, wxEXPAND, 5 );
 	
 	bSizer52->Add( OSLevel0, 0, wxEXPAND, 5 );
 	
@@ -1045,6 +1088,12 @@ wxOscape::wxOscape( wxWindow* parent, wxWindowID id, const wxString& title, cons
 	this->Connect( OSDefaultVanilla->GetId(), wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler( wxOscape::ChangeDefaults ) );
 	this->Connect( OSDefaultTWMP->GetId(), wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler( wxOscape::ChangeDefaults ) );
 	this->Connect( OSDefaultLLOD->GetId(), wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler( wxOscape::ChangeDefaults ) );
+	this->Connect( OSTS1x1->GetId(), wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler( wxOscape::ChangeTSampling ) );
+	this->Connect( OSTS2x2->GetId(), wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler( wxOscape::ChangeTSampling ) );
+	this->Connect( OSTS4x4->GetId(), wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler( wxOscape::ChangeTSampling ) );
+	this->Connect( OSS1x->GetId(), wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler( wxOscape::ChangeSSampling ) );
+	this->Connect( OSS2x->GetId(), wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler( wxOscape::ChangeSSampling ) );
+	this->Connect( OSS4x->GetId(), wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler( wxOscape::ChangeSSampling ) );
 	this->Connect( wxID_RESET, wxEVT_COMMAND_TOOL_CLICKED, wxCommandEventHandler( wxOscape::ResetPluginList ) );
 	this->Connect( wxID_CLEAR, wxEVT_COMMAND_TOOL_CLICKED, wxCommandEventHandler( wxOscape::ClearPluginList ) );
 	this->Connect( wxID_LOAD, wxEVT_COMMAND_TOOL_CLICKED, wxCommandEventHandler( wxOscape::LoadPluginList ) );
@@ -1082,6 +1131,10 @@ wxOscape::wxOscape( wxWindow* parent, wxWindowID id, const wxString& title, cons
 	OSBaseDirOut2->Connect( wxEVT_COMMAND_DIRPICKER_CHANGED, wxFileDirPickerEventHandler( wxOscape::ChangeBaseDirOut2 ), NULL, this );
 	OSHeightfieldGenerate->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( wxOscape::HeightfieldGenerate ), NULL, this );
 	OSBaseDirIn->Connect( wxEVT_COMMAND_DIRPICKER_CHANGED, wxFileDirPickerEventHandler( wxOscape::ChangeBaseDirIn ), NULL, this );
+	OSInstallLevel0MeshRes->Connect( wxEVT_COMMAND_CHOICE_SELECTED, wxCommandEventHandler( wxOscape::ChangeLevel0MeshRes ), NULL, this );
+	OSInstallLevel1MeshRes->Connect( wxEVT_COMMAND_CHOICE_SELECTED, wxCommandEventHandler( wxOscape::ChangeLevel1MeshRes ), NULL, this );
+	OSInstallLevel2MeshRes->Connect( wxEVT_COMMAND_CHOICE_SELECTED, wxCommandEventHandler( wxOscape::ChangeLevel2MeshRes ), NULL, this );
+	OSInstallLevel3MeshRes->Connect( wxEVT_COMMAND_CHOICE_SELECTED, wxCommandEventHandler( wxOscape::ChangeLevel3MeshRes ), NULL, this );
 	OSPlugoutDir->Connect( wxEVT_COMMAND_DIRPICKER_CHANGED, wxFileDirPickerEventHandler( wxOscape::ChangePlugoutDir ), NULL, this );
 	OSHeightfieldInstall->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( wxOscape::HeightfieldInstall ), NULL, this );
 	OSLODDir->Connect( wxEVT_COMMAND_DIRPICKER_CHANGED, wxFileDirPickerEventHandler( wxOscape::ChangeLODDir ), NULL, this );
@@ -1101,6 +1154,12 @@ wxOscape::~wxOscape()
 	this->Disconnect( wxID_DEFV, wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler( wxOscape::ChangeDefaults ) );
 	this->Disconnect( wxID_DEFT, wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler( wxOscape::ChangeDefaults ) );
 	this->Disconnect( wxID_DEFL, wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler( wxOscape::ChangeDefaults ) );
+	this->Disconnect( wxID_TS1, wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler( wxOscape::ChangeTSampling ) );
+	this->Disconnect( wxID_TS2, wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler( wxOscape::ChangeTSampling ) );
+	this->Disconnect( wxID_TS4, wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler( wxOscape::ChangeTSampling ) );
+	this->Disconnect( wxID_SS1, wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler( wxOscape::ChangeSSampling ) );
+	this->Disconnect( wxID_SS2, wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler( wxOscape::ChangeSSampling ) );
+	this->Disconnect( wxID_SS4, wxEVT_COMMAND_MENU_SELECTED, wxCommandEventHandler( wxOscape::ChangeSSampling ) );
 	this->Disconnect( wxID_RESET, wxEVT_COMMAND_TOOL_CLICKED, wxCommandEventHandler( wxOscape::ResetPluginList ) );
 	this->Disconnect( wxID_CLEAR, wxEVT_COMMAND_TOOL_CLICKED, wxCommandEventHandler( wxOscape::ClearPluginList ) );
 	this->Disconnect( wxID_LOAD, wxEVT_COMMAND_TOOL_CLICKED, wxCommandEventHandler( wxOscape::LoadPluginList ) );
@@ -1138,6 +1197,10 @@ wxOscape::~wxOscape()
 	OSBaseDirOut2->Disconnect( wxEVT_COMMAND_DIRPICKER_CHANGED, wxFileDirPickerEventHandler( wxOscape::ChangeBaseDirOut2 ), NULL, this );
 	OSHeightfieldGenerate->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( wxOscape::HeightfieldGenerate ), NULL, this );
 	OSBaseDirIn->Disconnect( wxEVT_COMMAND_DIRPICKER_CHANGED, wxFileDirPickerEventHandler( wxOscape::ChangeBaseDirIn ), NULL, this );
+	OSInstallLevel0MeshRes->Disconnect( wxEVT_COMMAND_CHOICE_SELECTED, wxCommandEventHandler( wxOscape::ChangeLevel0MeshRes ), NULL, this );
+	OSInstallLevel1MeshRes->Disconnect( wxEVT_COMMAND_CHOICE_SELECTED, wxCommandEventHandler( wxOscape::ChangeLevel1MeshRes ), NULL, this );
+	OSInstallLevel2MeshRes->Disconnect( wxEVT_COMMAND_CHOICE_SELECTED, wxCommandEventHandler( wxOscape::ChangeLevel2MeshRes ), NULL, this );
+	OSInstallLevel3MeshRes->Disconnect( wxEVT_COMMAND_CHOICE_SELECTED, wxCommandEventHandler( wxOscape::ChangeLevel3MeshRes ), NULL, this );
 	OSPlugoutDir->Disconnect( wxEVT_COMMAND_DIRPICKER_CHANGED, wxFileDirPickerEventHandler( wxOscape::ChangePlugoutDir ), NULL, this );
 	OSHeightfieldInstall->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( wxOscape::HeightfieldInstall ), NULL, this );
 	OSLODDir->Disconnect( wxEVT_COMMAND_DIRPICKER_CHANGED, wxFileDirPickerEventHandler( wxOscape::ChangeLODDir ), NULL, this );

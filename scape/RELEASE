@@ -1,0 +1,45 @@
+The current version of SCAPE is 1.2.
+
+Changes since version 1.1:
+
+	- Support ABN metric for data-dependent triangulation.  This
+	  is primarily for comparison purposes.  It can be a useful
+	  heuristic for smooth surfaces, but it does not perform
+	  particularly well on terrain surfaces.
+
+	- Fixed division-by-zero bug in data-independent triangle scan
+	  conversion.  This didn't actually cause erroneous results;
+	  the result of the division by zero was never used.  However,
+	  some systems halt with a floating point exception when it
+	  occurs.
+
+Changes since version 1.0:
+
+	- The EPS generated for mesh diagrams was very minimal and did
+	  not have the proper structured comments.  It should now be
+	  more compliant.
+
+	- The Delaunay triangulator had a bug in the InsertSite
+	  routine which could cause exceedingly bizarre things to
+	  happen when near the boundaries.  Due to the regular
+	  organization of points, this did not alter the resulting
+	  mesh.  However, it did cause excessive useless computation.
+	  Note that this could result in incorrect behavior with
+	  arbitrary data sites.  If you used this code in your own
+	  programs, use this new fix.  See the file quadedge.C for
+	  details.
+
+	- SCAPE was being rather inconsistent about its choice of
+	  coordinate axes.  The STM files should position (0,0) in the
+	  NW corner.  The terrains were being displayed in world
+	  coordinates with (0,0) in the SW corner.  This was resulting
+	  in "upside down" terrains.  Consistency has certainly been
+	  improved, but there may be some lingering inconsistencies
+	  lurking around.  Be careful!
+
+	- More conversion utilities are provided for using USGS DEMs.
+	  See the directory STM-tools/DEMutil.
+
+	- The TIN output format is not exactly a widely used standard.
+	  The program TIN-tools/tin2obj is a very simple-minded
+	  converter to create Wavefront .OBJ files from TIN files.
