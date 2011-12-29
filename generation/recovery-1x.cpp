@@ -30,51 +30,16 @@
  */
 
 #include "../globals.h"
-#include "../scape/simplfield.H"
+#include "../scape/cfield.H"
+#include "../io/texture.hpp"
 
 #include "geometry.hpp"
 #include "rasterize.hpp"
+#include "texture.hpp"
 
 #include <windows.h>
 
-/* besides enabling much less memory-consumption it also allows us to access
- * >2GB files on 32bit operating systems
- */
-#define PARTITION_ROWS	(rastery)
-#define PARTITION_SIZE	(rastery * str)
-#define PARTITION_OFFSh	(DWORD)(((unsigned __int64)(ty * rastery) * str) >> 32)
-#define PARTITION_OFFSl	(DWORD)(((unsigned __int64)(ty * rastery) * str) >>  0)
-
 void wrteRecovery1(string weouth, int sizex, int sizey) {
-  bool rethrow = false;
-  char rethrowing[256];
-
-  /* create output file */
-//OFSTRUCT of; HANDLE ohx = (HANDLE)OpenFile(weoutx.data(), &of, OF_READWRITE);
-  HANDLE oh = CreateFile(weouth.data(), GENERIC_READ | GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-  if (oh == (HANDLE)HFILE_ERROR) throw runtime_error("Failed to open output file");
-
-  /* mark them sparse (cool for zeroes) */
-  DWORD ss; BOOL
-  s = DeviceIoControl(oh, FSCTL_SET_SPARSE, NULL, 0, NULL, 0, &ss, NULL);
-
-//DWORD lenh = GetFileSize(oh, NULL);
-  DWORD str =         sizex * sizeof(unsigned short) * 1;
-  DWORD len = sizey * sizex * sizeof(unsigned short) * 1;
-
-  FILE_ZERO_DATA_INFORMATION z;
-  z.FileOffset.QuadPart = 0;
-  z.BeyondFinalZero.QuadPart = len;
-
-  /* mark all zeros (cool for zeroes) */
-  s = DeviceIoControl(oh, FSCTL_SET_ZERO_DATA, &z, sizeof(z), NULL, 0, &ss, NULL);
-
-  SetFilePointer(oh, len, NULL, FILE_BEGIN); BOOL sfs = SetEndOfFile(oh);
-  if (!sfs) throw runtime_error("Failed to resize output file");
-
-  HANDLE mh = CreateFileMapping(oh, NULL, PAGE_READWRITE, 0, 0, NULL);
-  if (!mh) throw runtime_error("Failed to map output file");
-
     // 1k == 32, 3k == 96, 512 == 16 */
     int resx = rasterx / 32;
     int resy = rastery / 32;
@@ -82,6 +47,9 @@ void wrteRecovery1(string weouth, int sizex, int sizey) {
     // round down, negative side would be smaller than positive side
     int offx = tilesx / 2;
     int offy = tilesy / 2;
+
+    /* get the heightfield sink */
+    CSink<unsigned short> cs(weouth.data(), sizex, sizey);
 
 #define ADJUSTMENT  0
     /* 1 more to align texels with coordinates (center) */
@@ -92,9 +60,6 @@ void wrteRecovery1(string weouth, int sizex, int sizey) {
     InitProgress((numty - minty) * (numtx - mintx), hh);
 
     for (int ty = minty; ty < numty; ty++) {
-      char *mem = (char *)MapViewOfFile(mh, FILE_MAP_ALL_ACCESS, PARTITION_OFFSh, PARTITION_OFFSl, PARTITION_SIZE);
-      if (!mem) throw runtime_error("Failed to allocate output file");
-
     for (int tx = mintx; tx < numtx; tx++) {
       int coordx = (tx - offx) * resx;
       int coordy = (ty - offy) * resy;
@@ -102,6 +67,9 @@ void wrteRecovery1(string weouth, int sizex, int sizey) {
       /* VBs starts on index 0 */
       unsigned int i = 0, idx = 0;
 
+      cs.set_row(ty * rastery);
+      unsigned short *mem = &cs.c_ref(0, ty * rastery);
+      long str = cs.get_stride();
       if (1) {
 	SetTopic("Rasterizing tile {%d,%d} faces:", coordx, coordy);
 
@@ -125,7 +93,7 @@ void wrteRecovery1(string weouth, int sizex, int sizey) {
 
 	SetTopic("Saving tile {%d,%d}:", coordx, coordy);
 
-#pragma omp parallel for schedule(static, (PROGRESS + 1) >> 3) shared(mem)
+#pragma omp parallel for schedule(static, (PROGRESS + 1) >> 3) shared(mem) ordered
 	for (int lh = 0; lh < hh; lh++) {
 	  const int h = /*(ty * rastery) +*/ lh;
 
@@ -137,7 +105,8 @@ void wrteRecovery1(string weouth, int sizex, int sizey) {
 	  }
 
 	  /* calculate pointer of writable position */
-	  USHORT *whgt = (USHORT *)(mem + (h * str)) + (tx * rasterx);
+//	  USHORT *whgt = (USHORT *)(mem + (h * str)) + (tx * rasterx);
+	  unsigned short *whgt = mem + (h * width) + (tx * rasterx);
 
 	  for (int lw = 0; lw < ww; lw++) {
 	    const int w = /*(tx * rasterx) +*/ lw;
@@ -157,10 +126,124 @@ void wrteRecovery1(string weouth, int sizex, int sizey) {
       /* advance progress */
       SetProgress((numty - minty) * (ty - minty) + (tx - mintx) + 1);
     }
-
-      UnmapViewOfFile(mem);
     }
+}
 
-    CloseHandle(mh);
-    CloseHandle(oh);
+void wrteRecovery1(string weouth, int sizex, int sizey, const char *pattern) {
+  // 1k == 32, 3k == 96, 512 == 16 */
+  int resx = rasterx / 32;
+  int resy = rastery / 32;
+
+  // round down, negative side would be smaller than positive side
+  int offx = tilesx / 2;
+  int offy = tilesy / 2;
+
+  /* data-mine for the required resolution */
+  int realrasterx = 0;
+  int realrastery = 0;
+
+  for (int ty = minty; ty < numty; ty++) {
+  for (int tx = mintx; tx < numtx; tx++) {
+    int coordx = (tx - offx) * resx;
+    int coordy = (ty - offy) * resy;
+
+    if (1) {
+      /* integrate all maps in this tile */
+      D3DXIMAGE_INFO *icol = chckTexture(pattern, "", coordx, coordy, min(resx, resy), false);
+
+      if (icol) {
+	realrasterx = max(realrasterx, icol->Width);
+	realrastery = max(realrastery, icol->Height);
+      }
+    }
+  }
+  }
+
+  /* revisit the dimensions */
+  rasterx = realrasterx; width  = sizex = rasterx * numtx;
+  rastery = realrastery; height = sizey = rastery * numty;
+
+  /* get the color-map sink */
+  CSink<unsigned long> cs(weouth.data(), sizex, sizey);
+
+#define ADJUSTMENT  0
+  /* 1 more to align texels with coordinates (center) */
+  int ww = rasterx + ADJUSTMENT;
+  int hh = rastery + ADJUSTMENT;
+
+  /* initialize progress */
+  InitProgress((numty - minty) * (numtx - mintx), hh);
+
+  for (int ty = minty; ty < numty; ty++) {
+  for (int tx = mintx; tx < numtx; tx++) {
+    int coordx = (tx - offx) * resx;
+    int coordy = (ty - offy) * resy;
+
+    /* VBs starts on index 0 */
+    unsigned int i = 0, idx = 0;
+
+    cs.set_row(ty * rastery);
+    unsigned long *mem = &cs.c_ref(0, ty * rastery);
+    long str = cs.get_stride();
+    if (1) {
+      SetTopic("Integrating tile {%d,%d} maps:", coordx, coordy);
+
+      /* integrate all maps in this tile */
+      tcol = readTexture(pattern, "", coordx, coordy, min(resx, resy), false, rasterx, rastery);
+
+      /* lock persistant output-buffer */
+      D3DLOCKED_RECT rcol;
+      tcol->LockRect(0, &rcol, NULL, 0);
+      ULONG *mcol = (ULONG *)rcol.pBits;
+
+      SetTopic("Saving tile {%d,%d}:", coordx, coordy);
+
+#pragma omp parallel for schedule(static, (PROGRESS + 1) >> 3) shared(mem) ordered
+      for (int lh = 0; lh < hh; lh++) {
+	const int h = /*(ty * rastery) +*/ lh;
+
+	if (!(lh & PROGRESS)) {
+	  logrf("%02dx%02d [%dx%d] %f%% (triangle)\r", ty, tx, hh, ww, (100.0f * h) / ((ty * rastery) + hh));
+
+	  /* advance progress */
+	  SetProgress(-1, lh);
+	}
+
+	/* calculate pointer of writable position */
+//	ULONG *wcol = (ULONG *)(mem + (h * str)) + (tx * rasterx);
+	unsigned long *wcol = mem + (h * width) + (tx * rasterx);
+
+	for (int lw = 0; lw < ww; lw++) {
+	  const int w = /*(tx * rasterx) +*/ lw;
+
+	  /* restore the height */
+	  unsigned long C  = mcol[(lh * rastery) + lw];
+
+	  ULONG a = (C >> 24) & 0xFF; /*a*/
+	  ULONG r = (C >> 16) & 0xFF; /*a*/
+	  ULONG g = (C >>  8) & 0xFF; /*a*/
+	  ULONG b = (C >>  0) & 0xFF; /*a*/
+
+	  unsigned long
+	  color  = 0;
+	  color |= (r << 24);
+	  color |= (g << 16);
+	  color |= (b <<  8);
+	  color |= (a <<  0);
+
+	  /* serial write to persistant output-buffer */
+	  *wcol++ = (unsigned long)(color);
+	  // O ^= oz, which is Z in image-space
+	}
+      }
+
+      tcol->UnlockRect(0);
+      tcol->Release();
+      tcol = NULL;
+    } /* fmaps */
+
+    /* advance progress */
+    SetProgress((numty - minty) * (ty - minty) + (tx - mintx) + 1);
+  }
+  }
 }

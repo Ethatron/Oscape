@@ -303,7 +303,10 @@ public:
   int Enter(LPTHREAD_START_ROUTINE routine) {
     if ((async = CreateThread(NULL, 0, routine, this, 0, NULL)) == INVALID_HANDLE_VALUE)
       return 0;
+
+    /* rebase the created thread, and possibly spawned OpenMP ones (via process) */
     SetThreadPriority(async, THREAD_PRIORITY_BELOW_NORMAL);
+    SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS);
 
     return ShowModal();
   }
@@ -324,8 +327,9 @@ public:
     /* signal that we recognize the message */
     SetEvent(end);
 
-    WaitForSingleObject(async, INFINITE);
-    CloseHandle(async);
+    /* close created thread, and restore the base priority class */
+    WaitForSingleObject(async, INFINITE); CloseHandle(async);
+    SetPriorityClass(GetCurrentProcess(), NORMAL_PRIORITY_CLASS);
 
     EndModal(retCode);
   }

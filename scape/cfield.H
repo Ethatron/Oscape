@@ -77,8 +77,12 @@ public:
 
 class CView {
   long stride;
+
   int begin, range;
   int width, height;
+
+  unsigned __int64 position;
+  unsigned __int64 length;
 
   HANDLE mh;
   OFSTRUCT of;
@@ -126,6 +130,73 @@ public:
 
   /* ------------------------------------------------------------------------- */
   void set_row(int y);
+};
+
+class CSinkBase {
+protected:
+  long stride;
+
+  int begin, range;
+  int width, height;
+
+  unsigned __int64 position;
+  unsigned __int64 length;
+
+  HANDLE mh;
+  OFSTRUCT of;
+  HANDLE oh;
+  LPVOID mem;
+
+  void init(const char *mntns, int w, int h, int dts);
+  void free();
+
+public:
+//CSinkBase(const char *in, int w, int h) { init(in, w, h); }
+//~CSinkBase() { free(); }
+
+  void set_row(int y);
+};
+
+template<typename dtyp = unsigned long>
+class CSink : public CSinkBase {
+  dtyp *data;
+
+public:
+  CSink(const char *in, int w, int h) { CSinkBase::init(in, w, h, sizeof(dtyp)); data = (dtyp *)mem; }
+  ~CSink() { free(); }
+
+  /* ------------------------------------------------------------------------- */
+  void c_set(int x, int y, const dtyp &val) { data[(y - begin) * width + x] = val; }
+  dtyp &c_ref(int x, int y) { return data[(y - begin) * width + x]; }
+
+  /* ------------------------------------------------------------------------- */
+  void sink(int x, int y, dtyp val) {
+#if 0
+    if ((x >= 0) && (x < width) &&
+      (y >= 0) && (y < height))
+      return data->eval(x, y);
+    else
+      return 0;
+#else
+    assert((x >= 0) && (x < width ));
+    assert((y >= 0) && (y < height));
+
+    assert((y >= begin) && (y < (begin + range)));
+
+    data[(y - begin) * width + x] = val;
+#endif
+  }
+
+  void sink(Real x, Real y, dtyp val) { sink((int)x, (int)y, val); }
+  void sink(const Point2d& p, dtyp val) { sink((int)p.x, (int)p.y, val); }
+
+  /* ------------------------------------------------------------------------- */
+  long get_stride() const { return stride; }
+  int get_width() const { return width; }
+  int get_height() const { return height; }
+
+  /* ------------------------------------------------------------------------- */
+  void set_row(int y) { CSinkBase::set_row(y); data = (dtyp *)mem; }
 };
 
 #endif

@@ -602,7 +602,7 @@ void wrteColors2(bool cmaps, CView& cf, const char *pattern) {
       SetTopic("Calculating tile {%d,%d} colors:", coordx, coordy);
 
       /* extract values out of the tile-window */
-#pragma omp parallel for schedule(static, (PROGRESS + 1) >> 3) shared(mcol, cf)
+#pragma omp parallel for schedule(static, (PROGRESS + 1) >> 3) shared(mcol, cf) ordered
       for (int lh = 0; lh < hhh; lh++) {
 	const int h = th * (ty * rastery) + mh * (lh);
 

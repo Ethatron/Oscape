@@ -115,6 +115,12 @@ class OscapeGUI *gui;
 
     ReadMemory();
 
+    ChangeMeshes();
+    ChangeNormals();
+    ChangeColors();
+    ChangeHeightmap();
+    ChangeLODRes();
+
     ChangeHeightfieldIn1(OSFileHeightfieldIn1->GetPath());
     ChangeHeightfieldIn2(OSFileHeightfieldIn2->GetPath());
 
@@ -130,6 +136,12 @@ class OscapeGUI *gui;
     ResetLPluginList();
 
     ReadMemory();
+
+    ChangeMeshes();
+    ChangeNormals();
+    ChangeColors();
+    ChangeHeightmap();
+    ChangeLODRes();
 
     ChangeHeightfieldIn1(OSFileHeightfieldIn1->GetPath());
     ChangeHeightfieldIn2(OSFileHeightfieldIn2->GetPath());
@@ -159,10 +171,17 @@ class OscapeGUI *gui;
 
   void OscapeGUI::ReadMemory() {
     char TS[1024]; DWORD TSL = 1023;
-    TS[0] = 0; RegGetValue(Settings, GetGameKey(), "Last LOD Resolution", RRF_RT_REG_SZ, NULL, TS, &TSL);
-    if (TS[0]) OSLODResolution->SetSelection(TS[0] - '1'); TSL = 1023;
     TS[0] = 0; RegGetValue(Settings, GetGameKey(), "LOD Directory", RRF_RT_REG_SZ, NULL, TS, &TSL);
     if (TS[0]) OSLODDir->SetPath(TS); TSL = 1023;
+    TS[0] = 0; RegGetValue(Settings, GetGameKey(), "LOD Type", RRF_RT_REG_SZ, NULL, TS, &TSL);
+    switch (TS[0]) {
+      default:
+      case '0': OSRevHeight->SetValue(true); break;
+      case '1': OSRevNormals->SetValue(true); break;
+      case '2': OSRevColors->SetValue(true); break;
+    } TSL = 1023;
+    TS[0] = 0; RegGetValue(Settings, GetGameKey(), "Last LOD Resolution", RRF_RT_REG_SZ, NULL, TS, &TSL);
+    if (TS[0]) OSLODResolution->SetSelection(TS[0] - '1'); TSL = 1023;
     TS[0] = 0; RegGetValue(Settings, GetGameKey(), "Recovery Out", RRF_RT_REG_SZ, NULL, TS, &TSL);
     if (TS[0]) OSFileRecoveryOut->SetPath(TS); TSL = 1023;
     TS[0] = 0; RegGetValue(Settings, GetGameKey(), "Last worldspace", RRF_RT_REG_SZ, NULL, TS, &TSL);

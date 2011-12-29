@@ -95,16 +95,14 @@ unsigned long CField::eval_interp(Real x, Real y) const {
 /* besides enabling much less memory-consumption it also allows us to access
  * >2GB files on 32bit operating systems
  */
-#define PARTITION_ROWS	(1024UL)
-#define PARTITION_SIZE	(1024UL * stride)
+#define PARTITION_ROWS	min(1024UL         ,                             height        )
+#define PARTITION_SIZE	min(1024UL * stride, (SIZE_T)min(0x80000000, length - position))
 #define PARTITION_OFFSh	(DWORD)(((unsigned __int64)begin * stride) >> 32)
 #define PARTITION_OFFSl	(DWORD)(((unsigned __int64)begin * stride) >>  0)
 
 // CField::init --
 //
 void CView::init(const char *dataName, int w, int h) {
-  begin  = 0;
-  range  = PARTITION_ROWS;
   width  = w;
   height = h;
 
@@ -135,16 +133,26 @@ void CView::init(const char *dataName, int w, int h) {
   LONGLONG len = sizeof(unsigned char) * 4; len *= width; len *= height;
   LONG     leh = (LONG)(len >> 32);
 
-  oh = (HANDLE)OpenFile(dataName, &of, OF_READ);
-  if (!oh) throw runtime_error("Failed to open input file");
+  begin  = 0;
+  range  = PARTITION_ROWS;
+  stride = str;
+
+  position = (unsigned __int64)begin  * stride;
+  length   = (unsigned __int64)height * stride;
+
+//oh = (HANDLE)OpenFile(dataName, &of, OF_READ);
+//if (!oh || ((HFILE)oh == HFILE_ERROR))
+  oh = CreateFile(dataName, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+  if (!oh || (oh == INVALID_HANDLE_VALUE))
+    throw runtime_error("Failed to open input file");
 
   mh = CreateFileMapping(oh, NULL, PAGE_READONLY, 0, 0, NULL);
-  if (!mh) throw runtime_error("Failed to map input file");
+  if (!mh || (mh == INVALID_HANDLE_VALUE))
+    throw runtime_error("Failed to map input file");
 
   data = (const unsigned long *)MapViewOfFile(mh, FILE_MAP_READ, PARTITION_OFFSh, PARTITION_OFFSl, PARTITION_SIZE);
-  if (!data) throw runtime_error("Failed to allocate input file");
-
-  stride = str;
+  if (!data)
+    throw runtime_error("Failed to allocate input file");
 }
 
 
@@ -162,24 +170,27 @@ void CView::free() {
 //
 void CView::set_row(int y) {
   if ((y < begin) || (y >= (begin + range))) {
-    int brr = 1;
-
-    /* order threads whoever comes first, sets the new location */
+    /* join all threads here (including master) */
 #pragma omp ordered
     {
+      /* this is a virtual "parallel for" barrier, it works so far
+       * but it may be too weak
+       */
 #pragma omp critical
-      {
-	if ((y < begin) || (y >= (begin + range))) {
-	  /* free the view */
-	  UnmapViewOfFile(data);
+      if ((y < begin) || (y >= (begin + range))) {
+	/* free the view */
+	UnmapViewOfFile(data);
 
-	  /* move window to include "y" */
-	  begin = y - (y % range);
+	/* move window to include "y" */
+	begin = y - (y % range);
 
-	  /* get a new view */
-	  data = (const unsigned long *)MapViewOfFile(mh, FILE_MAP_READ, PARTITION_OFFSh, PARTITION_OFFSl, PARTITION_SIZE);
-	  if (!data) throw runtime_error("Failed to allocate input file");
-	}
+	position = (unsigned __int64)begin  * stride;
+//	length   = (unsigned __int64)height * stride;
+
+	/* get a new view */
+	data = (const unsigned long *)MapViewOfFile(mh, FILE_MAP_READ, PARTITION_OFFSh, PARTITION_OFFSl, PARTITION_SIZE);
+	if (!data)
+	  throw runtime_error("Failed to allocate input file");
       }
     }
 
@@ -212,4 +223,94 @@ unsigned long CView::eval_interp(Real x, Real y) const {
     ((unsigned long)LERP(fy, zb0, zb1) <<  8) |
     ((unsigned long)LERP(fy, za0, za1) <<  0)
   ;
+}
+
+// CField::init --
+//
+void CSinkBase::init(const char *dataName, int w, int h, int dts) {
+  width  = w;
+  height = h;
+
+  /* open initial window at "0" */
+  LONG     str = dts; str *= width;
+  LONGLONG len = dts; len *= width; len *= height;
+  LONG     leh = (LONG)(len >> 32);
+
+  begin  = 0;
+  range  = PARTITION_ROWS;
+  stride = str;
+
+  position = (unsigned __int64)begin  * stride;
+  length   = (unsigned __int64)height * stride;
+
+//oh = (HANDLE)OpenFile(dataName, &of, OF_READ);
+//if (!oh || ((HFILE)oh == HFILE_ERROR))
+  oh = CreateFile(dataName, GENERIC_READ | GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+  if (!oh || (oh == INVALID_HANDLE_VALUE))
+    throw runtime_error("Failed to open output file");
+
+  /* mark them sparse (cool for zeroes) */
+  DWORD ss; BOOL
+  s = DeviceIoControl(oh, FSCTL_SET_SPARSE, NULL, 0, NULL, 0, &ss, NULL);
+
+  FILE_ZERO_DATA_INFORMATION z;
+  z.FileOffset.QuadPart = 0;
+  z.BeyondFinalZero.QuadPart = len;
+
+  /* mark all zeros (cool for zeroes) */
+  s = DeviceIoControl(oh, FSCTL_SET_ZERO_DATA, &z, sizeof(z), NULL, 0, &ss, NULL);
+
+  SetFilePointer(oh, (LONG)(len >> 0), &leh, FILE_BEGIN); BOOL sfs = SetEndOfFile(oh);
+  if (!sfs) throw runtime_error("Failed to resize output file");
+  
+  mh = CreateFileMapping(oh, NULL, PAGE_READWRITE, 0, 0, NULL);
+  if (!mh || (mh == INVALID_HANDLE_VALUE))
+    throw runtime_error("Failed to map output file");
+
+  mem = MapViewOfFile(mh, FILE_MAP_ALL_ACCESS, PARTITION_OFFSh, PARTITION_OFFSl, PARTITION_SIZE);
+  if (!mem)
+    throw runtime_error("Failed to allocate output file");
+}
+
+
+// CField::free --
+//
+// Like the name says, free the storage that we're currently using.
+//
+void CSinkBase::free() {
+  UnmapViewOfFile(mem);
+  CloseHandle(mh);
+  CloseHandle(oh);
+}
+
+// CField::set_row --
+//
+void CSinkBase::set_row(int y) {
+  if ((y < begin) || (y >= (begin + range))) {
+    /* join all threads here (including master) */
+//#pragma omp ordered
+    {
+      /* this is a virtual "parallel for" barrier, it works so far
+       * but it may be too weak
+       */
+//#pragma omp critical
+      if ((y < begin) || (y >= (begin + range))) {
+	/* free the view */
+	UnmapViewOfFile(mem);
+
+	/* move window to include "y" */
+	begin = y - (y % range);
+
+	position = (unsigned __int64)begin  * stride;
+//	length   = (unsigned __int64)height * stride;
+
+	/* get a new view */
+	mem = MapViewOfFile(mh, FILE_MAP_ALL_ACCESS, PARTITION_OFFSh, PARTITION_OFFSl, PARTITION_SIZE);
+	if (!mem)
+	  throw runtime_error("Failed to allocate output file");
+      }
+    }
+
+    assert((y >= begin) && (y < (begin + range)));
+  }
 }

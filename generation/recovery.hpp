@@ -36,3 +36,4 @@
 /* ---------------------------------------------------- */
 
 void wrteRecovery1(string weouth, int sizex, int sizey);
+void wrteRecovery1(string weouth, int sizex, int sizey, const char *pattern);

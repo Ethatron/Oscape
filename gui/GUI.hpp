@@ -163,6 +163,10 @@ public:
 private:
 
   /* **************************************************************************** */
+  void ChangeToHeightfield(wxCommandEvent& event);
+  void ChangeToNormalmap(wxCommandEvent& event);
+  void ChangeToColormap(wxCommandEvent& event);
+
   void ChangeLODDir(wxFileDirPickerEvent& event);
   void ChangeLODWorldspace(wxCommandEvent& event);
   void ChangeLODWorldspace();

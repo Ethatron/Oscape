@@ -254,6 +254,10 @@ class wxOscape : public wxFrame
 		wxButton* OSHeightfieldInstall;
 		wxPanel* OSPanelReverse;
 		wxDirPickerCtrl* OSLODDir;
+		wxStaticText* m_staticText311;
+		wxRadioButton* OSRevHeight;
+		wxRadioButton* OSRevNormals;
+		wxRadioButton* OSRevColors;
 		wxChoice* OSLODWorldspace;
 		wxChoice* OSLODResolution;
 		wxCheckListBox* OSLODList;
@@ -307,6 +311,9 @@ class wxOscape : public wxFrame
 		virtual void ChangePlugoutDir( wxFileDirPickerEvent& event ) { event.Skip(); }
 		virtual void HeightfieldInstall( wxCommandEvent& event ) { event.Skip(); }
 		virtual void ChangeLODDir( wxFileDirPickerEvent& event ) { event.Skip(); }
+		virtual void ChangeToHeightfield( wxCommandEvent& event ) { event.Skip(); }
+		virtual void ChangeToNormalmap( wxCommandEvent& event ) { event.Skip(); }
+		virtual void ChangeToColormap( wxCommandEvent& event ) { event.Skip(); }
 		virtual void ChangeLODWorldspace( wxCommandEvent& event ) { event.Skip(); }
 		virtual void ChangeLODRes( wxCommandEvent& event ) { event.Skip(); }
 		virtual void ChangeActiveLODs( wxCommandEvent& event ) { event.Skip(); }

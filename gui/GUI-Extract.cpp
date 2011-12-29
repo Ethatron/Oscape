@@ -115,10 +115,10 @@
 
   /* ---------------------------------------------------------------------------- */
   void OscapeGUI::ResetHPluginDir(bool init) {
-    IPath[0] = 0; DWORD IPL; HKEY IDir;
+    IPath[0] = 0; DWORD IPL = 1023; HKEY IDir;
 
     if (init)
-      RegGetValue(Settings, GetGameKey(), "Plugin Directory", RRF_RT_REG_SZ, NULL, &IPath, &IPL);
+      RegGetValue(Settings, GetGameKey(), "Plugin Directory", RRF_RT_REG_SZ, NULL, &IPath, &IPL), IPL = 1023;
 
     if (!IPath[0]) {
       const char *game = NULL;
@@ -192,7 +192,7 @@
       char PBuffer[261];
 
       strcpy(PBuffer, p);
-      if (OSGame->FindItem(wxID_OBLIVON)->IsChecked())
+      /**/ if (OSGame->FindItem(wxID_OBLIVON)->IsChecked())
 	strcat(PBuffer, "\\Oblivion\\Plugins.txt");
       else if (OSGame->FindItem(wxID_SKYRIM)->IsChecked())
 	strcat(PBuffer, "\\Skyrim\\Plugins.txt");
@@ -325,7 +325,7 @@
       if (OSPluginList->IsChecked(n)) {
 	const char *p = OSPluginList->GetItem(n)->GetName().data();
 
-	if (strstr(p, ".esm")) {
+	if (strstr(p, ".esm") || strstr(p, ".esp")) {
 	  char PPath[260] = "";
 
 	  // WRLD - total size 16

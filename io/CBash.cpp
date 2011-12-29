@@ -405,6 +405,20 @@ map<FORMID, struct landtex> ltex;
 
 /* ............................................................................ */
 
+BOOL CreateDirectoryRecursive(const char *pathname);
+void DumpTexture(const char *name, void *mem, int len) {
+#if 0
+  string out = weoutx << "\\" << name;
+  string out = weoutx << "\\" << name;
+
+  /* TODO: get me texture-dumps */
+  if (CreateDirectoryRecursive(pathname)) {
+  }
+#endif
+}
+
+/* ............................................................................ */
+
 template<
   class LTEXRecord /*= Ob::LTEXRecord*/
 >
@@ -674,6 +688,10 @@ unsigned long *LookupTexture(FORMID t, int supersample, int supersize) {
 
       tex->UnlockRect(low);
     }
+
+    DumpTexture(name, ltex[t].mem1x1, 1 * 1);
+    DumpTexture(name, ltex[t].mem2x2, 2 * 2);
+    DumpTexture(name, ltex[t].mem4x4, 4 * 4);
   }
 
   if (supersize == 1)

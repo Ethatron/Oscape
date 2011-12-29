@@ -38,6 +38,10 @@
 #include "texture.hpp"
 #include "texture-dds.hpp"
 
+bool writeppm = false;
+bool writepng = false;
+bool writedds = false;
+
 bool skipTexture(const char *pattern, const char *pfx, int coordx, int coordy, int reso, bool xyz) {
   bool skip = true;
 
@@ -84,10 +88,6 @@ bool skipTexture(const char *pattern, const char *pfx, int coordx, int coordy, i
 
   return skip;
 }
-
-bool writeppm = false;
-bool writepng = false;
-bool writedds = false;
 
 void wrteTexture(LPDIRECT3DTEXTURE9 tex, const char *pattern, const char *pfx, int coordx, int coordy, int reso, bool xyz) {
   if (writeppm || writepng || writedds) {
@@ -191,5 +191,149 @@ void wrteTexture(LPDIRECT3DTEXTURE9 tex, const char *pattern, const char *pfx, i
 	if (res != D3D_OK) throw runtime_error("Failed to write texture");
       }
     }
+  }
+}
+
+D3DXIMAGE_INFO *chckTexture(const char *pattern, const char *pfx, int coordx, int coordy, int reso, bool xyz) {
+  if (1) {
+    static D3DXIMAGE_INFO nfo;
+    HRESULT res = S_FALSE;
+    char nbase[MAXPATH], name[MAXPATH];
+
+    /**/ if (wchgame == 0)	// Oblivion
+      _snprintf(nbase, sizeof(nbase) - 1, pattern, wdspace, coordx, coordy, reso);
+    else if (wchgame == 1)	// Skyrim
+      _snprintf(nbase, sizeof(nbase) - 1, pattern, wdsname, reso, coordx, coordy);
+
+    /* lower-case */
+    strlwr(nbase);
+
+    /* change "_fn" to "_n" for Skyrim */
+    if ((wchgame == 1))
+      if (pfx && !strcmp(pfx, "_fn"))
+	pfx = "_n";
+
+    if (res != D3D_OK) {
+      strcpy(name, nbase);
+      strcat(name, pfx);
+      strcat(name, ".ppm");
+
+      res = D3DXGetImageInfoFromFile(name, &nfo);
+    }
+
+    if (res != D3D_OK) {
+      strcpy(name, nbase);
+      strcat(name, pfx);
+      strcat(name, ".png");
+
+      res = D3DXGetImageInfoFromFile(name, &nfo);
+    }
+
+    if (res != D3D_OK) {
+      strcpy(name, nbase);
+      strcat(name, pfx);
+      strcat(name, ".dds");
+
+      res = D3DXGetImageInfoFromFile(name, &nfo);
+    }
+
+    if (res != D3D_OK)
+      return NULL;
+
+    return &nfo;
+  }
+}
+
+LPDIRECT3DTEXTURE9 readTexture(const char *pattern, const char *pfx, int coordx, int coordy, int reso, bool xyz, int sizex, int sizey) {
+  if (1) {
+    LPDIRECT3DTEXTURE9 tex = NULL;
+    HRESULT res = S_FALSE;
+    char nbase[MAXPATH], name[MAXPATH];
+
+    /**/ if (wchgame == 0)	// Oblivion
+      _snprintf(nbase, sizeof(nbase) - 1, pattern, wdspace, coordx, coordy, reso);
+    else if (wchgame == 1)	// Skyrim
+      _snprintf(nbase, sizeof(nbase) - 1, pattern, wdsname, reso, coordx, coordy);
+
+    /* lower-case */
+    strlwr(nbase);
+
+    /* change "_fn" to "_n" for Skyrim */
+    if ((wchgame == 1))
+      if (pfx && !strcmp(pfx, "_fn"))
+	pfx = "_n";
+
+    if (!tex) {
+      strcpy(name, nbase);
+      strcat(name, pfx);
+      strcat(name, ".ppm");
+
+      res = D3DXCreateTextureFromFileEx(
+	pD3DDevice, name,
+	sizex, sizey, 0,
+	0, D3DFMT_A8R8G8B8/*D3DFMT_UNKNOWN*/, D3DPOOL_MANAGED, D3DX_FILTER_TRIANGLE/*D3DX_DEFAULT*/,
+	D3DX_FILTER_NONE/*D3DX_DEFAULT*/, 0, NULL, NULL,
+	&tex);
+    }
+
+    if (!tex) {
+      strcpy(name, nbase);
+      strcat(name, pfx);
+      strcat(name, ".png");
+
+      res = D3DXCreateTextureFromFileEx(
+	pD3DDevice, name,
+	sizex, sizey, 0,
+	0, D3DFMT_A8R8G8B8/*D3DFMT_UNKNOWN*/, D3DPOOL_MANAGED, D3DX_FILTER_TRIANGLE/*D3DX_DEFAULT*/,
+	D3DX_FILTER_NONE/*D3DX_DEFAULT*/, 0, NULL, NULL,
+	&tex);
+    }
+
+    if (!tex) {
+      strcpy(name, nbase);
+      strcat(name, pfx);
+      strcat(name, ".dds");
+
+      res = D3DXCreateTextureFromFileEx(
+	pD3DDevice, name,
+	sizex, sizey, 0,
+	0, D3DFMT_A8R8G8B8/*D3DFMT_UNKNOWN*/, D3DPOOL_MANAGED, D3DX_FILTER_TRIANGLE/*D3DX_DEFAULT*/,
+	D3DX_FILTER_NONE/*D3DX_DEFAULT*/, 0, NULL, NULL,
+	&tex);
+
+      // Skyrim -> swizzled
+      if (tex && xyz && (wchgame == 1)) {
+	abort();
+      }
+    }
+
+    /* flip-y for Skyrim */
+    if (wchgame == 1) {
+      D3DSURFACE_DESC texd;
+      D3DLOCKED_RECT texr;
+
+      tex->GetLevelDesc(0, &texd);
+      tex->LockRect(0, &texr, NULL, 0);
+
+      /* xyz: D3DFMT_A8B8G8R8, color: D3DFMT_A8B8G8R8 */
+      UCHAR *dTex = (UCHAR *)texr.pBits;
+      UINT32 stride = texd.Width * 4 * (xyz ? 1 : 1);
+      UCHAR *lTex = (UCHAR *)malloc(stride);
+      /* do it for half of the picture, or do it twice :^P */
+      for (UINT32 s = 0; s < (texd.Height >> 1); s++) {
+	UINT32 loH = (                    s) * stride;
+	UINT32 hiH = ((texd.Height - 1) - s) * stride;
+
+	/* swap lines */
+	memcpy(lTex      , dTex + loH, stride);
+	memcpy(dTex + loH, dTex + hiH, stride);
+	memcpy(dTex + hiH, lTex      , stride);
+      }
+
+      tex->UnlockRect(0);
+      free(lTex);
+    }
+
+    return tex;
   }
 }

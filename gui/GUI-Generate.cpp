@@ -1106,6 +1106,12 @@ public:
 
       DefineDimensions(tsze, csze);
 
+      infoh; hex =
+      GetFileAttributesEx(dataFile, GetFileExInfoStandard, &infoh);
+      writechk = (hex ? *((__int64 *)&infoh.ftLastWriteTime) : 0);
+      if (OSOverwrite->GetValue())
+	writechk = 0;
+
       if (OSNormals->GetValue()) {
 	writeppm = OSNormalPPM->GetValue();
 	writepng = OSNormalPNG->GetValue();
@@ -1208,6 +1214,12 @@ public:
       csze = cSize->GetValueAsVariant().GetInteger();
 
       DefineDimensions(tsze, csze);
+
+      WIN32_FILE_ATTRIBUTE_DATA infoh; BOOL hex =
+      GetFileAttributesEx(colrFile, GetFileExInfoStandard, &infoh);
+      writechk = (hex ? *((__int64 *)&infoh.ftLastWriteTime) : 0);
+      if (OSOverwrite->GetValue())
+	writechk = 0;
 
 //    ifstream mntns(colrFile, ios::binary);
 //    CField C(mntns);

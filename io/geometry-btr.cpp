@@ -53,6 +53,7 @@
 #include NIFLIB_BASEDIR(include/obj/BSMultiBoundAABB.h)
 #include NIFLIB_BASEDIR(include/obj/BSLightingShaderProperty.h)
 #include NIFLIB_BASEDIR(include/obj/BSShaderTextureSet.h)
+#include NIFLIB_BASEDIR(include/obj/BSSegmentedTriShape.h)
 
 using namespace Niflib;
 
@@ -440,8 +441,6 @@ void wrteBTR(SimplField& ter, const char *pattern) {
 	  BSMultiBoundNodeRef woot = new BSMultiBoundNode;
 	  BSMultiBoundRef mbnd = new BSMultiBound;
 	  BSMultiBoundAABBRef aabb = new BSMultiBoundAABB;
-	  NiTriShapeRef watr = new NiTriShape;
-	  NiTriShapeDataRef wdta = new NiTriShapeData;
 
 	  /* no interfaces */
 	  mbnd->data = aabb;
@@ -453,112 +452,181 @@ void wrteBTR(SimplField& ter, const char *pattern) {
 	  root->AddChild((NiAVObjectRef)woot);
 //	  woot->SetName("chunk");
 	  woot->SetName("water");
-	  woot->AddChild((NiAVObjectRef)watr);
-	  wdta->SetConsistencyFlags(CT_MUTABLE);
-	  wdta->numUvMask = (min(resx, resy) < 32 ? 0x0000 : 0x0000);
-//	  watr->SetName("water");
-	  watr->SetData(wdta);
-	  watr->unknownShort1 = 0;  // not 8
-//	  watr->properties[0] = lght;
-	  watr->SetFlags(14);
-	  watr->SetLocalScale(lscale);
-	  watr->SetLocalTranslation(Niflib::Vector3(
-	    0.0f,
-	    0.0f,
-	    0.0f
-	  ));
 
-	  zmin = 0.0;
-	  zmax = 0.0;
+	  /* --------------------------------------------------------------------------------- */
+	  if (min(resx, resy) == 4) {
+	    set<float> levels; set<float>::iterator itl;
+	    set<class objWater *, struct W>::iterator itw;
 
-#if 0
-	  for (itv = SectorVerticeO[ty][tx].begin(); itv != SectorVerticeO[ty][tx].end(); itv++) {
-	    /* assign index the moment of writing it out */
-	    (*itv)->idx = idx++;
+	    zmin = 0.0;
+	    zmax = 0.0;
 
-	    /* record ocean-level (excluding far-borders) */
-	    if (((*itv)->x != 131072.0) &&
-	        ((*itv)->y != 131072.0) &&
-		((*itv)->z <       0.0)) {
-	      Point2d p(
-		(float)(floor((*itv)->x * (1.0 / 4096.0)) * 4096.0),
-		(float)(floor((*itv)->y * (1.0 / 4096.0)) * 4096.0)
-	      );
+	    /* collect all distinct levels */
+	    for (itw = SectorWaters[ty][tx].begin(); itw != SectorWaters[ty][tx].end(); itw++) {
+	      float zlevel = (float)(((*itw)->z - 14000) / lscale);
 
-	      class objWater wp;
-	      class objWater *w;
+	      levels.insert(zlevel);
 
-	      set<class objWater *, struct W>::iterator i;
+	      zmin = min(zmin, zlevel);
+	      zmax = max(zmax, zlevel);
+	    }
 
-	      wp.wtx = p; w = NULL;
+	    /* create a bssts per level */
+	    for (itl = levels.begin(); itl != levels.end(); itl++) {
+	      BSSegmentedTriShapeRef watr = new BSSegmentedTriShape;
+	      NiTriShapeDataRef wdta = new NiTriShapeData;
 
-	      i = SectorWaters[ty][tx].find(&wp); if (i != SectorWaters[ty][tx].end()) w = *i;
+	      woot->AddChild((NiAVObjectRef)watr);
+	      wdta->SetConsistencyFlags(CT_MUTABLE);
+	      wdta->numUvMask = (min(resx, resy) < 32 ? 0x0000 : 0x0000);
+	      watr->numSegTriangles = 16;
+	      watr->segTriangles.resize(16);
+//	      watr->SetName("water");
+	      watr->SetData(wdta);
+	      watr->unknownShort1 = 0;  // not 8
+//	      watr->properties[0] = lght;
+	      watr->SetFlags(14);
+	      watr->SetLocalScale(lscale);
+	      watr->SetLocalTranslation(Niflib::Vector3(
+		0.0f,
+		0.0f,
+		0.0f
+	      ));
 
-	      if (!w) {
-		w = new(&WPool) class objWater(); assert(w);
-		w->wtx = p;
+	      vector<Niflib::Vector3> passw;
+	      vector<Niflib::Triangle> passq;
 
-		w->x = p.x;
-		w->y = p.y;
-		w->z = 0.0;
+	      int idx = 0;
+	      for (itw = SectorWaters[ty][tx].begin(); itw != SectorWaters[ty][tx].end(); itw++) {
+		float zlevel = (float)(((*itw)->z - 14000) / lscale);
+		if (zlevel == *itl) {
+		  int gridx = (int)floor((*itw)->x / 4096);
+		  int gridy = (int)floor((*itw)->y / 4096);
 
-		SectorWaters[ty][tx].insert(w);
+		  watr->segTriangles[gridx * 4 + gridy].unknownInt1 = idx++ * 1536;
+		  watr->segTriangles[gridx * 4 + gridy].unknownInt2 =          512;
+
+		  int idx1 = (int)passw.size();
+		  passw.push_back(Niflib::Vector3(
+		    (float)(((*itw)->x -     0) / lscale),
+		    (float)(((*itw)->y -     0) / lscale),
+		    (float)(((*itw)->z - 14000) / lscale))
+		  );
+
+		  int idx2 = (int)passw.size();
+		  passw.push_back(Niflib::Vector3(
+		    (float)(((*itw)->x +  4096) / lscale),
+		    (float)(((*itw)->y +     0) / lscale),
+		    (float)(((*itw)->z - 14000) / lscale))
+		  );
+
+		  int idx3 = (int)passw.size();
+		  passw.push_back(Niflib::Vector3(
+		    (float)(((*itw)->x +     0) / lscale),
+		    (float)(((*itw)->y +  4096) / lscale),
+		    (float)(((*itw)->z - 14000) / lscale))
+		  );
+
+		  int idx4 = (int)passw.size();
+		  passw.push_back(Niflib::Vector3(
+		    (float)(((*itw)->x +  4096) / lscale),
+		    (float)(((*itw)->y +  4096) / lscale),
+		    (float)(((*itw)->z - 14000) / lscale))
+		  );
+
+		  passq.push_back(Niflib::Triangle(
+		    idx1,
+		    idx2,
+		    idx3
+		  ));
+
+		  passq.push_back(Niflib::Triangle(
+		    idx4,
+		    idx3,
+		    idx2
+		  ));
+		}
 	      }
+
+	      wdta->SetVertices(passw);
+	      wdta->SetTriangles(passq);
 	    }
 	  }
-#endif
+	  /* --------------------------------------------------------------------------------- */
+	  else {
+	    NiTriShapeRef watr = new NiTriShape;
+	    NiTriShapeDataRef wdta = new NiTriShapeData;
 
-	  vector<Niflib::Vector3> passw;
-	  vector<Niflib::Triangle> passq;
-
-	  set<class objWater *, struct W>::iterator itw;
-	  for (itw = SectorWaters[ty][tx].begin(); itw != SectorWaters[ty][tx].end(); itw++) {
-	    int idx1 = (int)passw.size();
-	    passw.push_back(Niflib::Vector3(
-	      (float)(((*itw)->x -     0) / lscale),
-	      (float)(((*itw)->y -     0) / lscale),
-	      (float)(((*itw)->z - 14000) / lscale))
-	    );
-
-	    int idx2 = (int)passw.size();
-	    passw.push_back(Niflib::Vector3(
-	      (float)(((*itw)->x +  4096) / lscale),
-	      (float)(((*itw)->y +     0) / lscale),
-	      (float)(((*itw)->z - 14000) / lscale))
-	    );
-
-	    int idx3 = (int)passw.size();
-	    passw.push_back(Niflib::Vector3(
-	      (float)(((*itw)->x +     0) / lscale),
-	      (float)(((*itw)->y +  4096) / lscale),
-	      (float)(((*itw)->z - 14000) / lscale))
-	    );
-
-	    int idx4 = (int)passw.size();
-	    passw.push_back(Niflib::Vector3(
-	      (float)(((*itw)->x +  4096) / lscale),
-	      (float)(((*itw)->y +  4096) / lscale),
-	      (float)(((*itw)->z - 14000) / lscale))
-	    );
-
-	    passq.push_back(Niflib::Triangle(
-	      idx1,
-	      idx2,
-	      idx3
+	    woot->AddChild((NiAVObjectRef)watr);
+	    wdta->SetConsistencyFlags(CT_MUTABLE);
+	    wdta->numUvMask = (min(resx, resy) < 32 ? 0x0000 : 0x0000);
+//	    watr->SetName("water");
+	    watr->SetData(wdta);
+	    watr->unknownShort1 = 0;  // not 8
+//	    watr->properties[0] = lght;
+	    watr->SetFlags(14);
+	    watr->SetLocalScale(lscale);
+	    watr->SetLocalTranslation(Niflib::Vector3(
+	      0.0f,
+	      0.0f,
+	      0.0f
 	    ));
 
-	    passq.push_back(Niflib::Triangle(
-	      idx4,
-	      idx3,
-	      idx2
-	    ));
+	    zmin = 0.0;
+	    zmax = 0.0;
 
-	    zmin = min(zmin, (float)((*itw)->z - 14000));
-	    zmax = max(zmax, (float)((*itw)->z - 14000));
+	    vector<Niflib::Vector3> passw;
+	    vector<Niflib::Triangle> passq;
+
+	    set<class objWater *, struct W>::iterator itw;
+	    for (itw = SectorWaters[ty][tx].begin(); itw != SectorWaters[ty][tx].end(); itw++) {
+	      int idx1 = (int)passw.size();
+	      passw.push_back(Niflib::Vector3(
+		(float)(((*itw)->x -     0) / lscale),
+		(float)(((*itw)->y -     0) / lscale),
+		(float)(((*itw)->z - 14000) / lscale))
+	      );
+
+	      int idx2 = (int)passw.size();
+	      passw.push_back(Niflib::Vector3(
+		(float)(((*itw)->x +  4096) / lscale),
+		(float)(((*itw)->y +     0) / lscale),
+		(float)(((*itw)->z - 14000) / lscale))
+	      );
+
+	      int idx3 = (int)passw.size();
+	      passw.push_back(Niflib::Vector3(
+		(float)(((*itw)->x +     0) / lscale),
+		(float)(((*itw)->y +  4096) / lscale),
+		(float)(((*itw)->z - 14000) / lscale))
+	      );
+
+	      int idx4 = (int)passw.size();
+	      passw.push_back(Niflib::Vector3(
+		(float)(((*itw)->x +  4096) / lscale),
+		(float)(((*itw)->y +  4096) / lscale),
+		(float)(((*itw)->z - 14000) / lscale))
+	      );
+
+	      passq.push_back(Niflib::Triangle(
+		idx1,
+		idx2,
+		idx3
+	      ));
+
+	      passq.push_back(Niflib::Triangle(
+		idx4,
+		idx3,
+		idx2
+	      ));
+
+	      zmin = min(zmin, (float)((*itw)->z - 14000));
+	      zmax = max(zmax, (float)((*itw)->z - 14000));
+	    }
+
+	    wdta->SetVertices(passw);
+	    wdta->SetTriangles(passq);
 	  }
-
-	  wdta->SetVertices(passw);
-	  wdta->SetTriangles(passq);
 
 	  /* no interfaces */
 	  aabb->minimum = Vector3(4096.0f * lscale * 0.5f, 4096.0f * lscale * 0.5f,        ((zmin + zmax) * 0.5f));

@@ -125,6 +125,8 @@ wxOscape::wxOscape( wxWindow* parent, wxWindowID id, const wxString& title, cons
 	OSWorldspace = new wxComboBox( OSPanelPlugins, wxID_ANY, wxT("Tamriel"), wxDefaultPosition, wxDefaultSize, 0, NULL, 0 );
 	OSWorldspace->Append( wxT("Tamriel") );
 	OSWorldspace->Append( wxT("SEWorld") );
+	OSWorldspace->SetToolTip( wxT("The worldspace of which you want to extract data") );
+	
 	bSizer14->Add( OSWorldspace, 1, wxALL, 5 );
 	
 	OSWorldspaceFill = new wxButton( OSPanelPlugins, wxID_ANY, wxT("Fill"), wxDefaultPosition, wxDefaultSize, 0 );
@@ -167,7 +169,7 @@ wxOscape::wxOscape( wxWindow* parent, wxWindowID id, const wxString& title, cons
 	
 	OSPluginExtract = new wxButton( OSPanelPlugins, wxID_ANY, wxT("Extract"), wxDefaultPosition, wxDefaultSize, 0 );
 	OSPluginExtract->Enable( false );
-	OSPluginExtract->SetToolTip( wxT("Extract the height-data to the given file") );
+	OSPluginExtract->SetToolTip( wxT("Start extract the desired data to the given file (and related files)") );
 	
 	bSizer42->Add( OSPluginExtract, 0, wxALL, 5 );
 	
@@ -203,6 +205,8 @@ wxOscape::wxOscape( wxWindow* parent, wxWindowID id, const wxString& title, cons
 	
 	OSOrientation = new wxCheckBox( OSPanelHeightfield, wxID_ANY, wxT("horizontal orientation"), wxDefaultPosition, wxDefaultSize, 0 );
 	OSOrientation->SetValue(true); 
+	OSOrientation->SetToolTip( wxT("Give a hint to the program which is the orientation of the data.") );
+	
 	bSizer37->Add( OSOrientation, 0, wxALL, 5 );
 	
 	OSHeightfieldInfos = new wxPropertyGrid(OSPanelHeightfield, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxPG_BOLD_MODIFIED|wxPG_DEFAULT_STYLE);
@@ -232,6 +236,8 @@ wxOscape::wxOscape( wxWindow* parent, wxWindowID id, const wxString& title, cons
 	bSizer421 = new wxBoxSizer( wxHORIZONTAL );
 	
 	OSBaseDirOut1 = new wxDirPickerCtrl( OSPanelHeightfield, wxID_ANY, wxT("./generated"), wxT("Select a folder"), wxDefaultPosition, wxDefaultSize, wxDIRP_USE_TEXTCTRL );
+	OSBaseDirOut1->SetToolTip( wxT("The directory into which to put the generated files") );
+	
 	bSizer421->Add( OSBaseDirOut1, 1, wxALL, 5 );
 	
 	OSHeightfieldAccept = new wxButton( OSPanelHeightfield, wxID_ANY, wxT("Accept"), wxDefaultPosition, wxDefaultSize, 0 );
@@ -757,11 +763,13 @@ wxOscape::wxOscape( wxWindow* parent, wxWindowID id, const wxString& title, cons
 	bSizer4211->Add( OSOverwrite, 0, wxALIGN_CENTER_VERTICAL|wxALL, 5 );
 	
 	OSBaseDirOut2 = new wxDirPickerCtrl( OSPanelGenerator, wxID_ANY, wxT("./generated"), wxT("Select a folder"), wxDefaultPosition, wxDefaultSize, wxDIRP_USE_TEXTCTRL );
+	OSBaseDirOut2->SetToolTip( wxT("The directory into which to put the generated files") );
+	
 	bSizer4211->Add( OSBaseDirOut2, 1, wxALL, 5 );
 	
 	OSHeightfieldGenerate = new wxButton( OSPanelGenerator, wxID_ANY, wxT("Generate"), wxDefaultPosition, wxDefaultSize, 0 );
 	OSHeightfieldGenerate->Enable( false );
-	OSHeightfieldGenerate->SetToolTip( wxT("Extract the height-data to the given file") );
+	OSHeightfieldGenerate->SetToolTip( wxT("Start generating all fiies to the given directory") );
 	
 	bSizer4211->Add( OSHeightfieldGenerate, 0, wxALL, 5 );
 	
@@ -776,6 +784,8 @@ wxOscape::wxOscape( wxWindow* parent, wxWindowID id, const wxString& title, cons
 	bSizer151 = new wxBoxSizer( wxVERTICAL );
 	
 	OSBaseDirIn = new wxDirPickerCtrl( OSPanelInstaller, wxID_ANY, wxT("./generated"), wxT("Select a folder"), wxDefaultPosition, wxDefaultSize, wxDIRP_DIR_MUST_EXIST|wxDIRP_USE_TEXTCTRL );
+	OSBaseDirIn->SetToolTip( wxT("The directory with the generated files") );
+	
 	bSizer151->Add( OSBaseDirIn, 0, wxALL|wxEXPAND, 5 );
 	
 	OSHeightfieldFirst3 = new wxStaticText( OSPanelInstaller, wxID_ANY, wxT("Select a directory first"), wxDefaultPosition, wxDefaultSize, 0 );
@@ -1013,11 +1023,13 @@ wxOscape::wxOscape( wxWindow* parent, wxWindowID id, const wxString& title, cons
 	bSizer42111 = new wxBoxSizer( wxHORIZONTAL );
 	
 	OSPlugoutDir = new wxDirPickerCtrl( OSPanelInstaller, wxID_ANY, wxT("./Data"), wxT("Select a folder"), wxDefaultPosition, wxDefaultSize, wxDIRP_USE_TEXTCTRL );
+	OSPlugoutDir->SetToolTip( wxT("The directory to install to, can be the \"Data\"-folder or any other location") );
+	
 	bSizer42111->Add( OSPlugoutDir, 1, wxALL, 5 );
 	
 	OSHeightfieldInstall = new wxButton( OSPanelInstaller, wxID_ANY, wxT("Install"), wxDefaultPosition, wxDefaultSize, 0 );
 	OSHeightfieldInstall->Enable( false );
-	OSHeightfieldInstall->SetToolTip( wxT("Extract the height-data to the given file") );
+	OSHeightfieldInstall->SetToolTip( wxT("Start installing the desired files to the given directory") );
 	
 	bSizer42111->Add( OSHeightfieldInstall, 0, wxALL, 5 );
 	
@@ -1032,38 +1044,70 @@ wxOscape::wxOscape( wxWindow* parent, wxWindowID id, const wxString& title, cons
 	bSizer391 = new wxBoxSizer( wxVERTICAL );
 	
 	OSLODDir = new wxDirPickerCtrl( OSPanelReverse, wxID_ANY, wxEmptyString, wxT("Select a folder"), wxDefaultPosition, wxDefaultSize, wxDIRP_DIR_MUST_EXIST|wxDIRP_USE_TEXTCTRL );
-	OSLODDir->SetHelpText( wxT("The directory with the LOD-files. Most often the \"Data/Meshes/Terrain\"-folder.") );
+	OSLODDir->SetToolTip( wxT("The directory with the LOD-files. Most often the \"Data/Meshes/Terrain\"-folder.") );
 	
 	bSizer391->Add( OSLODDir, 0, wxALL|wxEXPAND, 5 );
+	
+	wxBoxSizer* bSizer321;
+	bSizer321 = new wxBoxSizer( wxHORIZONTAL );
+	
+	m_staticText311 = new wxStaticText( OSPanelReverse, wxID_ANY, wxT("Type:"), wxDefaultPosition, wxDefaultSize, 0 );
+	m_staticText311->Wrap( -1 );
+	bSizer321->Add( m_staticText311, 1, wxALL, 5 );
+	
+	OSRevHeight = new wxRadioButton( OSPanelReverse, wxID_ANY, wxT("heightfield"), wxDefaultPosition, wxDefaultSize, wxRB_GROUP );
+	OSRevHeight->SetValue( true ); 
+	OSRevHeight->SetToolTip( wxT("Recover a heightfield from the files in the given directory") );
+	
+	bSizer321->Add( OSRevHeight, 0, wxALL, 5 );
+	
+	OSRevNormals = new wxRadioButton( OSPanelReverse, wxID_ANY, wxT("normal-map"), wxDefaultPosition, wxDefaultSize, 0 );
+	OSRevNormals->Hide();
+	OSRevNormals->SetToolTip( wxT("Recover a normal-map from the files in the given directory") );
+	
+	bSizer321->Add( OSRevNormals, 0, wxALL, 5 );
+	
+	OSRevColors = new wxRadioButton( OSPanelReverse, wxID_ANY, wxT("color-map"), wxDefaultPosition, wxDefaultSize, 0 );
+	OSRevColors->SetToolTip( wxT("Recover a surface-map from the files in the given directory") );
+	
+	bSizer321->Add( OSRevColors, 0, wxALL, 5 );
+	
+	bSizer391->Add( bSizer321, 0, wxEXPAND, 5 );
 	
 	wxString OSLODWorldspaceChoices[] = { wxT("Tamriel"), wxT("SEWorld") };
 	int OSLODWorldspaceNChoices = sizeof( OSLODWorldspaceChoices ) / sizeof( wxString );
 	OSLODWorldspace = new wxChoice( OSPanelReverse, wxID_ANY, wxDefaultPosition, wxDefaultSize, OSLODWorldspaceNChoices, OSLODWorldspaceChoices, 0 );
 	OSLODWorldspace->SetSelection( 0 );
+	OSLODWorldspace->SetToolTip( wxT("Filter files for the worldspace defined here") );
+	
 	bSizer391->Add( OSLODWorldspace, 0, wxALL|wxEXPAND, 5 );
 	
 	wxString OSLODResolutionChoices[] = { wxT("From 4x4 Cells"), wxT("From 8x8 Cells"), wxT("From 16x16 Cells"), wxT("From 32x32 Cells") };
 	int OSLODResolutionNChoices = sizeof( OSLODResolutionChoices ) / sizeof( wxString );
 	OSLODResolution = new wxChoice( OSPanelReverse, wxID_ANY, wxDefaultPosition, wxDefaultSize, OSLODResolutionNChoices, OSLODResolutionChoices, 0 );
 	OSLODResolution->SetSelection( 0 );
+	OSLODResolution->SetToolTip( wxT("Filter files for the resolution defined here") );
+	
 	bSizer391->Add( OSLODResolution, 0, wxALL|wxEXPAND, 5 );
 	
 	wxString OSLODListChoices[] = { wxT("a.btr"), wxT("b.btr") };
 	int OSLODListNChoices = sizeof( OSLODListChoices ) / sizeof( wxString );
 	OSLODList = new wxCheckListBox( OSPanelReverse, wxID_ANY, wxDefaultPosition, wxDefaultSize, OSLODListNChoices, OSLODListChoices, 0 );
-	OSLODList->SetToolTip( wxT("The LODs which should be used to extract the height-field") );
+	OSLODList->SetToolTip( wxT("The LODs which should be used to define the recovery rectangle") );
 	
 	bSizer391->Add( OSLODList, 1, wxALL|wxEXPAND, 5 );
 	
 	wxBoxSizer* bSizer422;
 	bSizer422 = new wxBoxSizer( wxHORIZONTAL );
 	
-	OSFileRecoveryOut = new wxFilePickerCtrl( OSPanelReverse, wxID_ANY, wxT("./Tamriel.raw"), wxT("Select a file"), wxT("*.raw"), wxDefaultPosition, wxDefaultSize, wxFLP_OVERWRITE_PROMPT|wxFLP_SAVE|wxFLP_USE_TEXTCTRL );
+	OSFileRecoveryOut = new wxFilePickerCtrl( OSPanelReverse, wxID_ANY, wxT("./Tamriel.raw"), wxT("Select a file"), wxT("Raw Oscape files (*.raw;*.land)|*.raw;*.land"), wxDefaultPosition, wxDefaultSize, wxFLP_OVERWRITE_PROMPT|wxFLP_SAVE|wxFLP_USE_TEXTCTRL );
+	OSFileRecoveryOut->SetToolTip( wxT("The file to recover to, the extension is automatically set (.raw for heightfields, .land for surface-maps)") );
+	
 	bSizer422->Add( OSFileRecoveryOut, 1, wxALL, 5 );
 	
 	OSLODRecover = new wxButton( OSPanelReverse, wxID_ANY, wxT("Recover"), wxDefaultPosition, wxDefaultSize, 0 );
 	OSLODRecover->Enable( false );
-	OSLODRecover->SetToolTip( wxT("Recover the height-data to the given file") );
+	OSLODRecover->SetToolTip( wxT("Start recovering the desired data to the given file") );
 	
 	bSizer422->Add( OSLODRecover, 0, wxALL, 5 );
 	
@@ -1138,6 +1182,9 @@ wxOscape::wxOscape( wxWindow* parent, wxWindowID id, const wxString& title, cons
 	OSPlugoutDir->Connect( wxEVT_COMMAND_DIRPICKER_CHANGED, wxFileDirPickerEventHandler( wxOscape::ChangePlugoutDir ), NULL, this );
 	OSHeightfieldInstall->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( wxOscape::HeightfieldInstall ), NULL, this );
 	OSLODDir->Connect( wxEVT_COMMAND_DIRPICKER_CHANGED, wxFileDirPickerEventHandler( wxOscape::ChangeLODDir ), NULL, this );
+	OSRevHeight->Connect( wxEVT_COMMAND_RADIOBUTTON_SELECTED, wxCommandEventHandler( wxOscape::ChangeToHeightfield ), NULL, this );
+	OSRevNormals->Connect( wxEVT_COMMAND_RADIOBUTTON_SELECTED, wxCommandEventHandler( wxOscape::ChangeToNormalmap ), NULL, this );
+	OSRevColors->Connect( wxEVT_COMMAND_RADIOBUTTON_SELECTED, wxCommandEventHandler( wxOscape::ChangeToColormap ), NULL, this );
 	OSLODWorldspace->Connect( wxEVT_COMMAND_CHOICE_SELECTED, wxCommandEventHandler( wxOscape::ChangeLODWorldspace ), NULL, this );
 	OSLODResolution->Connect( wxEVT_COMMAND_CHOICE_SELECTED, wxCommandEventHandler( wxOscape::ChangeLODRes ), NULL, this );
 	OSLODList->Connect( wxEVT_COMMAND_LISTBOX_SELECTED, wxCommandEventHandler( wxOscape::ChangeActiveLODs ), NULL, this );
@@ -1204,6 +1251,9 @@ wxOscape::~wxOscape()
 	OSPlugoutDir->Disconnect( wxEVT_COMMAND_DIRPICKER_CHANGED, wxFileDirPickerEventHandler( wxOscape::ChangePlugoutDir ), NULL, this );
 	OSHeightfieldInstall->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( wxOscape::HeightfieldInstall ), NULL, this );
 	OSLODDir->Disconnect( wxEVT_COMMAND_DIRPICKER_CHANGED, wxFileDirPickerEventHandler( wxOscape::ChangeLODDir ), NULL, this );
+	OSRevHeight->Disconnect( wxEVT_COMMAND_RADIOBUTTON_SELECTED, wxCommandEventHandler( wxOscape::ChangeToHeightfield ), NULL, this );
+	OSRevNormals->Disconnect( wxEVT_COMMAND_RADIOBUTTON_SELECTED, wxCommandEventHandler( wxOscape::ChangeToNormalmap ), NULL, this );
+	OSRevColors->Disconnect( wxEVT_COMMAND_RADIOBUTTON_SELECTED, wxCommandEventHandler( wxOscape::ChangeToColormap ), NULL, this );
 	OSLODWorldspace->Disconnect( wxEVT_COMMAND_CHOICE_SELECTED, wxCommandEventHandler( wxOscape::ChangeLODWorldspace ), NULL, this );
 	OSLODResolution->Disconnect( wxEVT_COMMAND_CHOICE_SELECTED, wxCommandEventHandler( wxOscape::ChangeLODRes ), NULL, this );
 	OSLODList->Disconnect( wxEVT_COMMAND_LISTBOX_SELECTED, wxCommandEventHandler( wxOscape::ChangeActiveLODs ), NULL, this );

@@ -51,6 +51,8 @@ extern bool writedds;
 
 bool skipTexture(const char *pattern, const char *pfx, int coordx, int coordy, int reso, bool xyz);
 void wrteTexture(LPDIRECT3DTEXTURE9 tex, const char *pattern, const char *pfx, int coordx, int coordy, int reso, bool xyz);
+D3DXIMAGE_INFO *chckTexture(const char *pattern, const char *pfx, int coordx, int coordy, int reso, bool xyz);
+LPDIRECT3DTEXTURE9 readTexture(const char *pattern, const char *pfx, int coordx, int coordy, int reso, bool xyz, int sizex = D3DX_DEFAULT, int sizey = D3DX_DEFAULT);
 void freeTexture();
 
 #endif
