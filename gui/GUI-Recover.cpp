@@ -465,20 +465,30 @@
       }
     }
 
+    /* align to multiples of 32 cells */
     int tlmt, tsze, csze;
 
     tlmt = 32 / rs;
     tsze = rs;
     csze = 32;
 
+    /* must include "0" (origin) */
+    mxt = max(0, mxt);
+    nxt = min(0, nxt);
+    myt = max(0, myt);
+    nyt = min(0, nyt);
+
     int rx = mxt % tlmt; if (rx < 0) mxt -= tlmt + rx; else if (rx > 0) mxt += tlmt - rx; 
-    int ry = mxt % tlmt; if (ry < 0) mxt -= tlmt + ry; else if (ry > 0) mxt += tlmt - ry; 
+    int ry = myt % tlmt; if (ry < 0) myt -= tlmt + ry; else if (ry > 0) myt += tlmt - ry; 
 
         rx = nxt % tlmt; if (rx < 0) nxt -= tlmt + rx; else if (rx > 0) nxt += tlmt - rx; 
-        ry = nxt % tlmt; if (ry < 0) nxt -= tlmt + ry; else if (ry > 0) nxt += tlmt - ry; 
+        ry = nyt % tlmt; if (ry < 0) nyt -= tlmt + ry; else if (ry > 0) nyt += tlmt - ry; 
 
-    if (mxt < (-nxt - 1)) mxt = -nxt - 1;
-    if (myt < (-nyt - 1)) myt = -nyt - 1;
+    /* make sure both extends are of the same magnitude (0 at center) */
+    if (mxt < (-nxt - 0   )) mxt = -nxt - 0;	/* [-64,32] -> [-64,64] */
+    if (myt < (-nyt - 0   )) myt = -nyt - 0;	/* [-32,64] -> [-32,64] */
+    if (nxt > (-mxt + tlmt)) nxt = -mxt + tlmt; /* [  0,64] -> [-32,64] */
+    if (nyt > (-myt + tlmt)) nyt = -myt + tlmt; /* [ 32,64] -> [-32,64] */
 
     /**/ if (OSRevHeight->GetValue())
       prog->StartProgress(3);

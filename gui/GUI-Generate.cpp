@@ -733,7 +733,7 @@
     if (OSQThreshold ->GetValue().ToDouble(&r)) qual_thresh = max(0.001, min(r, 0.999));
     if (OSAThreshold ->GetValue().ToDouble(&r)) area_thresh = max(0.0, r);
     if (OSTermination->GetValue().ToDouble(&r)) termination = max(0.0, r);
-    if (OSEmphasis   ->GetValue().ToDouble(&r)) emphasis = max(0.0, min(r, 1.0));
+    if (OSEmphasis   ->GetValue().ToDouble(&r)) emphasis = max(0.0, min(r, 10000.0));
 
     if (!OSEmphasis->IsEnabled()) emphasis = 0.0;
 

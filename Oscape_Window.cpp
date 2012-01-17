@@ -203,11 +203,21 @@ wxOscape::wxOscape( wxWindow* parent, wxWindowID id, const wxString& title, cons
 	
 	bSizer37->Add( OSPreview, 1, wxEXPAND | wxALL, 5 );
 	
+	wxBoxSizer* bSizer43;
+	bSizer43 = new wxBoxSizer( wxHORIZONTAL );
+	
 	OSOrientation = new wxCheckBox( OSPanelHeightfield, wxID_ANY, wxT("horizontal orientation"), wxDefaultPosition, wxDefaultSize, 0 );
 	OSOrientation->SetValue(true); 
 	OSOrientation->SetToolTip( wxT("Give a hint to the program which is the orientation of the data.") );
 	
-	bSizer37->Add( OSOrientation, 0, wxALL, 5 );
+	bSizer43->Add( OSOrientation, 0, wxALL, 5 );
+	
+	OSNonSquare = new wxCheckBox( OSPanelHeightfield, wxID_ANY, wxT("non-square"), wxDefaultPosition, wxDefaultSize, 0 );
+	OSNonSquare->SetToolTip( wxT("Give a hint to the program that the data is definitely not square.") );
+	
+	bSizer43->Add( OSNonSquare, 0, wxALL, 5 );
+	
+	bSizer37->Add( bSizer43, 0, wxEXPAND, 5 );
 	
 	OSHeightfieldInfos = new wxPropertyGrid(OSPanelHeightfield, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxPG_BOLD_MODIFIED|wxPG_DEFAULT_STYLE);
 	bSizer37->Add( OSHeightfieldInfos, 1, wxEXPAND | wxALL, 5 );
@@ -1154,6 +1164,7 @@ wxOscape::wxOscape( wxWindow* parent, wxWindowID id, const wxString& title, cons
 	OSPreviewSelector->Connect( wxEVT_COMMAND_CHOICE_SELECTED, wxCommandEventHandler( wxOscape::ChangePreview ), NULL, this );
 	OSPreview->Connect( wxEVT_PAINT, wxPaintEventHandler( wxOscape::PaintH ), NULL, this );
 	OSOrientation->Connect( wxEVT_COMMAND_CHECKBOX_CLICKED, wxCommandEventHandler( wxOscape::ChangeOrientation ), NULL, this );
+	OSNonSquare->Connect( wxEVT_COMMAND_CHECKBOX_CLICKED, wxCommandEventHandler( wxOscape::ChangeNonSquare ), NULL, this );
 	OSFilePoints1->Connect( wxEVT_COMMAND_FILEPICKER_CHANGED, wxFileDirPickerEventHandler( wxOscape::ChangePointsIn1 ), NULL, this );
 	OSPointsClear1->Connect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( wxOscape::ClearPoints1 ), NULL, this );
 	OSBaseDirOut1->Connect( wxEVT_COMMAND_DIRPICKER_CHANGED, wxFileDirPickerEventHandler( wxOscape::ChangeBaseDirOut1 ), NULL, this );
@@ -1223,6 +1234,7 @@ wxOscape::~wxOscape()
 	OSPreviewSelector->Disconnect( wxEVT_COMMAND_CHOICE_SELECTED, wxCommandEventHandler( wxOscape::ChangePreview ), NULL, this );
 	OSPreview->Disconnect( wxEVT_PAINT, wxPaintEventHandler( wxOscape::PaintH ), NULL, this );
 	OSOrientation->Disconnect( wxEVT_COMMAND_CHECKBOX_CLICKED, wxCommandEventHandler( wxOscape::ChangeOrientation ), NULL, this );
+	OSNonSquare->Disconnect( wxEVT_COMMAND_CHECKBOX_CLICKED, wxCommandEventHandler( wxOscape::ChangeNonSquare ), NULL, this );
 	OSFilePoints1->Disconnect( wxEVT_COMMAND_FILEPICKER_CHANGED, wxFileDirPickerEventHandler( wxOscape::ChangePointsIn1 ), NULL, this );
 	OSPointsClear1->Disconnect( wxEVT_COMMAND_BUTTON_CLICKED, wxCommandEventHandler( wxOscape::ClearPoints1 ), NULL, this );
 	OSBaseDirOut1->Disconnect( wxEVT_COMMAND_DIRPICKER_CHANGED, wxFileDirPickerEventHandler( wxOscape::ChangeBaseDirOut1 ), NULL, this );

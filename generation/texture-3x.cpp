@@ -30,6 +30,7 @@
  */
 
 #include "../globals.h"
+#include "../openmp.h"
 #include "../scape/hfield.H"
 
 #include "texture.hpp"
@@ -39,12 +40,12 @@
 
 void wrteColors3(bool cmaps, CView& cf, const char *pattern) {
   // 1k == 32, 3k == 96, 512 == 16 */
-  int resx = rasterx / 32;
-  int resy = rastery / 32;
+  int resx = restx;
+  int resy = resty;
 
   // round down, negative side would be smaller than positive side
-  int offx = tilesx / 2;
-  int offy = tilesy / 2;
+  int offx = offtx;
+  int offy = offty;
 
 #define ADJUSTMENT  0
   /* 1 more to align texels with coordinates (center) */
@@ -70,6 +71,7 @@ void wrteColors3(bool cmaps, CView& cf, const char *pattern) {
   /* initialize progress */
   InitProgress((numty - minty) * (numtx - mintx), hh);
 
+  omp_init_cancellation();
   for (int ty = minty; ty < numty; ty++) {
   for (int tx = mintx; tx < numtx; tx++) {
     int coordx = (tx - offx) * resx;
@@ -92,12 +94,13 @@ void wrteColors3(bool cmaps, CView& cf, const char *pattern) {
 	const int h = th * (ty * rastery) + mh * (lh);
 
 	/* TODO: critical */
+        omp_skip_cancellation();
 	cf.set_row(h);
 	if (!(lh & PROGRESS)) {
 	  logrf("%02dx%02d [%dx%d] %f%%\r", ty, tx, hhh, www, (100.0f * h) / ((ty * rastery) + hh));
 
 	  /* advance progress */
-	  SetProgress(-1, lh);
+	  omp_catch_cancellation(SetProgress(-1, lh));
 	}
 
 	/* calculate pointer of writable position */
@@ -139,6 +142,7 @@ void wrteColors3(bool cmaps, CView& cf, const char *pattern) {
       }
 
       tcol->UnlockRect(0);
+      omp_end_cancellation();
 
       SetTopic("Writing tile {%d,%d} colors:", coordx, coordy);
 

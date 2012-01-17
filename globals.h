@@ -111,6 +111,13 @@ extern int rastery, tilesy, dotiley, rwsizey;
 #define numty (dotiley + nmtiley)
 #define numtx (dotilex + nmtilex)
 
+#define restx (rasterx / 32)
+#define resty (rastery / 32)
+#define tlmtx (32 / restx)
+#define tlmty (32 / resty)
+#define offtx (tlmtx * ((tilesx / tlmtx) >> 1))
+#define offty (tlmty * ((tilesy / tlmty) >> 1))
+
 /* ---------------------------------------------------- */
 
 #define	PROGRESS	63

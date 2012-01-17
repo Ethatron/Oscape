@@ -263,6 +263,7 @@ LPDIRECT3DTEXTURE9 readTexture(const char *pattern, const char *pfx, int coordx,
       if (pfx && !strcmp(pfx, "_fn"))
 	pfx = "_n";
 
+    /* first try PPM */
     if (!tex) {
       strcpy(name, nbase);
       strcat(name, pfx);
@@ -276,6 +277,7 @@ LPDIRECT3DTEXTURE9 readTexture(const char *pattern, const char *pfx, int coordx,
 	&tex);
     }
 
+    /* then try PNG */
     if (!tex) {
       strcpy(name, nbase);
       strcat(name, pfx);
@@ -289,6 +291,7 @@ LPDIRECT3DTEXTURE9 readTexture(const char *pattern, const char *pfx, int coordx,
 	&tex);
     }
 
+    /* then try DDS */
     if (!tex) {
       strcpy(name, nbase);
       strcat(name, pfx);
@@ -305,6 +308,15 @@ LPDIRECT3DTEXTURE9 readTexture(const char *pattern, const char *pfx, int coordx,
       if (tex && xyz && (wchgame == 1)) {
 	abort();
       }
+    }
+
+    /* if nothing helps, make an empty texture */
+    if (!tex) {
+      res = D3DXCreateTexture(
+	pD3DDevice,
+	sizex, sizey, 0,
+	0, D3DFMT_A8R8G8B8/*D3DFMT_UNKNOWN*/, D3DPOOL_MANAGED,
+	&tex);
     }
 
     /* flip-y for Skyrim */

@@ -116,6 +116,7 @@ class wxOscape : public wxFrame
 		wxChoice* OSPreviewSelector;
 		wxPanel* OSPreview;
 		wxCheckBox* OSOrientation;
+		wxCheckBox* OSNonSquare;
 		wxPropertyGrid* OSHeightfieldInfos;
 		wxFilePickerCtrl* OSFilePoints1;
 		wxButton* OSPointsClear1;
@@ -286,6 +287,7 @@ class wxOscape : public wxFrame
 		virtual void ChangePreview( wxCommandEvent& event ) { event.Skip(); }
 		virtual void PaintH( wxPaintEvent& event ) { event.Skip(); }
 		virtual void ChangeOrientation( wxCommandEvent& event ) { event.Skip(); }
+		virtual void ChangeNonSquare( wxCommandEvent& event ) { event.Skip(); }
 		virtual void ChangePointsIn1( wxFileDirPickerEvent& event ) { event.Skip(); }
 		virtual void ClearPoints1( wxCommandEvent& event ) { event.Skip(); }
 		virtual void ChangeBaseDirOut1( wxFileDirPickerEvent& event ) { event.Skip(); }

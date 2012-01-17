@@ -774,7 +774,7 @@ std::set<class objWater *, struct W> SectorWaters[128][128];
 std::set<class objVertex *, struct V> SectorVertices[128][128];
 std::vector<class objFace *> SectorFaces[128][128];
 
-#include <omp.h>
+#include "../openmp.h"
 omp_lock_t SectorLocks[128][128];
 
 void TileGeometry() {
@@ -783,15 +783,16 @@ void TileGeometry() {
     vector<class objFace *>::const_iterator itf;
 
     // 1k == 32, 3k == 96, 512 == 16 */
-    int resx = rasterx / 32;
-    int resy = rastery / 32;
+    int resx = restx;
+    int resy = resty;
 
     // round down, negative side would be smaller than positive side
-    int offx = tilesx / 2;
-    int offy = tilesy / 2;
+    int offx = offtx;
+    int offy = offty;
 
     InitProgress((int)Faces.size());
 
+    omp_init_cancellation();
     for (int ty = minty; ty < numty; ty++)
     for (int tx = mintx; tx < numtx; tx++)
       omp_init_lock(&SectorLocks[ty][tx]);
@@ -840,6 +841,8 @@ void TileGeometry() {
 #pragma omp parallel for schedule(runtime) shared(Faces, Vertices, SectorFaces, SectorVertices)
     for (int f = 0; f < faces; f++) {
 //  for (itf = Faces.begin(); itf != Faces.end(); itf++) {
+      omp_skip_cancellation();
+
       class objVertex vo1 = *(Faces[f]->v[0]), *v1;
       class objVertex vo2 = *(Faces[f]->v[1]), *v2;
       class objVertex vo3 = *(Faces[f]->v[2]), *v3;
@@ -982,12 +985,14 @@ void TileGeometry() {
 
       /* advance progress */
       if ((++tri_sectd & 0xFF) == 0)
-	SetProgress(tri_sectd);
+	omp_catch_cancellation(SetProgress(tri_sectd));
     }
 
     for (int ty = minty; ty < numty; ty++)
     for (int tx = mintx; tx < numtx; tx++)
       omp_destroy_lock(&SectorLocks[ty][tx]);
+
+    omp_end_cancellation();
 }
 
 void ExtrudeBorders() {
@@ -995,12 +1000,12 @@ void ExtrudeBorders() {
     vector<class objFace *>::const_iterator itf;
 
     // 1k == 32, 3k == 96, 512 == 16 */
-    int resx = rasterx / 32;
-    int resy = rastery / 32;
+    int resx = restx;
+    int resy = resty;
 
     // round down, negative side would be smaller than positive side
-    int offx = tilesx / 2;
-    int offy = tilesy / 2;
+    int offx = offtx;
+    int offy = offty;
 
     for (int ty = minty; ty < numty; ty++) {
     for (int tx = mintx; tx < numtx; tx++) {
@@ -1246,12 +1251,12 @@ void OptimizeGeometry() {
     settings.bMeasureOverdraw      = true;                           // default is to measure overdraw
 
     // 1k == 32, 3k == 96, 512 == 16 */
-    int resx = rasterx / 32;
-    int resy = rastery / 32;
+    int resx = restx;
+    int resy = resty;
 
     // round down, negative side would be smaller than positive side
-    int offx = tilesx / 2;
-    int offy = tilesy / 2;
+    int offx = offtx;
+    int offy = offty;
 
     /* initialize progress */
     InitProgress((numty - minty) * (numtx - mintx));

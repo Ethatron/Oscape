@@ -114,12 +114,13 @@
     if (atr == INVALID_FILE_ATTRIBUTES)
       return;
 
+    int tlmt = 0;
     int tsze = 0;
     int csze = 0;
     /**/ if (OSGame->FindItem(wxID_OBLIVON)->IsChecked())
-      tsze = 32, csze = 32;
+      tlmt = 1, tsze = 32, csze = 32;
     else if (OSGame->FindItem(wxID_SKYRIM)->IsChecked())
-      tsze =  4, csze = 32;	// "csze" down to 4 for the lowest LOD, up-to 32 for the highest
+      tlmt = 8, tsze =  4, csze = 32;	// "csze" down to 4 for the lowest LOD, up-to 32 for the highest
 
     /* guarantee at least 32x32 LODs */
     int rasterx = tsze * csze;
@@ -165,8 +166,9 @@
 
 	tilesx = (width  + (rasterx - 1)) / rasterx;
 	tilesy = (height + (rastery - 1)) / rastery;
-	offsx = tilesx >> 1;
-	offsy = tilesy >> 1;
+
+	offsx = tlmt * ((tilesx / tlmt) >> 1);
+	offsy = tlmt * ((tilesy / tlmt) >> 1);
 
 	int scanx = 64;
 	int scany = 64;
@@ -216,80 +218,83 @@
 	if (im->HasAlpha())
 	  a = im->GetAlpha();
 
-	/**/ if (pw == "Heightfield") {
-	  for (int y = 0; y < pheight; y++)
-	  for (int x = 0; x < pwidth; x++) {
-	    int cy = min(y * multy, height - 1);
-	    int cx = min(x * multx, width  - 1);
+	/* don't allow wrong sizes */
+	if (plen == rlen) {
+	  /**/ if (pw == "Heightfield") {
+	    for (int y = 0; y < pheight; y++)
+	    for (int x = 0; x < pwidth; x++) {
+	      int cy = min(y * multy, height - 1);
+	      int cx = min(x * multx, width  - 1);
 
-	    /* may exceed 32bit */
-	    size_t cp = width; cp *= cy; cp += cx;
-	    unsigned short el = ((unsigned short *)mem)[cp];
+	      /* may exceed 32bit */
+	      size_t cp = width; cp *= cy; cp += cx;
+	      unsigned short el = ((unsigned short *)mem)[cp];
 
-	    if (((y % scany) == 0) ||
-		((x % scanx) == 0))
-	      el >>= 1;
+	      if (((y % scany) == 0) ||
+		  ((x % scanx) == 0))
+		el >>= 1;
 
-	    if (((y * multy) > (height - 1)) ||
-		((x * multx) > (width  - 1)))
-	      el = 512;
+	      if (((y * multy) > (height - 1)) ||
+		  ((x * multx) > (width  - 1)))
+		el = 512;
 
-	    rgb[((((pheight - 1) - y) * pwidth) + (x)) * 3 + 0] = min(255, el / 24);
-	    rgb[((((pheight - 1) - y) * pwidth) + (x)) * 3 + 1] = min(255, el / 24);
-	    rgb[((((pheight - 1) - y) * pwidth) + (x)) * 3 + 2] = min(255, el / 24);
+	      rgb[((((pheight - 1) - y) * pwidth) + (x)) * 3 + 0] = min(255, el / 24);
+	      rgb[((((pheight - 1) - y) * pwidth) + (x)) * 3 + 1] = min(255, el / 24);
+	      rgb[((((pheight - 1) - y) * pwidth) + (x)) * 3 + 2] = min(255, el / 24);
+	    }
+
+	    im->ConvertToGreyscale();
 	  }
+	  else if (pw == "Features") {
+	    for (int y = 0; y < pheight; y++)
+	    for (int x = 0; x < pwidth; x++) {
+	      int cy = min(y * multy, height - 1);
+	      int cx = min(x * multx, width  - 1);
 
-	  im->ConvertToGreyscale();
-	}
-	else if (pw == "Features") {
-	  for (int y = 0; y < pheight; y++)
-	  for (int x = 0; x < pwidth; x++) {
-	    int cy = min(y * multy, height - 1);
-	    int cx = min(x * multx, width  - 1);
+	      /* may exceed 32bit */
+	      size_t cp = width; cp *= cy; cp += cx;
+	      unsigned char el = ((unsigned char *)mem)[cp];
 
-	    /* may exceed 32bit */
-	    size_t cp = width; cp *= cy; cp += cx;
-	    unsigned char el = ((unsigned char *)mem)[cp];
+	      if (((y % scany) == 0) ||
+		  ((x % scanx) == 0))
+		el >>= 1;
 
-	    if (((y % scany) == 0) ||
-		((x % scanx) == 0))
-	      el >>= 1;
+	      if (((y * multy) > (height - 1)) ||
+		  ((x * multx) > (width  - 1)))
+		el = 0;
 
-	    if (((y * multy) > (height - 1)) ||
-		((x * multx) > (width  - 1)))
-	      el = 0;
+	      rgb[((((pheight - 1) - y) * pwidth) + (x)) * 3 + 0] = min(255, el);
+	      rgb[((((pheight - 1) - y) * pwidth) + (x)) * 3 + 1] = min(255, el);
+	      rgb[((((pheight - 1) - y) * pwidth) + (x)) * 3 + 2] = min(255, el);
+	    }
 
-	    rgb[((((pheight - 1) - y) * pwidth) + (x)) * 3 + 0] = min(255, el);
-	    rgb[((((pheight - 1) - y) * pwidth) + (x)) * 3 + 1] = min(255, el);
-	    rgb[((((pheight - 1) - y) * pwidth) + (x)) * 3 + 2] = min(255, el);
+	    im->ConvertToGreyscale();
 	  }
+	  else if (pw == "Surface") {
+	    for (int y = 0; y < pheight; y++)
+	    for (int x = 0; x < pwidth; x++) {
+	      int cy = min(y * multy, height - 1);
+	      int cx = min(x * multx, width  - 1);
 
-	  im->ConvertToGreyscale();
-	}
-	else if (pw == "Surface") {
-	  for (int y = 0; y < pheight; y++)
-	  for (int x = 0; x < pwidth; x++) {
-	    int cy = min(y * multy, height - 1);
-	    int cx = min(x * multx, width  - 1);
+	      /* may exceed 32bit */
+	      size_t cp = width; cp *= cy; cp += cx;
+	      unsigned long el = ((unsigned long *)mem)[cp];
+	      unsigned char r = (el >> 24) & 0xFF;
+	      unsigned char g = (el >> 16) & 0xFF;
+	      unsigned char b = (el >>  8) & 0xFF;
 
-	    /* may exceed 32bit */
-	    size_t cp = width; cp *= cy; cp += cx;
-	    unsigned long el = ((unsigned long *)mem)[cp];
-	    unsigned char r = (el >> 24) & 0xFF;
-	    unsigned char g = (el >> 16) & 0xFF;
-	    unsigned char b = (el >>  8) & 0xFF;
+	      if (((y % scany) == 0) ||
+		  ((x % scanx) == 0))
+		r >>= 1, g >>= 1, b >>= 1;
 
-	    if (((y % scany) == 0) ||
-		((x % scanx) == 0))
-	      r >>= 1, g >>= 1, b >>= 1;
+	      if (((y * multy) > (height - 1)) ||
+		  ((x * multx) > (width  - 1)))
+		r = 0, g = 0, b = 0;
 
-	    if (((y * multy) > (height - 1)) ||
-		((x * multx) > (width  - 1)))
-	      r = 0, g = 0, b = 0;
-
-	    rgb[((((pheight - 1) - y) * pwidth) + (x)) * 3 + 0] = min(255, r);
-	    rgb[((((pheight - 1) - y) * pwidth) + (x)) * 3 + 1] = min(255, g);
-	    rgb[((((pheight - 1) - y) * pwidth) + (x)) * 3 + 2] = min(255, b);
+	      rgb[((((pheight - 1) - y) * pwidth) + (x)) * 3 + 0] = min(255, r);
+	      rgb[((((pheight - 1) - y) * pwidth) + (x)) * 3 + 1] = min(255, g);
+	      rgb[((((pheight - 1) - y) * pwidth) + (x)) * 3 + 2] = min(255, b);
+	    }
 	  }
 	}
 
@@ -378,13 +383,13 @@
     OSHeightfieldFirst1->Hide();
     OSHeightfieldFirst1->GetParent()->Layout();
 
-    int tlim = 0;
+    int tlmt = 0;
     int tsze = 0;
     int csze = 0;
-    if (OSGame->FindItem(wxID_OBLIVON)->IsChecked())
-      tlim = 1, tsze = 32, csze = 32;
+    /**/ if (OSGame->FindItem(wxID_OBLIVON)->IsChecked())
+      tlmt = 1, tsze = 32, csze = 32;
     else if (OSGame->FindItem(wxID_SKYRIM)->IsChecked())
-      tlim = 8, tsze =  4, csze = 32;	// "csze" down to 4 for the lowest LOD, up-to 32 for the highest
+      tlmt = 8, tsze =  4, csze = 32;	// "csze" down to 4 for the lowest LOD, up-to 32 for the highest
 
     /* guarantee at least 32x32 LODs */
     int rasterx = tsze * csze;
@@ -420,6 +425,7 @@
 
       if (pixel) {
 	bool hor = OSOrientation->GetValue();
+	bool sqr =  !OSNonSquare->GetValue();
 
 	width  = pixel / rasterx;
 	height = pixel / width;
@@ -429,7 +435,8 @@
 	  int w = pixel / h;
 	  double m = sqrt((double)w * w + (double)h * h);
 
-	  if (pixel == (w * h))
+	  if ( pixel == (w *  h))
+	  if (( sqr) || (w != h))
 	  if (( hor && (l >  m)) ||
 	      (!hor && (l >= m))) {
 	    l = m;
@@ -441,8 +448,9 @@
 
 	tilesx = (width  + (rasterx - 1)) / rasterx;
 	tilesy = (height + (rastery - 1)) / rastery;
-	offsx = tilesx >> 1;
-	offsy = tilesy >> 1;
+
+	offsx = tlmt * ((tilesx / tlmt) >> 1);
+	offsy = tlmt * ((tilesy / tlmt) >> 1);
       }
 
       CloseHandle(oh);
@@ -500,6 +508,12 @@
     ChangeHeightfieldIn1(OSFileHeightfieldIn1->GetPath());
 
     RegSetKeyValue(Settings, GetGameKey(), "Orientation", RRF_RT_REG_DWORD, OSOrientation->GetValue() ? "H" : "V", 2);
+  }
+
+  void OscapeGUI::ChangeNonSquare(wxCommandEvent& event) {
+    ChangeHeightfieldIn1(OSFileHeightfieldIn1->GetPath());
+
+    RegSetKeyValue(Settings, GetGameKey(), "NonSquare", RRF_RT_REG_DWORD, OSNonSquare->GetValue() ? "N" : "S", 2);
   }
 
   void OscapeGUI::ChangeHeightfieldInfos(wxPropertyGridEvent& event) {

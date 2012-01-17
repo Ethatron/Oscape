@@ -30,6 +30,7 @@
  */
 
 #include "../globals.h"
+#include "../openmp.h"
 #include "../scape/cfield.H"
 #include "../io/texture.hpp"
 
@@ -41,12 +42,12 @@
 
 void wrteRecovery1(string weouth, int sizex, int sizey) {
     // 1k == 32, 3k == 96, 512 == 16 */
-    int resx = rasterx / 32;
-    int resy = rastery / 32;
+    int resx = restx;
+    int resy = resty;
 
     // round down, negative side would be smaller than positive side
-    int offx = tilesx / 2;
-    int offy = tilesy / 2;
+    int offx = offtx;
+    int offy = offty;
 
     /* get the heightfield sink */
     CSink<unsigned short> cs(weouth.data(), sizex, sizey);
@@ -59,6 +60,7 @@ void wrteRecovery1(string weouth, int sizex, int sizey) {
     /* initialize progress */
     InitProgress((numty - minty) * (numtx - mintx), hh);
 
+    omp_init_cancellation();
     for (int ty = minty; ty < numty; ty++) {
     for (int tx = mintx; tx < numtx; tx++) {
       int coordx = (tx - offx) * resx;
@@ -97,11 +99,12 @@ void wrteRecovery1(string weouth, int sizex, int sizey) {
 	for (int lh = 0; lh < hh; lh++) {
 	  const int h = /*(ty * rastery) +*/ lh;
 
+          omp_skip_cancellation();
 	  if (!(lh & PROGRESS)) {
 	    logrf("%02dx%02d [%dx%d] %f%% (triangle)\r", ty, tx, hh, ww, (100.0f * h) / ((ty * rastery) + hh));
 
 	    /* advance progress */
-	    SetProgress(-1, lh);
+	    omp_catch_cancellation(SetProgress(-1, lh));
 	  }
 
 	  /* calculate pointer of writable position */
@@ -121,6 +124,7 @@ void wrteRecovery1(string weouth, int sizex, int sizey) {
 	}
 
 	delete[] hmap_o; hmap_o = NULL;
+	omp_end_cancellation();
       } /* fmaps */
 
       /* advance progress */
@@ -131,12 +135,12 @@ void wrteRecovery1(string weouth, int sizex, int sizey) {
 
 void wrteRecovery1(string weouth, int sizex, int sizey, const char *pattern) {
   // 1k == 32, 3k == 96, 512 == 16 */
-  int resx = rasterx / 32;
-  int resy = rastery / 32;
+  int resx = restx;
+  int resy = resty;
 
   // round down, negative side would be smaller than positive side
-  int offx = tilesx / 2;
-  int offy = tilesy / 2;
+  int offx = offtx;
+  int offy = offty;
 
   /* data-mine for the required resolution */
   int realrasterx = 0;
@@ -152,8 +156,8 @@ void wrteRecovery1(string weouth, int sizex, int sizey, const char *pattern) {
       D3DXIMAGE_INFO *icol = chckTexture(pattern, "", coordx, coordy, min(resx, resy), false);
 
       if (icol) {
-	realrasterx = max(realrasterx, icol->Width);
-	realrastery = max(realrastery, icol->Height);
+	realrasterx = max(realrasterx, (int)icol->Width);
+	realrastery = max(realrastery, (int)icol->Height);
       }
     }
   }
@@ -174,6 +178,7 @@ void wrteRecovery1(string weouth, int sizex, int sizey, const char *pattern) {
   /* initialize progress */
   InitProgress((numty - minty) * (numtx - mintx), hh);
 
+  omp_init_cancellation();
   for (int ty = minty; ty < numty; ty++) {
   for (int tx = mintx; tx < numtx; tx++) {
     int coordx = (tx - offx) * resx;
@@ -202,11 +207,12 @@ void wrteRecovery1(string weouth, int sizex, int sizey, const char *pattern) {
       for (int lh = 0; lh < hh; lh++) {
 	const int h = /*(ty * rastery) +*/ lh;
 
+        omp_skip_cancellation();
 	if (!(lh & PROGRESS)) {
 	  logrf("%02dx%02d [%dx%d] %f%% (triangle)\r", ty, tx, hh, ww, (100.0f * h) / ((ty * rastery) + hh));
 
 	  /* advance progress */
-	  SetProgress(-1, lh);
+	  omp_catch_cancellation(SetProgress(-1, lh));
 	}
 
 	/* calculate pointer of writable position */
@@ -240,6 +246,8 @@ void wrteRecovery1(string weouth, int sizex, int sizey, const char *pattern) {
       tcol->UnlockRect(0);
       tcol->Release();
       tcol = NULL;
+
+      omp_end_cancellation();
     } /* fmaps */
 
     /* advance progress */

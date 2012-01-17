@@ -29,6 +29,9 @@
  * version of this file under either the MPL or the LGPL License."
  */
 
+#define	_CRT_SECURE_NO_WARNINGS
+#define	_CRT_NONSTDC_NO_DEPRECATE
+
 #define _USE_MATH_DEFINES
 #include <math.h>
 #include <assert.h>
@@ -241,7 +244,10 @@ static void AccuXYZD(float *nn, ULONG n, int level, int l) {
     vec[1] /= (level * NORMALS_SCALEBYLEVEL);
   }
 
+  /* prevent singularity */
   len = sqrt(vec[1] * vec[1] + vec[2] * vec[2] + vec[3] * vec[3]);
+  if (!len)
+    len = vec[1] = 1.0f, vec[2] = vec[3] = 0.0f;
 
   vec[1] /= len;
   vec[2] /= len;
@@ -274,7 +280,10 @@ static void AccuXYCD(float *nn, ULONG n, int level, int l) {
     vec[4] /= (level * NORMALS_SCALEBYLEVEL);
   }
 
+  /* prevent singularity */
   len = sqrt(vec[4] * vec[4] + vec[2] * vec[2] + vec[3] * vec[3]);
+  if (!len)
+    len = vec[4] = 1.0f, vec[2] = vec[3] = 0.0f;
 
   vec[2] /= len;
   vec[3] /= len;
@@ -407,7 +416,10 @@ template<int mode>
 static void NormXYZD(float *onn, float *nn, int av) {
   float len;
 
+  /* prevent singularity */
   len = sqrt(nn[1] * nn[1] + nn[2] * nn[2] + nn[3] * nn[3]);
+  if (!len)
+    len = nn[1] = 1.0f, nn[2] = nn[3] = 0.0f;
 
   onn[0] = nn[0] / av;  /*d[ 0,1]*/
   onn[1] = nn[1] / len; /*z[-1,1]*/
@@ -424,7 +436,10 @@ template<int mode>
 static void NormXYCD(float *onn, float *nn, int av) {
   float len;
 
+  /* prevent singularity */
   len = sqrt(nn[4] * nn[4] + nn[2] * nn[2] + nn[3] * nn[3]);
+  if (!len)
+    len = nn[4] = 1.0f, nn[2] = nn[3] = 0.0f;
 
   onn[0] = nn[0] / av;  /*d[ 0,1]*/
   onn[1] = nn[1] / av;  /*c[-1,1]*/
@@ -471,7 +486,11 @@ static void LookXYZD(float *nn, float *nr) {
 	fabs(nn[2]),
 	fabs(nn[3])
       )
-      / fabs(nn[1])
+      /
+      max(
+	fabs(nn[1]),
+	fabs(0.001f)
+      )
     );
 
     /* collect magnitudes */
@@ -582,13 +601,20 @@ static ULONG JoinXYZD(float *nn, float *nr) {
 	fabs(vec[3]) * derivb
       ));
 #else
-    float up = derivb *
+    float up = derivb * (
       max(
 	fabs(vec[2]),
 	fabs(vec[3])
       )
-      / fabs(vec[1]);
+      /
+      max(
+	fabs(vec[1]),
+	fabs(0.001f)
+      )
+    );
 
+    /* prevent singularity */
+    vec[1] = max(vec[1], 0.001f);
     if (up > 1.0f) {
       vec[2] /= up;
       vec[3] /= up;
@@ -596,7 +622,7 @@ static ULONG JoinXYZD(float *nn, float *nr) {
 #endif
   }
   else if ((mode & TRGTMODE_CODING) != TRGTMODE_CODING_XYZ) {
-    vec[1] = max(0.0f, vec[1]);
+    vec[1] = max(vec[1], 0.0f);
   }
 
   /* ################################################################# */
@@ -756,7 +782,9 @@ bool TextureInit() {
   D3DPRESENT_PARAMETERS Parameters;
   D3DDISPLAYMODE Mode;
 
-  if (!(pD3D = Direct3DCreate9(D3D_SDK_VERSION)))
+  if (pD3D && pD3DDevice)
+    return true;
+  if (!pD3D && !(pD3D = Direct3DCreate9(D3D_SDK_VERSION)))
     return false;
 
   pD3D->GetAdapterDisplayMode(0, &Mode);
@@ -795,14 +823,18 @@ bool TextureInit() {
 }
 
 void TextureCleanup() {
-  if (pD3DDevice) pD3DDevice->Release();
-  if (pD3D) pD3D->Release();
+  if (pD3DDevice)
+    pD3DDevice->Release();
+    pD3DDevice = NULL;
+  if (pD3D)
+    pD3D->Release();
+    pD3D = NULL;
 }
 
 /* ####################################################################################
  */
 
-static bool TextureConvert(D3DSURFACE_DESC &info, LPDIRECT3DTEXTURE9 *tex, bool black) {
+bool TextureConvert(D3DSURFACE_DESC &info, LPDIRECT3DTEXTURE9 *tex, bool black) {
   LPDIRECT3DTEXTURE9 replct;
   LPDIRECT3DSURFACE9 stex, srep;
   HRESULT res;
@@ -1031,6 +1063,17 @@ static int TCOMPRESS_CHANNELS(int fmt) {
   return 0;
 }
 
+/* in Oblivion the encoding to DXT1 apparently turns
+ * off the shader which handle the alpha-information
+ * to prevent that just code to DXT1 when the information
+ * is neutral:
+ * - for normals, black means no specular
+ * - for colors, white means no transparency/parallax
+ */
+#define CollapseAlpha(fmt, blk, wht)	(TCOMPRESS_NORMAL(fmt) ? blk       : wht      )
+#define MinimalAlpha(fmt, blk, wht, bw)	(TCOMPRESS_NORMAL(fmt) ? blk || bw : wht || bw)
+#define ExistAlpha(fmt, org)		((TCOMPRESS_CHANNELS(fmt) > 3) && (org != D3DFMT_DXT1))
+
 /* ------------------------------------------------------------------------------------
  */
 
@@ -1137,66 +1180,78 @@ static bool TextureConvertRAW(int minlevel, LPDIRECT3DTEXTURE9 *tex, bool optimi
       return TextureCollapse(tex, D3DFMT_A8R8G8B8, TCOMPRESS_SWIZZL(format));
     }
 
-    bool white = ((histn[0] == 1) && histo[0][0xFF]);
+    bool white = ((histn[0] == 1) && histo[0][0xFF]                  );
+    bool black = ((histn[0] == 1) &&                   histo[0][0x00]);
     bool blawh = ((histn[0] == 2) && histo[0][0xFF] && histo[0][0x00]);
 
     if (!blank) {
       /* 6bit candidate */
       if (!(mask5 & 0x00070307)) {
-	if (!grey)
-	  addnote(" Quantized 565 color image detected.\n");
-	else
-	  addnote(" Quantized 6 greyscale image detected.\n");
+	if (!grey) addnote(" Quantized 565 color image detected.\n");
+	else       addnote(" Quantized 6 greyscale image detected.\n");
 
-	if (white && !grey)
-	  return TextureConvert<type>(minlevel, tex, !TCOMPRESS_NORMAL(format), D3DFMT_R5G6B5);
-	if (white && grey)
+	/* check if Alpha is killable */
+	if (CollapseAlpha(format, black, white)) {
+	  if (ExistAlpha(format, origFormat))
+	    addnote(" Automatic dropped alpha-channel.\n");
+
+	  if (!grey)
+	    return TextureConvert<type>(minlevel, tex, !TCOMPRESS_NORMAL(format), D3DFMT_R5G6B5);
 	  if (format != TCOMPRESS_L)
 	    return TextureConvertRAW<UTYPE, type, TCOMPRESS_L>(minlevel, tex, false);
+	}
       }
 
       /* 5bit candidate */
       if (!(mask5 & 0x00070707)) {
-	if (!grey)
-	  addnote(" Quantized 555 color image detected.\n");
-	else
-	  addnote(" Quantized 5 greyscale image detected.\n");
+	if (!grey) addnote(" Quantized 555 color image detected.\n");
+	else       addnote(" Quantized 5 greyscale image detected.\n");
 
-	if ((white || blawh) && !grey)
-	  return TextureConvert<type>(minlevel, tex, !TCOMPRESS_NORMAL(format), D3DFMT_A1R5G5B5);
-	if (white && grey)
+	/* check if Alpha is killable */
+	if (CollapseAlpha(format, black, white) && grey) {
+	  if (ExistAlpha(format, origFormat))
+	    addnote(" Automatic dropped alpha-channel.\n");
+
 	  if (format != TCOMPRESS_L)
 	    return TextureConvertRAW<UTYPE, type, TCOMPRESS_L>(minlevel, tex, false);
+	}
+
+	/* check if Alpha is 1bit */
+	if (MinimalAlpha(format, black, white, blawh))
+	  return TextureConvert<type>(minlevel, tex, !TCOMPRESS_NORMAL(format), D3DFMT_A1R5G5B5);
       }
 
       /* 4bit candidate */
       if (!(mask4 & 0x0F0F0F0F)) {
-	if (!grey)
-	  addnote(" Quantized 444 color image detected.\n");
-	else
-	  addnote(" Quantized 4 greyscale image detected.\n");
+	if (!grey) addnote(" Quantized 444 color image detected.\n");
+	else       addnote(" Quantized 4 greyscale image detected.\n");
 
-	if (white)
-	  if (TCOMPRESS_TRANS(format))
+	if (CollapseAlpha(format, black, white))
+	  if (ExistAlpha(format, origFormat))
 	    addnote(" Automatic dropped alpha-channel.\n");
 
 	if (grey) {
 	  if (TCOMPRESS_CHANNELS(format) > 2)
 	    addnote(" Automatic greyscale conversion.\n");
 
-	  if (!white)
-	    return TextureConvert<type>(minlevel, tex, !TCOMPRESS_NORMAL(format), D3DFMT_A4L4);
-	  else
+	  /* check if Alpha is killable */
+	  if (CollapseAlpha(format, black, white)) {
 	    if (format != TCOMPRESS_L)
 	      return TextureConvertRAW<UTYPE, type, TCOMPRESS_L>(minlevel, tex, false);
+	  }
+	  else
+	    return TextureConvert<type>(minlevel, tex, !TCOMPRESS_NORMAL(format), D3DFMT_A4L4);
 	}
 	else {
-	  if (white)
+	  /* check if Alpha is killable */
+	  if (CollapseAlpha(format, black, white))
 	    return TextureConvert<type>(minlevel, tex, !TCOMPRESS_NORMAL(format), D3DFMT_R5G6B5);
-	  else if (blawh)
+
+	  /* check if Alpha is 1bit */
+	  if (MinimalAlpha(format, black, white, blawh))
 	    return TextureConvert<type>(minlevel, tex, !TCOMPRESS_NORMAL(format), D3DFMT_A1R5G5B5);
-	  else
-	    return TextureConvert<type>(minlevel, tex, !TCOMPRESS_NORMAL(format), D3DFMT_A4R4G4B4);
+
+	  return TextureConvert<type>(minlevel, tex, !TCOMPRESS_NORMAL(format), D3DFMT_A4R4G4B4);
 	}
       }
 
@@ -1205,8 +1260,9 @@ static bool TextureConvertRAW(int minlevel, LPDIRECT3DTEXTURE9 *tex, bool optimi
 	if (TCOMPRESS_CHANNELS(format) > 2)
 	  addnote(" Automatic greyscale conversion.\n");
 
-	if (white) {
-	  if (TCOMPRESS_TRANS(format))
+	/* check if Alpha is killable */
+	if (CollapseAlpha(format, black, white)) {
+	  if (ExistAlpha(format, origFormat))
 	    addnote(" Automatic dropped alpha-channel.\n");
 
 	  if (format != TCOMPRESS_L)
@@ -1219,40 +1275,40 @@ static bool TextureConvertRAW(int minlevel, LPDIRECT3DTEXTURE9 *tex, bool optimi
 
       /* two colors in alpha */
       if (histn[0] <= 2) {
-	/* black and white? */
-	if (blawh) {
+	/* check if Alpha is killable */
+	if (CollapseAlpha(format, black, white)) {
 	  /* if it wasn't transparent it must be uncorrelated! */
-	  if (/*TCOMPRESS_TRANS(format) ||*/ white) {
-	    if (TCOMPRESS_TRANS(format))
-	      addnote(" Automatic dropped alpha-channel.\n");
+	  if (ExistAlpha(format, origFormat))
+	    addnote(" Automatic dropped alpha-channel.\n");
 
-	    /* "drop" the alpha-channel, 1bit alpha */
-	    if (format == TCOMPRESS_RGBA)
-	      return TextureConvertRAW<UTYPE, type, TCOMPRESS_RGB>(minlevel, tex, false);
-	    if (format == TCOMPRESS_RGBH)
-	      return TextureConvertRAW<UTYPE, type, TCOMPRESS_RGB>(minlevel, tex, false);
-	    if (format == TCOMPRESS_XYZD)
-	      return TextureConvertRAW<UTYPE, type, TCOMPRESS_XYZ>(minlevel, tex, false);
-	    if (format == TCOMPRESS_xyzD)
-	      return TextureConvertRAW<UTYPE, type, TCOMPRESS_xyz>(minlevel, tex, false);
-	    if (format == TCOMPRESS_LA)
-	      return TextureConvertRAW<UTYPE, type, TCOMPRESS_L  >(minlevel, tex, false);
-	  }
-
-	  /* TODO: if all black and trans convert to 4x4 black L8 */
+	  /* "drop" the alpha-channel, 1bit alpha */
+	  if (format == TCOMPRESS_RGBA)
+	    return TextureConvertRAW<UTYPE, type, TCOMPRESS_RGB>(minlevel, tex, false);
+	  if (format == TCOMPRESS_RGBH)
+	    return TextureConvertRAW<UTYPE, type, TCOMPRESS_RGB>(minlevel, tex, false);
+	  if (format == TCOMPRESS_XYZD)
+	    return TextureConvertRAW<UTYPE, type, TCOMPRESS_XYZ>(minlevel, tex, false);
+	  if (format == TCOMPRESS_xyzD)
+	    return TextureConvertRAW<UTYPE, type, TCOMPRESS_xyz>(minlevel, tex, false);
+	  if (format == TCOMPRESS_LA)
+	    return TextureConvertRAW<UTYPE, type, TCOMPRESS_L  >(minlevel, tex, false);
 	}
       }
 
-      /* TODO: compare RMS of DXT3 vs. DXT5 and choose */
-      if ((!white && !blawh) && verbose)
-	addnote(" Alpha-channel has %d distinct value(s).\n", histn[0]);
+      /* TODO: if all black and trans convert to 4x4 black L8 */
     }
     else {
-      /* two colors in alpha */
-      if (histn[0] <= 2) {
+      /* check if Alpha is 1bit */
+      if (MinimalAlpha(format, black, white, blawh))
 	return TextureConvert<type>(minlevel, tex, !TCOMPRESS_NORMAL(format), D3DFMT_A1);
-      }
+
+      if (format != TCOMPRESS_A)
+	return TextureConvertRAW<UTYPE, type, TCOMPRESS_A >(minlevel, tex, false);
     }
+
+    /* TODO: compare RMS of DXT3 vs. DXT5 and choose */
+    if (verbose && ExistAlpha(format, origFormat))
+      addnote(" Alpha-channel has %d distinct value(s).\n", histn[0]);
   }
 
   /* the lowest mip-level contains a row or a column of 4x4 blocks
@@ -1284,7 +1340,7 @@ static bool TextureConvertRAW(int minlevel, LPDIRECT3DTEXTURE9 *tex, bool optimi
 	    if (format == TCOMPRESS_XZY ) pD3DDevice->CreateTexture(texo.Width, texo.Height, levels, 0, D3DFMT_R8G8B8  , D3DPOOL_SYSTEMMEM, &text, NULL); break;
     case 2: if (format == TCOMPRESS_LA  ) pD3DDevice->CreateTexture(texo.Width, texo.Height, levels, 0, D3DFMT_A8L8    , D3DPOOL_SYSTEMMEM, &text, NULL);
 	    if (format == TCOMPRESS_XYz ) abort(); /* no R8G8 available */ break;
-    case 1: if (format == TCOMPRESS_A   ) pD3DDevice->CreateTexture(texo.Width, texo.Height, levels, 0, D3DFMT_L8      , D3DPOOL_SYSTEMMEM, &text, NULL);
+    case 1: if (format == TCOMPRESS_A   ) pD3DDevice->CreateTexture(texo.Width, texo.Height, levels, 0, D3DFMT_A8      , D3DPOOL_SYSTEMMEM, &text, NULL);
 	    if (format == TCOMPRESS_L   ) pD3DDevice->CreateTexture(texo.Width, texo.Height, levels, 0, D3DFMT_L8      , D3DPOOL_SYSTEMMEM, &text, NULL);
 	    if (format == TCOMPRESS_xyZ ) pD3DDevice->CreateTexture(texo.Width, texo.Height, levels, 0, D3DFMT_L8      , D3DPOOL_SYSTEMMEM, &text, NULL); break;
   }
@@ -1779,7 +1835,8 @@ static bool TextureCompressDXT(int minlevel, LPDIRECT3DTEXTURE9 *tex, bool optim
       return TextureCollapse(tex, D3DFMT_A8R8G8B8, TCOMPRESS_SWIZZL(format));
     }
 
-    bool white = ((histn[0] == 1) && histo[0][0xFF]);
+    bool white = ((histn[0] == 1) && histo[0][0xFF]                  );
+    bool black = ((histn[0] == 1) &&                   histo[0][0x00]);
     bool blawh = ((histn[0] == 2) && histo[0][0xFF] && histo[0][0x00]);
 
     /* if it wasn't transparent it must be uncorrelated! */
@@ -1788,36 +1845,32 @@ static bool TextureCompressDXT(int minlevel, LPDIRECT3DTEXTURE9 *tex, bool optim
 	addnote(" Automatic greyscale conversion.\n");
 
       /* give the same 1:4 compression at no loss (DXT1 is 1:6) */
-      if (white && (origFormat != D3DFMT_DXT1)) {
-	if (TCOMPRESS_TRANS(format))
+      /* check if Alpha is killable */
+      if (CollapseAlpha(format, black, white) && (origFormat != D3DFMT_DXT1)) {
+	if (ExistAlpha(format, origFormat))
 	  addnote(" Automatic dropped alpha-channel.\n");
 
 	return TextureConvertRAW<UTYPE, type, TCOMPRESS_L >(minlevel, tex, false);
       }
-      /* may even go down to A1 */
+      /* check if Color is killable */
       else if (blank) {
 	if (TCOMPRESS_TRANS(format))
 	  addnote(" Automatic dropped color-channels.\n");
 
+	/* may even go down to A1 */
 	return TextureConvertRAW<UTYPE, type, TCOMPRESS_A >(minlevel, tex, true);
       }
-      /* gives only 1:2 compression
-      else
-	return TextureConvertRAW<UTYPE, type, TCOMPRESS_LA>(minlevel, tex, false);
-       */
+      /* gives only 1:2 or 1:4 compression (DXT1 is 1:6, other 1:4) */
+      else if ((origFormat != D3DFMT_DXT1) && (origFormat != D3DFMT_DXT3) && (origFormat != D3DFMT_DXT5))
+	/* may even go down to A4L4 */
+	return TextureConvertRAW<UTYPE, type, TCOMPRESS_LA>(minlevel, tex, true);
     }
 
     /* two colors in alpha */
     if (histn[0] <= 2) {
-      /* black and white?, destroy color */
-      if (blawh) {
-	/* if it wasn't transparent it must be uncorrelated! */
-	if (TCOMPRESS_TRANS(format))
-	  origFormat = D3DFMT_DXT1;
-      }
-      /* white? */
-      else if (white) {
-	if (origFormat != D3DFMT_DXT1)
+      /* check if Alpha is killable */
+      if (CollapseAlpha(format, black, white) && (origFormat != D3DFMT_DXT1)) {
+	if (ExistAlpha(format, origFormat))
 	  addnote(" Automatic dropped alpha-channel.\n");
 
 	/* "drop" the alpha-channel, 1bit alpha */
@@ -1829,6 +1882,12 @@ static bool TextureCompressDXT(int minlevel, LPDIRECT3DTEXTURE9 *tex, bool optim
 	  return TextureCompressDXT<UTYPE, type, TCOMPRESS_XYZ>(minlevel, tex, false);
 	if (format == TCOMPRESS_xyzD)
 	  return TextureCompressDXT<UTYPE, type, TCOMPRESS_xyz>(minlevel, tex, false);
+      }
+      /* black and white?, destroy color */
+      else if (MinimalAlpha(format, black, white, blawh)) {
+	/* if it wasn't transparent it must be uncorrelated! */
+	if (TCOMPRESS_TRANS(format))
+	  origFormat = D3DFMT_DXT1;
       }
     }
 
@@ -1858,7 +1917,7 @@ static bool TextureCompressDXT(int minlevel, LPDIRECT3DTEXTURE9 *tex, bool optim
     }
 
     /* TODO: compare RMS of DXT3 vs. DXT5 and choose */
-    if (!white && !blawh)
+    if (verbose && ExistAlpha(format, origFormat))
       addnote(" Alpha-channel has %d distinct value(s).\n", histn[0]);
   }
 
@@ -2636,6 +2695,36 @@ bool findAlpha(D3DFORMAT fmt) {
   }
 
   return 0;
+}
+
+const char *findType(D3DRESOURCETYPE typ) {
+  switch (typ) {
+    case D3DRTYPE_SURFACE: return "Surface";
+    case D3DRTYPE_VOLUME: return "Volume";
+    case D3DRTYPE_TEXTURE: return "Planar texture";
+    case D3DRTYPE_VOLUMETEXTURE: return "Volumetric texture";
+    case D3DRTYPE_CUBETEXTURE: return "Cubic texture";
+    case D3DRTYPE_VERTEXBUFFER: return "Vertexbuffer";
+    case D3DRTYPE_INDEXBUFFER: return "Indexbuffer";
+  }
+
+  return "Unknown";
+}
+
+const char *findFileformat(D3DXIMAGE_FILEFORMAT fmt) {
+  switch (fmt) {
+    case D3DXIFF_BMP: return "Windows Bitmap";
+    case D3DXIFF_JPG: return "JPEG";
+    case D3DXIFF_TGA: return "Targa";
+    case D3DXIFF_PNG: return "PNG";
+    case D3DXIFF_DDS: return "DirectX texture";
+    case D3DXIFF_PPM: return "NetPBM PPM";
+    case D3DXIFF_DIB: return "DIB";
+    case D3DXIFF_HDR: return "Radiance HDR";
+    case D3DXIFF_PFM: return "NetPBM PFM";
+  }
+
+  return "Unknown";
 }
 
 #undef	fabs

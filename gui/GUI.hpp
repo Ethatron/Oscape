@@ -201,6 +201,7 @@ private:
 
   void ChangePreview(wxCommandEvent& event);
   void ChangeOrientation(wxCommandEvent& event);
+  void ChangeNonSquare(wxCommandEvent& event);
   void ChangeHeightfieldInfos(wxPropertyGridEvent& event);
 
   /* ---------------------------------------------------------------------------- */

@@ -107,11 +107,12 @@ void readNIF(const char *pattern) {
   fiterator itf;
 
   // 1k == 32, 3k == 96, 512 == 16 */
-  int resx = rasterx / 32;
-  int resy = rastery / 32;
+  int resx = restx;
+  int resy = resty;
+
   // round down, negative side would be smaller than positive side
-  int offx = tilesx / 2;
-  int offy = tilesy / 2;
+  int offx = offtx;
+  int offy = offty;
 
   /* initialize progress */
   InitProgress((numty - minty) * (numtx - mintx));
@@ -249,11 +250,11 @@ void wrteNIF(SimplField& ter, const char *pattern) {
   fiterator itf;
 
   // 1k == 32, 3k == 96, 512 == 16 */
-  int resx = rasterx / 32;
-  int resy = rastery / 32;
+  int resx = restx;
+  int resy = resty;
   // round down, negative side would be smaller than positive side
-  int offx = tilesx / 2;
-  int offy = tilesy / 2;
+  int offx = offtx;
+  int offy = offty;
 
   /* initialize progress */
   InitProgress((numty - minty) * (numtx - mintx));

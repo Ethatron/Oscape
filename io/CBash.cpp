@@ -55,15 +55,15 @@ using namespace std;
 
 #ifndef	NDEBUG
 #ifdef	_WIN64
-#pragma comment(lib,"../../../NIFopt/zlib-1.2.3/" LIBDIR "/x64/Debug/libz")
+#pragma comment(lib,"../../../NIFopt/io/zlib-1.2.3/" LIBDIR "/x64/Debug/libz")
 #else
-#pragma comment(lib,"../../../NIFopt/zlib-1.2.3/" LIBDIR "/Debug/libz")
+#pragma comment(lib,"../../../NIFopt/io/zlib-1.2.3/" LIBDIR "/Debug/libz")
 #endif
 #else
 #ifdef	_WIN64
-#pragma comment(lib,"../../../NIFopt/zlib-1.2.3/" LIBDIR "/x64/Release/libz")
+#pragma comment(lib,"../../../NIFopt/io/zlib-1.2.3/" LIBDIR "/x64/Release/libz")
 #else
-#pragma comment(lib,"../../../NIFopt/zlib-1.2.3/" LIBDIR "/Release/libz")
+#pragma comment(lib,"../../../NIFopt/io/zlib-1.2.3/" LIBDIR "/Release/libz")
 #endif
 #endif
 #else
@@ -74,6 +74,22 @@ UINT32 RecordOp::GetCount() { return count; }
 void RecordOp::ResetCount() { count = 0; }
 bool RecordOp::Stop() { return stop; }
 bool RecordOp::GetResult() { return result; }
+#endif
+
+/* ---------------------------------------------------------------------------- */
+
+#define	__USE_MISC
+#include <random.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#include "random_r.c"
+#include "random.c"
+
+#ifdef __cplusplus
+};
 #endif
 
 /* ---------------------------------------------------------------------------- */
@@ -390,15 +406,16 @@ struct landtex {
   };
 
   LPDIRECT3DTEXTURE9 tex;
-  unsigned long mem1x1[1*1];
-  unsigned long mem2x2[2*2];
-  unsigned long mem4x4[4*4];
+  unsigned long mem1x1[1*1+1];
+  unsigned long mem2x2[2*2+1];
+  unsigned long mem4x4[4*4+1];
   unsigned char classification;
 };
 
 #define BLEND_NONGAMMA
 const float gamma_in  = 2.2f / 1.0f;
 const float gamma_out = 1.0f / 2.2f;
+float raisecontrast = 1.0f;
 float upperbrightness = 1.0f;
 
 map<FORMID, struct landtex> ltex;
@@ -465,9 +482,11 @@ const char *GetTextureName<Sk::LTEXRecord>(Sk::LTEXRecord *rec) {
 template<
   class LTEXRecord /*= Ob::LTEXRecord*/
 >
-unsigned long *LookupTexture(FORMID t, int supersample, int supersize) {
+const char *LookupName(FORMID t) {
+  struct landtex *ltex = &::ltex[t];
+
   /* what does a texture of 0 mean? (assume default.dds) */
-  if (t && !ltex[t].rec) {
+  if (t && !ltex->rec) {
     /* find the record */
     ModFile *WinningModFile;
     Record *WinningRecord;
@@ -475,23 +494,48 @@ unsigned long *LookupTexture(FORMID t, int supersample, int supersize) {
     col->LookupWinningRecord(t, WinningModFile, WinningRecord, false);
     if (!WinningRecord)
       return NULL;
-    ltex[t].rec = (LTEXRecord *)WinningRecord;
+    ltex->rec = (LTEXRecord *)WinningRecord;
   }
 
-  if (!ltex[t].tex) {
+  LTEXRecord *rec;
+  if (t && (rec = (LTEXRecord *)ltex->rec))
+    return GetTextureName(rec);
+  else
+    return GetTextureName((LTEXRecord *)NULL);
+}
+
+template<
+  class LTEXRecord /*= Ob::LTEXRecord*/
+>
+unsigned long *LookupTexture(FORMID t, int supersample, int supersize) {
+  struct landtex *ltex = &::ltex[t];
+
+  /* what does a texture of 0 mean? (assume default.dds) */
+  if (t && !ltex->rec) {
+    /* find the record */
+    ModFile *WinningModFile;
+    Record *WinningRecord;
+
+    col->LookupWinningRecord(t, WinningModFile, WinningRecord, false);
+    if (!WinningRecord)
+      return NULL;
+    ltex->rec = (LTEXRecord *)WinningRecord;
+  }
+
+  if (!ltex->tex) {
     /* read in the color */
     const char *name = NULL;
     LPDIRECT3DTEXTURE9 tex = NULL;
     LTEXRecord *rec;
 
-    if (t && (rec = (LTEXRecord *)ltex[t].rec))
+    if (t && (rec = (LTEXRecord *)ltex->rec))
       name = GetTextureName(rec);
     else
       name = GetTextureName((LTEXRecord *)NULL);
 
     if (!name)
       return NULL;
-    if (!(ltex[t].tex = tex = TextureSearch(name)))
+    if (!(ltex->tex = tex = TextureSearch(name)))
       return NULL;
 
     DWORD low;
@@ -526,13 +570,13 @@ unsigned long *LookupTexture(FORMID t, int supersample, int supersize) {
       b /= (texo.Width * texo.Height);
       a /= (texo.Width * texo.Height);
 
+#ifndef	BLEND_NONGAMMA
       /* adjustment */
       r /= upperbrightness;
       g /= upperbrightness;
       b /= upperbrightness;
-      a /= 1.0f;
+      a /= 1.0f           ;
 
-#ifndef	BLEND_NONGAMMA
       /* gamma corrected */
       r = powf(r, gamma_out);
       g = powf(g, gamma_out);
@@ -541,7 +585,7 @@ unsigned long *LookupTexture(FORMID t, int supersample, int supersize) {
 #endif
 
 #define	normalize(c, pos)  (min((unsigned long int)floor((c * 255.0f) + 0.5), 0xFF) << pos)
-      ltex[t].mem1x1[0] =
+      ltex->mem1x1[0] =
 	normalize(r, 24) |
 	normalize(g, 16) |
 	normalize(b,  8) |
@@ -553,7 +597,7 @@ unsigned long *LookupTexture(FORMID t, int supersample, int supersize) {
 
     /* tile 1x1 into 2x2 */
     for (int m = 0; m < (2 * 2); m += 1)
-      ltex[t].mem2x2[m] = ltex[t].mem1x1[0];
+      ltex->mem2x2[m] = ltex->mem1x1[0];
 
     /* 2x2 ------------------------------------------------------- */
     if (supersample >= 2) {
@@ -575,7 +619,7 @@ unsigned long *LookupTexture(FORMID t, int supersample, int supersize) {
 	for (int y = by; y < my; y += 1)
 	for (int x = bx; x < mx; x += 1) {
 	  ULONG t = sTex[(y * texo.Width) + x];
-	  
+
 	  /* gamma corrected */
 	  r += powf((float)((t >> 16) & 0xFF) / 255.0f, gamma_in);
 	  g += powf((float)((t >>  8) & 0xFF) / 255.0f, gamma_in);
@@ -589,13 +633,13 @@ unsigned long *LookupTexture(FORMID t, int supersample, int supersize) {
 	b /= ((mx - bx) * (my - by));
 	a /= ((mx - bx) * (my - by));
 
+#ifndef	BLEND_NONGAMMA
 	/* adjustment */
 	r /= upperbrightness;
 	g /= upperbrightness;
 	b /= upperbrightness;
-	a /= 1.0f;
+	a /= 1.0f           ;
 
-#ifndef	BLEND_NONGAMMA
 	/* gamma corrected */
 	r = powf(r, gamma_out);
 	g = powf(g, gamma_out);
@@ -604,7 +648,7 @@ unsigned long *LookupTexture(FORMID t, int supersample, int supersize) {
 #endif
 
 #define	normalize(c, pos)  (min((unsigned long int)floor((c * 255.0f) + 0.5), 0xFF) << pos)
-	ltex[t].mem2x2[m] =
+	ltex->mem2x2[m] =
 	  normalize(r, 24) |
 	  normalize(g, 16) |
 	  normalize(b,  8) |
@@ -617,10 +661,10 @@ unsigned long *LookupTexture(FORMID t, int supersample, int supersize) {
 
     /* tile 2x2 into 4x4 */
     for (int m = 0; m < 2; m += 1) {
-      ltex[t].mem4x4[8 + m * 4 + 0] = ltex[t].mem4x4[m * 4 + 0] = ltex[t].mem2x2[m * 2 + 0];
-      ltex[t].mem4x4[8 + m * 4 + 1] = ltex[t].mem4x4[m * 4 + 1] = ltex[t].mem2x2[m * 2 + 1];
-      ltex[t].mem4x4[8 + m * 4 + 2] = ltex[t].mem4x4[m * 4 + 2] = ltex[t].mem2x2[m * 2 + 0];
-      ltex[t].mem4x4[8 + m * 4 + 3] = ltex[t].mem4x4[m * 4 + 3] = ltex[t].mem2x2[m * 2 + 1];
+      ltex->mem4x4[8 + m * 4 + 0] = ltex->mem4x4[m * 4 + 0] = ltex->mem2x2[m * 2 + 0];
+      ltex->mem4x4[8 + m * 4 + 1] = ltex->mem4x4[m * 4 + 1] = ltex->mem2x2[m * 2 + 1];
+      ltex->mem4x4[8 + m * 4 + 2] = ltex->mem4x4[m * 4 + 2] = ltex->mem2x2[m * 2 + 0];
+      ltex->mem4x4[8 + m * 4 + 3] = ltex->mem4x4[m * 4 + 3] = ltex->mem2x2[m * 2 + 1];
     }
 
     /* 4x4 ------------------------------------------------------- */
@@ -647,7 +691,7 @@ unsigned long *LookupTexture(FORMID t, int supersample, int supersize) {
 	for (int y = by; y < my; y += 1)
 	for (int x = bx; x < mx; x += 1) {
 	  ULONG t = sTex[(y * texo.Width) + x];
-	  
+
 	  /* gamma corrected */
 	  r += powf((float)((t >> 16) & 0xFF) / 255.0f, gamma_in);
 	  g += powf((float)((t >>  8) & 0xFF) / 255.0f, gamma_in);
@@ -661,13 +705,13 @@ unsigned long *LookupTexture(FORMID t, int supersample, int supersize) {
 	b /= ((mx - bx) * (my - by));
 	a /= ((mx - bx) * (my - by));
 
+#ifndef	BLEND_NONGAMMA
 	/* adjustment */
 	r /= upperbrightness;
 	g /= upperbrightness;
 	b /= upperbrightness;
-	a /= 1.0f;
+	a /= 1.0f           ;
 
-#ifndef	BLEND_NONGAMMA
 	/* gamma corrected */
 	r = powf(r, gamma_out);
 	g = powf(g, gamma_out);
@@ -678,7 +722,7 @@ unsigned long *LookupTexture(FORMID t, int supersample, int supersize) {
 //	fprintf(stderr, " %.3f %.3f %.3f %.3f\n", r, g, b, a);
 
 #define	normalize(c, pos)  (min((unsigned long int)floor((c * 255.0f) + 0.5), 0xFF) << pos)
-	ltex[t].mem4x4[m] =
+	ltex->mem4x4[m] =
 	  normalize(r, 24) |
 	  normalize(g, 16) |
 	  normalize(b,  8) |
@@ -689,17 +733,23 @@ unsigned long *LookupTexture(FORMID t, int supersample, int supersize) {
       tex->UnlockRect(low);
     }
 
-    DumpTexture(name, ltex[t].mem1x1, 1 * 1);
-    DumpTexture(name, ltex[t].mem2x2, 2 * 2);
-    DumpTexture(name, ltex[t].mem4x4, 4 * 4);
+    /* total average is the last value */
+    ltex->mem1x1[ 1] = ltex->mem1x1[0];
+    ltex->mem2x2[ 4] = ltex->mem1x1[0];
+    ltex->mem4x4[16] = ltex->mem1x1[0];
+
+    /* debugging */
+    DumpTexture(name, ltex->mem1x1, 1 * 1);
+    DumpTexture(name, ltex->mem2x2, 2 * 2);
+    DumpTexture(name, ltex->mem4x4, 4 * 4);
   }
 
   if (supersize == 1)
-    return ltex[t].mem1x1;
+    return ltex->mem1x1;
   if (supersize == 2)
-    return ltex[t].mem2x2;
+    return ltex->mem2x2;
   if (supersize == 4)
-    return ltex[t].mem4x4;
+    return ltex->mem4x4;
 
   return NULL;
 }
@@ -708,8 +758,10 @@ template<
   class LTEXRecord /*= Ob::LTEXRecord*/
 >
 unsigned char ClassifyTexture(FORMID t) {
+  struct landtex *ltex = &::ltex[t];
+
   /* what does a texture of 0 mean? (assume default.dds) */
-  if (t && !ltex[t].rec) {
+  if (t && !ltex->rec) {
     /* find the record */
     ModFile *WinningModFile;
     Record *WinningRecord;
@@ -717,15 +769,15 @@ unsigned char ClassifyTexture(FORMID t) {
     col->LookupWinningRecord(t, WinningModFile, WinningRecord, false);
     if (!WinningRecord)
       return NULL;
-    ltex[t].rec = (LTEXRecord *)WinningRecord;
+    ltex->rec = (LTEXRecord *)WinningRecord;
   }
 
-  if (!ltex[t].classification) {
+  if (!ltex->classification) {
     /* read in the name */
     const char *name = NULL;
     LTEXRecord *rec;
 
-    if (t && (rec = (LTEXRecord *)ltex[t].rec))
+    if (t && (rec = (LTEXRecord *)ltex->rec))
       name = GetTextureName(rec);
     else
       name = GetTextureName((LTEXRecord *)NULL);
@@ -756,10 +808,10 @@ unsigned char ClassifyTexture(FORMID t) {
     else if (stristr(name, "street"  )) cls = 255;
     else if (stristr(name, "path"    )) cls = 255;
 
-    ltex[t].classification = cls;
+    ltex->classification = cls;
   }
 
-  return ltex[t].classification;
+  return ltex->classification;
 }
 
 class WindowedWorldOp : public RecordOp {
@@ -1187,11 +1239,27 @@ public:
 	  /* overlay one layer after the other */
 	  if (EXTRACT_BLENDLAYER)
 	  if (land->Layers.IsLoaded()) {
-	    for (int l = 0; l < 0x8; l++) {
-	      std::vector<LANDRecord::LANDLAYERS *>::iterator srch = land->Layers.value.begin();
+	    std::set<SINT16> layers; std::set<SINT16>::iterator ls;
+	    std::vector<LANDRecord::LANDLAYERS *>::iterator srch;
+
+	    if ((cell->XCLC->posX == (0 + 1)) && (cell->XCLC->posY == (-20 + 1))) {
+	      int i = 0;
+	    }
+
+	    srch = land->Layers.value.begin();
+	    while (srch != land->Layers.value.end()) {
+	      LANDRecord::LANDGENTXT *walk = &(*srch)->ATXT.value;
+	      layers.insert(walk->layer);
+
+	      srch++;
+	    }
+
+	    ls = layers.begin();
+	    while (ls != layers.end()) {
+	      srch = land->Layers.value.begin();
 	      while (srch != land->Layers.value.end()) {
 		LANDRecord::LANDGENTXT *walk = &(*srch)->ATXT.value;
-		if (walk->layer == l) {
+		if (walk->layer == *ls) {
 		  /* search for the texture and get the average color of it */
 		  unsigned char tex = ClassifyTexture<LTEXRecord>((*walk).texture);
 
@@ -1249,6 +1317,8 @@ public:
 
 		srch++;
 	      }
+
+	      ls++;
 	    }
 	  }
 
@@ -1298,8 +1368,572 @@ private:
     return ::LookupTexture<LTEXRecord>(t, texsample, ss);
   }
 
+  /* --------------------------------------------------------------------------------------- */
+
+#define extract(c, pos)		(float)((c >> pos) & 0xFF)
+#define randomf()		((1.0f / RAND_MAX) * random())
+#define multipleof(a, b)	(b * ((a + (b - 1)) / b))
+//#define PREMULTIPLIED
+
+  /* blending with alpha from texture looks bad,
+    * in theory the alpha should be a max()-map anyway
+    */
+#define blend(B, a, A, b) (				\
+    ((1.0f - (B/* * A / 0xFF*/)) * a) +			\
+    ((       (B/* * A / 0xFF*/)) * b)			\
+  )
+
   /* 4 * 33 * 4 * 33 * 4 * 4 = 278784 */
-  float bbuf[33 * SUPERSAMPLE_LIMIT][33 * SUPERSAMPLE_LIMIT][4];
+  float bbuf[33 * SUPERSAMPLE_LIMIT][multipleof(33 * SUPERSAMPLE_LIMIT, 16)][4];
+//float fbuf[33 * SUPERSAMPLE_LIMIT][multipleof(33 * SUPERSAMPLE_LIMIT, 16)][4];
+  float blnd[17                    ][multipleof(17                    , 16)];
+
+  /* --------------------------------------------------------------------------------------- */
+  /* randomize between a and b (that is between a super-sampled texture and it's base color) */
+  template<const int ss>
+  float interpol(float a, float b) {
+    const float rnd = randomf();
+
+    return a + ((b - a) * rnd);
+  }
+
+  template<>
+  float interpol<1>(float a, float b) {
+    return a;
+  }
+
+  /* super sample color from bbuf */
+  template<const int ss>
+  float sup(int x, int y, int sx, int sy, float v00, float v10, float v01, float v11) {
+//efine modulo(v, m)	(v % (m    ))
+#define modulo(v, m)	(v & (m - 1))
+    /* (sy & 0) ^= (sy % 1)
+     * (sy & 1) ^= (sy % 2)
+     * (sy & 3) ^= (sy % 4)
+     */
+    float wy = (float)(ss - modulo(sy, ss));
+    float vy = (float)(     modulo(sy, ss));
+    float wx = (float)(ss - modulo(sx, ss));
+    float vx = (float)(     modulo(sx, ss));
+
+    /* jitter the blend-factor a half/full-sample around */
+#define jitters		1.0f
+    float jitterl = randomf() * (jitters / ss);
+    float jitterr = randomf() * (jitters / ss);
+    float jitterx = randomf() * (jitters / ss);
+
+    float valyl =
+      v00          * (wy - jitterl) +
+      v10          * (vy + jitterl);
+    float valyr =
+      v01          * (wy - jitterr) +
+      v11          * (vy + jitterr);
+    float valx =
+      (valyl / ss) * (wx - jitterx) +
+      (valyr / ss) * (vx + jitterx);
+    float val =
+      (valx  / ss);
+
+    return val;
+  }
+
+  template<>
+  float sup<1>(int x, int y, int sx, int sy, float v00, float v10, float v01, float v11) {
+    return v00;
+  }
+
+  /* super sample color from bbuf */
+  template<const int ss>
+  float sup(int x, int y, int sx, int sy, int off) {
+    return sup<ss>(x, y, sx, sy,
+      bbuf[(y + 0) * ss][(x + 0) * ss][off],
+      bbuf[(y + 1) * ss][(x + 0) * ss][off],
+      bbuf[(y + 0) * ss][(x + 1) * ss][off],
+      bbuf[(y + 1) * ss][(x + 1) * ss][off]);
+  }
+
+  /* --------------------------------------------------------------------------------------- */
+  /* get dimensions and location of a quadrant */
+  void DimsQuad(UINT8 quad, int &offsx, int &numsx, int &offsy, int &numsy) {
+    __assume(
+      (quad >= 0) &&
+      (quad <= 3)
+    );
+
+    /* bottom/top are y-flipped */
+    switch (quad) {
+      case 0: /* eBottomLeft  */ offsx =  0; offsy =  0; numsx = 16; numsy = 16; break;
+      case 1: /* eBottomRight */ offsx = 16; offsy =  0; numsx = 17; numsy = 16; break;
+      case 2: /* eTopLeft     */ offsx =  0; offsy = 16; numsx = 16; numsy = 17; break;
+      case 3: /* eTopRight    */ offsx = 16; offsy = 16; numsx = 17; numsy = 17; break;
+    }
+  }
+
+#define NONSS_RANGEX  33
+#define NONSS_RANGEY  33
+#define NONSS_QUADRX  17
+#define NONSS_QUADRY  17
+
+#define YESSS_RANGEX  32
+#define YESSS_RANGEY  32
+#define YESSS_QUADRX  16
+#define YESSS_QUADRY  16
+
+  void DimsQuadNS(UINT8 quad, int &offsx, int &numsx, int &offsy, int &numsy) {
+    /* get the location */
+    DimsQuad(quad, offsx, numsx, offsy, numsy);
+
+    numsx = min(numsx, NONSS_QUADRX);
+    numsy = min(numsy, NONSS_QUADRY);
+  }
+
+  void DimsQuadYS(UINT8 quad, int &offsx, int &numsx, int &offsy, int &numsy) {
+    /* get the location */
+    DimsQuad(quad, offsx, numsx, offsy, numsy);
+
+    numsx = min(numsx, YESSS_QUADRX);
+    numsy = min(numsy, YESSS_QUADRY);
+  }
+
+  /* --------------------------------------------------------------------------------------- */
+  template<const int ss>
+  void CopyTileNS(unsigned long *tex) {
+    /* read beyond last value (1x1 value) */
+    const unsigned long btext = tex[ss*ss];
+
+    const float r = extract(btext, 24);
+    const float g = extract(btext, 16);
+    const float b = extract(btext,  8);
+//  const float a = extract(btext,  0);
+
+    for (int y = 0; y < NONSS_RANGEY; y++)
+    for (int x = 0; x < NONSS_RANGEX; x++) {
+      /* read into fully super-sampled buffer */
+      unsigned long *ctex = tex;
+
+      for (int sy = ((y + 0) * ss); sy < ((y + 1) * ss); sy++)
+      for (int sx = ((x + 0) * ss); sx < ((x + 1) * ss); sx++) {
+	unsigned long ctext = *ctex++;
+
+	float R = extract(ctext, 24);
+	float G = extract(ctext, 16);
+	float B = extract(ctext,  8);
+//	float A = extract(ctext,  0);
+
+	R = interpol<ss>(R, r);
+	G = interpol<ss>(G, g);
+	B = interpol<ss>(B, b);
+//	A = interpol<ss>(A, a);
+
+	bbuf[sy][sx][0] = R;
+	bbuf[sy][sx][1] = G;
+	bbuf[sy][sx][2] = B;
+//	bbuf[sy][sx][3] = A;
+      }
+    }
+  }
+
+  /* copy super-sampled */
+  template<const int ss>
+  void CopyQuadNS(unsigned long *tex, UINT8 quad) {
+    /* read beyond last value (1x1 value) */
+    const unsigned long btext = tex[ss*ss];
+
+    const float r = extract(btext, 24);
+    const float g = extract(btext, 16);
+    const float b = extract(btext,  8);
+//  const float a = extract(btext,  0);
+
+    int offsx, numsx;
+    int offsy, numsy;
+
+    /* get the location */
+    DimsQuadNS(quad, offsx, numsx, offsy, numsy);
+
+    /* copy over */
+    for (int lposy = 0; lposy < numsy; lposy++)
+    for (int lposx = 0; lposx < numsx; lposx++) {
+      /* read into fully super-sampled buffer */
+      unsigned long *ctex = tex;
+
+      const int y = offsy + lposy;
+      const int x = offsx + lposx;
+      for (int sy = ((y + 0) * ss); sy < ((y + 1) * ss); sy++)
+      for (int sx = ((x + 0) * ss); sx < ((x + 1) * ss); sx++) {
+	unsigned long ctext = *ctex++;
+
+	float R = extract(ctext, 24);
+	float G = extract(ctext, 16);
+	float B = extract(ctext,  8);
+//	float A = extract(ctext,  0);
+
+	R = interpol<ss>(R, r);
+	G = interpol<ss>(G, g);
+	B = interpol<ss>(B, b);
+//	A = interpol<ss>(A, a);
+
+	bbuf[sy][sx][0] = blend(1.0f, bbuf[sy][sx][0], alpha, R);
+	bbuf[sy][sx][1] = blend(1.0f, bbuf[sy][sx][1], alpha, G);
+	bbuf[sy][sx][2] = blend(1.0f, bbuf[sy][sx][2], alpha, B);
+//	bbuf[sy][sx][3] = blend(1.0f, bbuf[sy][sx][3], alpha, A);
+      }
+    }
+  }
+
+  /* blend super-sampled */
+  template<const int ss>
+  void BlndQuadNS(unsigned long *tex, UINT8 quad) {
+    /* read beyond last value (1x1 value) */
+    const unsigned long btext = tex[ss*ss];
+
+    const float r = extract(btext, 24);
+    const float g = extract(btext, 16);
+    const float b = extract(btext,  8);
+//  const float a = extract(btext,  0);
+
+    int offsx, numsx;
+    int offsy, numsy;
+
+    /* get the location */
+    DimsQuadYS(quad, offsx, numsx, offsy, numsy);
+
+    /* blend over */
+    for (int lposy = 0; lposy < numsy; lposy++)
+    for (int lposx = 0; lposx < numsx; lposx++) {
+      /* blend with fully super-sampled buffer */
+      unsigned long *ctex = tex;
+
+      const int y = offsy + lposy;
+      const int x = offsx + lposx;
+      for (int sy = ((y + 0) * ss); sy < ((y + 1) * ss); sy++)
+      for (int sx = ((x + 0) * ss); sx < ((x + 1) * ss); sx++) {
+	unsigned long ctext = *ctex++;
+
+	float R = extract(ctext, 24);
+	float G = extract(ctext, 16);
+	float B = extract(ctext,  8);
+//	float A = extract(ctext,  0);
+
+	R = interpol<ss>(R, r);
+	G = interpol<ss>(G, g);
+	B = interpol<ss>(B, b);
+//	A = interpol<ss>(A, a);
+
+	/* supersample alpha */
+	float opc = sup<ss>(x, y, sx, sy,
+	  blnd[lposy + 0][lposx + 0],
+	  blnd[lposy + 1][lposx + 0],
+	  blnd[lposy + 0][lposx + 1],
+	  blnd[lposy + 1][lposx + 1]);
+
+#ifdef	PREMULTIPLIED
+	fbuf[sy][sx][0] = opc * R + (1.0f - opc) * fbuf[sy][sx][0];
+	fbuf[sy][sx][1] = opc * G + (1.0f - opc) * fbuf[sy][sx][1];
+	fbuf[sy][sx][2] = opc * B + (1.0f - opc) * fbuf[sy][sx][2];
+  	fbuf[sy][sx][3] = opc     + (1.0f - opc) * fbuf[sy][sx][3];
+#else
+	bbuf[sy][sx][0] = blend(opc, bbuf[sy][sx][0], alpha, R);
+	bbuf[sy][sx][1] = blend(opc, bbuf[sy][sx][1], alpha, G);
+	bbuf[sy][sx][2] = blend(opc, bbuf[sy][sx][2], alpha, B);
+//	bbuf[sy][sx][3] = blend(opc, bbuf[sy][sx][3], alpha, A);
+#endif
+      }
+    }
+  }
+
+  template<const int ss>
+  void CmbnTileNS() {
+    /* base-layer */
+    for (int y = 0; y < YESSS_RANGEY; y++)
+    for (int x = 0; x < YESSS_RANGEX; x++) {
+      for (int sy = ((y + 0) * ss); sy < ((y + 1) * ss); sy++)
+      for (int sx = ((x + 0) * ss); sx < ((x + 1) * ss); sx++) {
+	/* supersample base-color */
+	float red = fbuf[sy][sx][0];
+	float grn = fbuf[sy][sx][1];
+	float blu = fbuf[sy][sx][2];
+	float alp = fbuf[sy][sx][3];
+
+	bbuf[sy][sx][0] = red + (1.0f - alp) * bbuf[sy][sx][0];
+	bbuf[sy][sx][1] = grn + (1.0f - alp) * bbuf[sy][sx][1];
+	bbuf[sy][sx][2] = blu + (1.0f - alp) * bbuf[sy][sx][2];
+//	bbuf[sy][sx][3] = alp + (1.0f - alp) * bbuf[sy][sx][3];
+      }
+    }
+  }
+
+  /* --------------------------------------------------------------------------------------- */
+
+  /* blend super-sampled */
+  template<const int ss>
+  void BlndQuadMS(unsigned long *tex, UINT8 quad) {
+    /* read beyond last value (1x1 value) */
+    const unsigned long btext = tex[ss*ss];
+
+    const float r = extract(btext, 24);
+    const float g = extract(btext, 16);
+    const float b = extract(btext,  8);
+    //  const float a = extract(btext,  0);
+
+    int offsx, numsx;
+    int offsy, numsy;
+
+    /* get the location */
+    DimsQuadYS(quad, offsx, numsx, offsy, numsy);
+
+    /* blend over */
+    for (int lposy = 0; lposy < numsy; lposy++)
+    for (int lposx = 0; lposx < numsx; lposx++) {
+      /* blend with fully super-sampled buffer */
+      unsigned long *ctex = tex;
+
+      const int y = offsy + lposy;
+      const int x = offsx + lposx;
+      for (int sy = ((y + 0) * ss); sy < ((y + 1) * ss); sy++)
+      for (int sx = ((x + 0) * ss); sx < ((x + 1) * ss); sx++) {
+	unsigned long ctext = *ctex++;
+
+	float R = extract(ctext, 24);
+	float G = extract(ctext, 16);
+	float B = extract(ctext,  8);
+//	float A = extract(ctext,  0);
+
+	R = interpol<ss>(R, r);
+	G = interpol<ss>(G, g);
+	B = interpol<ss>(B, b);
+//	A = interpol<ss>(A, a);
+
+	/* supersample alpha */
+	float opc = sup<ss>(x, y, sx, sy,
+	  blnd[lposy + 0][lposx + 0],
+	  blnd[lposy + 1][lposx + 0],
+	  blnd[lposy + 0][lposx + 1],
+	  blnd[lposy + 1][lposx + 1]);
+
+	/* half-blend by distance from interpolated center */
+	int dy = ss - abs(ss - 2 * modulo(sy, ss));
+	int dx = ss - abs(ss - 2 * modulo(sx, ss));
+
+	opc *= min(dy, dx) + max(dy, dx);
+	opc /= ss * 2 * (1.5f + randomf());
+
+#ifdef	PREMULTIPLIED
+	fbuf[sy][sx][0] = opc * R + (1.0f - opc) * fbuf[sy][sx][0];
+	fbuf[sy][sx][1] = opc * G + (1.0f - opc) * fbuf[sy][sx][1];
+	fbuf[sy][sx][2] = opc * B + (1.0f - opc) * fbuf[sy][sx][2];
+	fbuf[sy][sx][3] = opc     + (1.0f - opc) * fbuf[sy][sx][3];
+#else
+	bbuf[sy][sx][0] = blend(opc, bbuf[sy][sx][0], alpha, R);
+	bbuf[sy][sx][1] = blend(opc, bbuf[sy][sx][1], alpha, G);
+	bbuf[sy][sx][2] = blend(opc, bbuf[sy][sx][2], alpha, B);
+//	bbuf[sy][sx][3] = blend(opc, bbuf[sy][sx][3], alpha, A);
+#endif
+      }
+    }
+  }
+
+  /* --------------------------------------------------------------------------------------- */
+  template<const int ss>
+  void CopyTileRS(unsigned long *tex) {
+    /* read beyond last value (1x1 value) */
+    const unsigned long btext = tex[ss*ss];
+
+    const float r = extract(btext, 24);
+    const float g = extract(btext, 16);
+    const float b = extract(btext,  8);
+//  const float a = extract(btext,  0);
+
+    for (int y = 0; y < NONSS_RANGEY; y++)
+    for (int x = 0; x < NONSS_RANGEX; x++) {
+      /* read into fully super-sampled buffer */
+      unsigned long *ctex = tex;
+
+      int sy = ((y + 0) * ss);
+      int sx = ((x + 0) * ss); {
+	unsigned long ctext = *ctex++;
+
+	float R = extract(ctext, 24);
+	float G = extract(ctext, 16);
+	float B = extract(ctext,  8);
+//	float A = extract(ctext,  0);
+
+	R = interpol<ss>(R, r);
+	G = interpol<ss>(G, g);
+	B = interpol<ss>(B, b);
+//	A = interpol<ss>(A, a);
+
+	bbuf[sy][sx][0] = R;
+	bbuf[sy][sx][1] = G;
+	bbuf[sy][sx][2] = B;
+//	bbuf[sy][sx][3] = A;
+      }
+    }
+  }
+
+  /* copy normal-sampled */
+  template<const int ss>
+  void CopyQuadRS(unsigned long *tex, UINT8 quad) {
+    /* read beyond last value (1x1 value) */
+    const unsigned long btext = tex[ss*ss];
+
+    const float r = extract(btext, 24);
+    const float g = extract(btext, 16);
+    const float b = extract(btext,  8);
+//  const float a = extract(btext,  0);
+
+    int offsx, numsx;
+    int offsy, numsy;
+
+    /* get the location */
+    DimsQuadNS(quad, offsx, numsx, offsy, numsy);
+
+    /* copy over */
+    for (int lposy = 0; lposy < numsy; lposy++)
+    for (int lposx = 0; lposx < numsx; lposx++) {
+      /* blend with normal-sampled buffer */
+      unsigned long *ctex = tex;
+
+      const int y = offsy + lposy;
+      const int x = offsx + lposx;
+      int sy = ((y + 0) * ss);
+      int sx = ((x + 0) * ss); {
+	unsigned long ctext = *ctex++;
+
+	float R = extract(ctext, 24);
+	float G = extract(ctext, 16);
+	float B = extract(ctext,  8);
+//	float A = extract(ctext,  0);
+
+	R = interpol<ss>(R, r);
+	G = interpol<ss>(G, g);
+	B = interpol<ss>(B, b);
+//	A = interpol<ss>(A, a);
+
+	bbuf[sy][sx][0] = blend(1.0f, bbuf[sy][sx][0], alpha, R);
+	bbuf[sy][sx][1] = blend(1.0f, bbuf[sy][sx][1], alpha, G);
+	bbuf[sy][sx][2] = blend(1.0f, bbuf[sy][sx][2], alpha, B);
+//	bbuf[sy][sx][3] = blend(1.0f, bbuf[sy][sx][3], alpha, A);
+      }
+    }
+  }
+
+  /* blend normal-sampled */
+  template<const int ss>
+  void BlndQuadRS(unsigned long *tex, UINT8 quad) {
+    /* read beyond last value (1x1 value) */
+    const unsigned long btext = tex[ss*ss];
+
+    const float r = extract(btext, 24);
+    const float g = extract(btext, 16);
+    const float b = extract(btext,  8);
+//  const float a = extract(btext,  0);
+
+    int offsx, numsx;
+    int offsy, numsy;
+
+    /* get the location */
+    DimsQuadNS(quad, offsx, numsx, offsy, numsy);
+
+    /* blend over */
+    for (int lposy = 0; lposy < numsy; lposy++)
+    for (int lposx = 0; lposx < numsx; lposx++) {
+      /* blend with normal-sampled buffer */
+      unsigned long *ctex = tex;
+
+      const int y = offsy + lposy;
+      const int x = offsx + lposx;
+      int sy = ((y + 0) * ss);
+      int sx = ((x + 0) * ss); {
+	unsigned long ctext = *ctex++;
+
+	float R = extract(ctext, 24);
+	float G = extract(ctext, 16);
+	float B = extract(ctext,  8);
+//	float A = extract(ctext,  0);
+
+	R = interpol<ss>(R, r);
+	G = interpol<ss>(G, g);
+	B = interpol<ss>(B, b);
+//	A = interpol<ss>(A, a);
+
+	float opc = blnd[lposy][lposx];
+
+#ifdef	PREMULTIPLIED
+	fbuf[sy][sx][0] = opc * R + (1.0f - opc) * fbuf[sy][sx][0];
+	fbuf[sy][sx][1] = opc * G + (1.0f - opc) * fbuf[sy][sx][1];
+	fbuf[sy][sx][2] = opc * B + (1.0f - opc) * fbuf[sy][sx][2];
+	fbuf[sy][sx][3] = opc     + (1.0f - opc) * fbuf[sy][sx][3];
+#else
+	bbuf[sy][sx][0] = blend(opc, bbuf[sy][sx][0], alpha, R);
+	bbuf[sy][sx][1] = blend(opc, bbuf[sy][sx][1], alpha, G);
+	bbuf[sy][sx][2] = blend(opc, bbuf[sy][sx][2], alpha, B);
+//	bbuf[sy][sx][3] = blend(opc, bbuf[sy][sx][3], alpha, A);
+#endif
+      }
+    }
+  }
+
+  /* --------------------------------------------------------------------------------------- */
+  template<const int ss>
+  void FillTileRS() {
+    /* base-layer */
+    for (int y = 0; y < YESSS_RANGEY; y++)
+    for (int x = 0; x < YESSS_RANGEX; x++) {
+      for (int sy = ((y + 0) * ss); sy < ((y + 1) * ss); sy++)
+      for (int sx = ((x + 0) * ss); sx < ((x + 1) * ss); sx++) {
+	/* supersample base-color */
+	float red = sup<ss>(x, y, sx, sy, 0);
+	float grn = sup<ss>(x, y, sx, sy, 1);
+	float blu = sup<ss>(x, y, sx, sy, 2);
+//	float alp = sup<ss>(x, y, sx, sy, 3);
+
+	bbuf[sy][sx][0] = red;
+	bbuf[sy][sx][1] = grn;
+	bbuf[sy][sx][2] = blu;
+//	bbuf[sy][sx][3] = alp;
+      }
+    }
+  }
+
+  template<int ss, class LANDRecord>
+  void MultTileNS(LANDRecord *land) {
+    for (int y = 0; y < 32; y ++)
+    for (int x = 0; x < 32; x ++) {
+      /* multiply with fully super-sampled buffer */
+      for (int sy = ((y + 0) * ss); sy < ((y + 1) * ss); sy++)
+      for (int sx = ((x + 0) * ss); sx < ((x + 1) * ss); sx++) {
+	/* supersample vertex-color */
+	float red = sup<ss>(x, y, sx, sy,
+	  (float)land->VCLR->VCLR[y + 0][x + 0].red,
+	  (float)land->VCLR->VCLR[y + 1][x + 0].red,
+	  (float)land->VCLR->VCLR[y + 0][x + 1].red,
+	  (float)land->VCLR->VCLR[y + 1][x + 1].red);
+	float grn = sup<ss>(x, y, sx, sy,
+	  (float)land->VCLR->VCLR[y + 0][x + 0].green,
+	  (float)land->VCLR->VCLR[y + 1][x + 0].green,
+	  (float)land->VCLR->VCLR[y + 0][x + 1].green,
+	  (float)land->VCLR->VCLR[y + 1][x + 1].green);
+	float blu = sup<ss>(x, y, sx, sy,
+	  (float)land->VCLR->VCLR[y + 0][x + 0].blue,
+	  (float)land->VCLR->VCLR[y + 1][x + 0].blue,
+	  (float)land->VCLR->VCLR[y + 0][x + 1].blue,
+	  (float)land->VCLR->VCLR[y + 1][x + 1].blue);
+
+#define multiply(a, b, pos)	((a * b) / 0xFF)
+
+	bbuf[sy][sx][0] = multiply(bbuf[sy][sx][0], red, 24);
+	bbuf[sy][sx][1] = multiply(bbuf[sy][sx][1], grn, 16);
+	bbuf[sy][sx][2] = multiply(bbuf[sy][sx][2], blu,  8);
+//	bbuf[sy][sx][3] = multiply(bbuf[sy][sx][3], 255,  0);
+#undef	multiply
+
+      }
+    }
+  }
+
+#undef	extract
+#undef	interpol
+#undef	blend
 
 public:
   ExtractCWorldOp(void *mtx, long b, long r) : WindowedWorldOp(b, r) {
@@ -1337,7 +1971,10 @@ public:
 
 	  /* max. supersample into the required buffer */
 	  const int ss = max(texsample, srfsample);
+	  __assume((ss == 1) || (ss == 2) || (ss == 4));
+
 	  memset(bbuf, 0, sizeof(bbuf));
+//	  memset(fbuf, 0, sizeof(fbuf));
 
 	  /* check cell-center against range, no problems with the overlap that way */
 	  if (!cchk(leftc + 16 + lofx, topc + 16 + lofy)) {
@@ -1346,27 +1983,16 @@ public:
 	  SetTopic("Extracting surfaces from cell {%d,%d}", leftx, topy);
 	  SetProgress(dells++);
 
-#define extract(c, pos)		(float)((c >> pos) & 0xFF)
-
 	  if (EXTRACT_GROUNDLAYER) {
 	    /* search for the texture and get the average color of it */
 	    unsigned long *tex = LookupTexture(0, ss);
 
 	    /* don't apply missing textures (instead of applying black) */
 	    if (tex) {
-	      for (int y = 0; y < 32; y++)
-	      for (int x = 0; x < 32; x++) {
-		/* read into fully super-sampled buffer */
-		unsigned long *ctex = tex;
-		for (int sy = ((y + 0) * ss); sy < ((y + 1) * ss); sy++)
-		for (int sx = ((x + 0) * ss); sx < ((x + 1) * ss); sx++) {
-		  unsigned long ctext = *ctex++;
-
-		  bbuf[sy][sx][0] = extract(ctext, 24);
-		  bbuf[sy][sx][1] = extract(ctext, 16);
-		  bbuf[sy][sx][2] = extract(ctext,  8);
-		  bbuf[sy][sx][3] = extract(ctext,  0);
-		}
+	      switch (ss) {
+		case 1: CopyTileNS<1>(tex); break;
+		case 2: CopyTileNS<2>(tex); break;
+		case 4: CopyTileNS<4>(tex); break;
 	      }
 	    }
 	  }
@@ -1390,50 +2016,10 @@ public:
 
 	      /* don't apply missing textures (instead of applying black) */
 	      if (tex) {
-		int offsx;
-		int offsy;
-
-		__assume(
-		  ((*walk)->quadrant >= 0) &&
-		  ((*walk)->quadrant <= 3)
-		);
-
-		/* bottom/top are y-flipped */
-		switch ((*walk)->quadrant) {
-		  case 0: /* eBottomLeft  */ offsx =  0; offsy =  0; break;
-		  case 1: /* eBottomRight */ offsx = 16; offsy =  0; break;
-		  case 2: /* eTopLeft     */ offsx =  0; offsy = 16; break;
-		  case 3: /* eTopRight    */ offsx = 16; offsy = 16; break;
-		}
-
-		/* copy over */
-		for (int lposy = 0; lposy < 16; lposy++)
-		for (int lposx = 0; lposx < 16; lposx++) {
-		  const int y = offsy + lposy;
-		  const int x = offsx + lposx;
-
-		  /* read into fully super-sampled buffer */
-		  unsigned long *ctex = tex;
-		  for (int sy = ((y + 0) * ss); sy < ((y + 1) * ss); sy++)
-		  for (int sx = ((x + 0) * ss); sx < ((x + 1) * ss); sx++) {
-		    unsigned long ctext = *ctex++;
-
-		    float alpha = extract(ctext, 0);
-
-		    /* blending with alpha from texture looks bad,
-		     * in theory the alpha should be a max()-map anyway
-		     */
-#define blend(B, a, A, b, pos)	(						\
-			((1.0f - (B/* * A / 0xFF*/)) * ((a       )       )) +	\
-			((       (B/* * A / 0xFF*/)) * ((b >> pos) & 0xFF))	\
-		      )
-
-		    bbuf[sy][sx][0] = blend(1.0f, bbuf[sy][sx][0], alpha, ctext, 24);
-		    bbuf[sy][sx][1] = blend(1.0f, bbuf[sy][sx][1], alpha, ctext, 16);
-		    bbuf[sy][sx][2] = blend(1.0f, bbuf[sy][sx][2], alpha, ctext,  8);
-		    bbuf[sy][sx][3] = blend(1.0f, bbuf[sy][sx][3], alpha, ctext,  0);
-#undef	blend
-		  }
+		switch (ss) {
+		  case 1: CopyQuadNS<1>(tex, (*walk)->quadrant); break;
+		  case 2: CopyQuadNS<2>(tex, (*walk)->quadrant); break;
+		  case 4: CopyQuadNS<4>(tex, (*walk)->quadrant); break;
 		}
 	      }
 
@@ -1444,32 +2030,146 @@ public:
 	  /* overlay one layer after the other */
 	  if (EXTRACT_BLENDLAYER)
 	  if (land->Layers.IsLoaded()) {
-	    for (int l = 0; l < 0x8; l++) {
+	    std::set<SINT16> layers; std::set<SINT16>::iterator ls;
+	    std::vector<LANDRecord::LANDLAYERS *>::iterator srch;
+
+	    srch = land->Layers.value.begin();
+	    while (srch != land->Layers.value.end()) {
+	      LANDRecord::LANDGENTXT *walk = &(*srch)->ATXT.value;
+	      layers.insert(walk->layer);
+
+	      srch++;
+	    }
+
+#define	TWOPASS_BASE
+#ifdef	TWOPASS_BASE
+	    if (ss > 1) {
+	      /* the idea is the following:
+	       * - when we super-sample the opacity value we end up with
+	       *   half-transparent pixels between the original values:
+	       *   a[0,1] = 1.0, b[1,0] = 1.0	-> p[a,b] non-transparent
+	       *           ab[0.5,0.5]		-> half transparent
+	       *
+	       * - now what we do is, we fill the pixels of the background-
+	       *   layer that will be used for super-sampled alpha with an
+	       *   upsampled non-supersampled version of the entire process
+	       * - that way the half-transparent pixel blends with the final
+	       *   color (though under-sampled of course) instead of blending
+	       *   with the base-layer
+	       *
+	       * the problem occured on -19,1 where the base-layer is snow
+	       * in one quadrant and all super-sampled pixels became white
+	       */
+
+	      ls = layers.begin();
+	      while (ls != layers.end()) {
+		std::vector<LANDRecord::LANDLAYERS *>::iterator srch = land->Layers.value.begin();
+		while (srch != land->Layers.value.end()) {
+		  LANDRecord::LANDGENTXT *walk = &(*srch)->ATXT.value;
+		  if (walk->layer == *ls) {
+		    /* search for the texture and get the average color of it */
+		    unsigned long *tex = LookupTexture((*walk).texture, ss);
+
+		    /* don't apply missing textures (instead of applying black) */
+		    if (tex) {
+		      memset(blnd, 0, sizeof(blnd));
+
+		      /* blend per-pixel */
+		      std::vector<LANDRecord::LANDVTXT>::iterator over = (*srch)->VTXT.value.begin();
+		      while (over != (*srch)->VTXT.value.end()) {
+			float opc = over->opacity;
+
+			__assume(
+			  (over->position >= 0) &&
+			  (over->position < (17 * 17))
+			);
+
+			int lposy = over->position / 17;
+			int lposx = over->position % 17;
+
+			blnd[lposy][lposx] = opc;
+
+			over++;
+		      }
+
+		      switch (ss) {
+			case 1: BlndQuadMS<1>(tex, (*walk).quadrant); break;
+			case 2: BlndQuadMS<2>(tex, (*walk).quadrant); break;
+			case 4: BlndQuadMS<4>(tex, (*walk).quadrant); break;
+		      }
+		    }
+		  }
+
+		  srch++;
+		}
+
+		ls++;
+	      }
+
+	      /* base-layer
+	      switch (ss) {
+		case 1: FillTileRS<1>(); break;
+		case 2: FillTileRS<2>(); break;
+		case 4: FillTileRS<4>(); break;
+	      }
+	       */
+
+//#define	TWOPASS_RESTORE
+#ifdef	TWOPASS_RESTORE
+	      /* - now we restore all non-supersampled pixels by their original values
+	       *   this allows the non-supersampled opacities (which are correct!) to
+	       *   blend against the original layer
+	       */
+
+	      if (EXTRACT_GROUNDLAYER) {
+		/* search for the texture and get the average color of it */
+		unsigned long *tex = LookupTexture(0, ss);
+
+		/* don't apply missing textures (instead of applying black) */
+		if (tex) {
+		  switch (ss) {
+		    case 1: CopyTileRS<1>(tex); break;
+		    case 2: CopyTileRS<2>(tex); break;
+		    case 4: CopyTileRS<4>(tex); break;
+		  }
+		}
+	      }
+
+	      if (EXTRACT_BASELAYER)
+	      if (land->BTXT.IsLoaded()) {
+		std::vector<LANDRecord::LANDGENTXT *>::iterator walk = land->BTXT.value.begin();
+		while (walk != land->BTXT.value.end()) {
+		  /* search for the texture and get the average color of it */
+		  unsigned long *tex = LookupTexture((*walk)->texture, ss);
+
+		  /* don't apply missing textures (instead of applying black) */
+		  if (tex) {
+		    switch (ss) {
+		      case 1: CopyQuadRS<1>(tex, (*walk)->quadrant); break;
+		      case 2: CopyQuadRS<2>(tex, (*walk)->quadrant); break;
+		      case 4: CopyQuadRS<4>(tex, (*walk)->quadrant); break;
+		    }
+		  }
+
+		  walk++;
+		}
+	      }
+#endif
+	    }
+#endif
+
+	    ls = layers.begin();
+	    while (ls != layers.end()) {
 	      std::vector<LANDRecord::LANDLAYERS *>::iterator srch = land->Layers.value.begin();
 	      while (srch != land->Layers.value.end()) {
 		LANDRecord::LANDGENTXT *walk = &(*srch)->ATXT.value;
-		if (walk->layer == l) {
+		if (walk->layer == *ls) {
 		  /* search for the texture and get the average color of it */
 		  unsigned long *tex = LookupTexture((*walk).texture, ss);
 
 		  /* don't apply missing textures (instead of applying black) */
 		  if (tex) {
-		    float blnd[17][17] = {0};
-		    int offsx;
-		    int offsy;
-
-		    __assume(
-		      ((*walk).quadrant >= 0) &&
-		      ((*walk).quadrant <= 3)
-		    );
-
-		    /* bottom/top are y-flipped */
-		    switch ((*walk).quadrant) {
-		      case 0: /* eBottomLeft  */ offsx =  0; offsy =  0; break;
-		      case 1: /* eBottomRight */ offsx = 16; offsy =  0; break;
-		      case 2: /* eTopLeft     */ offsx =  0; offsy = 16; break;
-		      case 3: /* eTopRight    */ offsx = 16; offsy = 16; break;
-		    }
+		    memset(blnd, 0, sizeof(blnd));
 
 		    /* blend per-pixel */
 		    std::vector<LANDRecord::LANDVTXT>::iterator over = (*srch)->VTXT.value.begin();
@@ -1489,111 +2189,38 @@ public:
 		      over++;
 		    }
 
-		    /* blend over */
-		    for (int lposy = 0; lposy < 16; lposy++)
-		    for (int lposx = 0; lposx < 16; lposx++) {
-		      const int y = offsy + lposy;
-		      const int x = offsx + lposx;
-
-		      /* blend with fully super-sampled buffer */
-		      unsigned long *ctex = tex;
-		      for (int sy = ((y + 0) * ss); sy < ((y + 1) * ss); sy++)
-		      for (int sx = ((x + 0) * ss); sx < ((x + 1) * ss); sx++) {
-			unsigned long ctext = *ctex++;
-
-			/* supersample alpha */
-			float opcyl = 
-			  blnd[lposy + 0][lposx + 0] * (ss - (sy % ss)) +
-			  blnd[lposy + 1][lposx + 0] * (     (sy % ss));
-			float opcyr = 
-			  blnd[lposy + 0][lposx + 1] * (ss - (sy % ss)) +
-			  blnd[lposy + 1][lposx + 1] * (     (sy % ss));
-			float opcx =
-			  (opcyl / ss) * (ss - (sx % ss)) +
-			  (opcyr / ss) * (     (sx % ss));
-			float opc =
-			  (opcx  / ss);
-
-			float alpha = extract(ctext, 0);
-
-			/* blending with alpha from texture looks bad,
-			 * in theory the alpha should be a max()-map anyway
-			 */
-#define blend(B, a, A, b, pos)	(							\
-			    ((1.0f - (B/* * A / 0xFF*/)) * ((a       )       )) +	\
-			    ((       (B/* * A / 0xFF*/)) * ((b >> pos) & 0xFF))		\
-			  )
-
-			bbuf[sy][sx][0] = blend(opc, bbuf[sy][sx][0], alpha, ctext, 24);
-			bbuf[sy][sx][1] = blend(opc, bbuf[sy][sx][1], alpha, ctext, 16);
-			bbuf[sy][sx][2] = blend(opc, bbuf[sy][sx][2], alpha, ctext,  8);
-			bbuf[sy][sx][3] = blend(opc, bbuf[sy][sx][3], alpha, ctext,  0);
-#undef	blend
-		      }
+		    switch (ss) {
+		      case 1: BlndQuadNS<1>(tex, (*walk).quadrant); break;
+		      case 2: BlndQuadNS<2>(tex, (*walk).quadrant); break;
+		      case 4: BlndQuadNS<4>(tex, (*walk).quadrant); break;
 		    }
 		  }
 		}
 
 		srch++;
 	      }
+
+	      ls++;
 	    }
+
+#ifdef	PREMULTIPLIED
+	    /* base-layer */
+	    switch (ss) {
+	      case 1: CmbnTileNS<1>(); break;
+	      case 2: CmbnTileNS<2>(); break;
+	      case 4: CmbnTileNS<4>(); break;
+	    }
+#endif
 	  }
 
 	  /* multiply both colors in the cell */
 	  if (EXTRACT_OVERLAYER)
 	  if (land->VCLR.IsLoaded()) {
-	    for (int y = 0; y < 32; y ++)
-	    for (int x = 0; x < 32; x ++) {
-	      /* multiply with fully super-sampled buffer */
-	      for (int sy = ((y + 0) * ss); sy < ((y + 1) * ss); sy++)
-	      for (int sx = ((x + 0) * ss); sx < ((x + 1) * ss); sx++) {
-		/* supersample vertex-color */
-		float redyl = 
-		  (float)land->VCLR->VCLR[y + 0][x + 0].red   * (ss - (sy % ss)) +
-		  (float)land->VCLR->VCLR[y + 1][x + 0].red   * (     (sy % ss));
-		float grnyl = 
-		  (float)land->VCLR->VCLR[y + 0][x + 0].green * (ss - (sy % ss)) +
-		  (float)land->VCLR->VCLR[y + 1][x + 0].green * (     (sy % ss));
-		float bluyl = 
-		  (float)land->VCLR->VCLR[y + 0][x + 0].blue  * (ss - (sy % ss)) +
-		  (float)land->VCLR->VCLR[y + 1][x + 0].blue  * (     (sy % ss));
-
-		float redyr = 
-		  (float)land->VCLR->VCLR[y + 0][x + 1].red   * (ss - (sy % ss)) +
-		  (float)land->VCLR->VCLR[y + 1][x + 1].red   * (     (sy % ss));
-		float grnyr = 
-		  (float)land->VCLR->VCLR[y + 0][x + 1].green * (ss - (sy % ss)) +
-		  (float)land->VCLR->VCLR[y + 1][x + 1].green * (     (sy % ss));
-		float bluyr = 
-		  (float)land->VCLR->VCLR[y + 0][x + 1].blue  * (ss - (sy % ss)) +
-		  (float)land->VCLR->VCLR[y + 1][x + 1].blue  * (     (sy % ss));
-
-		float redx =
-		  (redyl / ss) * (ss - (sx % ss)) +
-		  (redyr / ss) * (     (sx % ss));
-		float grnx =
-		  (grnyl / ss) * (ss - (sx % ss)) +
-		  (grnyr / ss) * (     (sx % ss));
-		float blux =
-		  (bluyl / ss) * (ss - (sx % ss)) +
-		  (bluyr / ss) * (     (sx % ss));
-
-		float red =
-		  (redx  / ss);
-		float grn =
-		  (grnx  / ss);
-		float blu =
-		  (blux  / ss);
-
-#define multiply(a, b, pos)	((a * b) / 0xFF)
-
-		bbuf[sy][sx][0] = multiply(bbuf[sy][sx][0], red, 24);
-		bbuf[sy][sx][1] = multiply(bbuf[sy][sx][1], grn, 16);
-		bbuf[sy][sx][2] = multiply(bbuf[sy][sx][2], blu,  8);
-		bbuf[sy][sx][3] = multiply(bbuf[sy][sx][3], 255,  0);
-#undef	multiply
-
-	      }
+	    /* base-layer */
+	    switch (ss) {
+	      case 1: MultTileNS<1>(land); break;
+	      case 2: MultTileNS<2>(land); break;
+	      case 4: MultTileNS<4>(land); break;
 	    }
 	  }
 
@@ -1615,7 +2242,7 @@ public:
 		float red = 0.0f;
 		float grn = 0.0f;
 		float blu = 0.0f;
-		float alp = 0.0f;
+//		float alp = 0.0f;
 
 		/* downsample by "sr" */
 		for (int ry = 0; ry < sr; ry++)
@@ -1623,31 +2250,57 @@ public:
 		  red += bbuf[(y * ss) + (sy * sr) + ry][(x * ss) + (sx * sr) + rx][0];
 		  grn += bbuf[(y * ss) + (sy * sr) + ry][(x * ss) + (sx * sr) + rx][1];
 		  blu += bbuf[(y * ss) + (sy * sr) + ry][(x * ss) + (sx * sr) + rx][2];
-		  alp += bbuf[(y * ss) + (sy * sr) + ry][(x * ss) + (sx * sr) + rx][3];
+//		  alp += bbuf[(y * ss) + (sy * sr) + ry][(x * ss) + (sx * sr) + rx][3];
 		}
 
 		red /= sr * sr;
 		grn /= sr * sr;
 		blu /= sr * sr;
-		alp /= sr * sr;
+//		alp /= sr * sr;
 
 #ifdef	BLEND_NONGAMMA
+		/* adjustment */
+		red /= 255.0f;
+		grn /= 255.0f;
+		blu /= 255.0f;
+//		alp /= 255.0f;
+
 		/* gamma corrected */
-		red = powf(red / 255.0f, gamma_out) * 255.0f;
-		grn = powf(grn / 255.0f, gamma_out) * 255.0f;
-		blu = powf(blu / 255.0f, gamma_out) * 255.0f;
-		alp =      alp / 255.0f             * 255.0f;
+		red = powf(red, raisecontrast);
+		grn = powf(grn, raisecontrast);
+		blu = powf(blu, raisecontrast);
+//		alp =      alp                ;
+
+		/* adjustment */
+		red /= upperbrightness;
+		grn /= upperbrightness;
+		blu /= upperbrightness;
+//		alp /= 1.0f           ;
+
+		/* gamma corrected */
+		red = powf(red, gamma_out);
+		grn = powf(grn, gamma_out);
+		blu = powf(blu, gamma_out);
+//		alp =      alp            ;
+
+		/* adjustment */
+		red *= 255.0f;
+		grn *= 255.0f;
+		blu *= 255.0f;
+//		alp *= 255.0f;
 #endif
 
-#define round(clr, pos)	(min((unsigned long)floor(clr + 0.5), 0xFF) << pos)
+#define round(clr, pos)	(min((unsigned long)floor(clr + 0.5f), 0xFF) << pos)
 
 		unsigned long
 		color  = 0;
 		color |= round(red, 24);
 		color |= round(grn, 16);
 		color |= round(blu,  8);
-		color |= round(alp,  0);
+//		color |= round(alp,  0);
 #undef	round
+		/* opaque alpha */
+		color |= 0xFF;
 
 		tx[realpos] = color;
 	      }
@@ -1720,20 +2373,26 @@ void NExtract(SINT32 num) {
     try {
       switch (col->CollectionType) {
 	case eIsOblivion: {
-	  ExtractNWorldOp<Ob::WRLDRecord, Ob::CELLRecord, Ob::LANDRecord, Ob::LTEXRecord> ewo(mem, sy, PARTITION_ROWS);
+	  ExtractNWorldOp<Ob::WRLDRecord, Ob::CELLRecord, Ob::LANDRecord, Ob::LTEXRecord> *ewo = new 
+	  ExtractNWorldOp<Ob::WRLDRecord, Ob::CELLRecord, Ob::LANDRecord, Ob::LTEXRecord>(mem, sy, PARTITION_ROWS);
 	  for (SINT32 n = 0; n < num; ++n) {
 	    ModFile *mf = GetModIDByLoadOrder(col, n);
 
-	    mf->VisitRecords(REV32(WRLD), ewo);
+	    mf->VisitRecords(REV32(WRLD), *ewo);
 	  }
+
+	  delete ewo;
 	} break;
 	case eIsSkyrim: {
-	  ExtractNWorldOp<Sk::WRLDRecord, Sk::CELLRecord, Sk::LANDRecord, Sk::LTEXRecord> ewo(mem, sy, PARTITION_ROWS);
+	  ExtractNWorldOp<Sk::WRLDRecord, Sk::CELLRecord, Sk::LANDRecord, Sk::LTEXRecord> *ewo = new 
+	  ExtractNWorldOp<Sk::WRLDRecord, Sk::CELLRecord, Sk::LANDRecord, Sk::LTEXRecord>(mem, sy, PARTITION_ROWS);
 	  for (SINT32 n = 0; n < num; ++n) {
 	    ModFile *mf = GetModIDByLoadOrder(col, n);
 
-	    mf->VisitRecords(REV32(WRLD), ewo);
+	    mf->VisitRecords(REV32(WRLD), *ewo);
 	  }
+
+	  delete ewo;
 	} break;
       }
     }
@@ -1803,20 +2462,26 @@ void HExtract(SINT32 num) {
     try {
       switch (col->CollectionType) {
 	case eIsOblivion: {
-	  ExtractHWorldOp<Ob::WRLDRecord, Ob::CELLRecord, Ob::LANDRecord, Ob::LTEXRecord> ewo(mem, sy, PARTITION_ROWS);
+	  ExtractHWorldOp<Ob::WRLDRecord, Ob::CELLRecord, Ob::LANDRecord, Ob::LTEXRecord> *ewo = new 
+	  ExtractHWorldOp<Ob::WRLDRecord, Ob::CELLRecord, Ob::LANDRecord, Ob::LTEXRecord>(mem, sy, PARTITION_ROWS);
 	  for (SINT32 n = 0; n < num; ++n) {
 	    ModFile *mf = GetModIDByLoadOrder(col, n);
 
-	    mf->VisitRecords(REV32(WRLD), ewo);
+	    mf->VisitRecords(REV32(WRLD), *ewo);
 	  }
+
+	  delete ewo;
 	} break;
 	case eIsSkyrim: {
-	  ExtractHWorldOp<Sk::WRLDRecord, Sk::CELLRecord, Sk::LANDRecord, Sk::LTEXRecord> ewo(mem, sy, PARTITION_ROWS);
+	  ExtractHWorldOp<Sk::WRLDRecord, Sk::CELLRecord, Sk::LANDRecord, Sk::LTEXRecord> *ewo = new 
+	  ExtractHWorldOp<Sk::WRLDRecord, Sk::CELLRecord, Sk::LANDRecord, Sk::LTEXRecord>(mem, sy, PARTITION_ROWS);
 	  for (SINT32 n = 0; n < num; ++n) {
 	    ModFile *mf = GetModIDByLoadOrder(col, n);
 
-	    mf->VisitRecords(REV32(WRLD), ewo);
+	    mf->VisitRecords(REV32(WRLD), *ewo);
 	  }
+
+	  delete ewo;
 	} break;
       }
     }
@@ -1860,20 +2525,26 @@ void WExtract(SINT32 num) {
     try {
       switch (col->CollectionType) {
 	case eIsOblivion: {
-	  ExtractWWorldOp<Ob::WRLDRecord, Ob::CELLRecord, Ob::LANDRecord, Ob::LTEXRecord> ewo(file, sy, PARTITION_ROWS);
+	  ExtractWWorldOp<Ob::WRLDRecord, Ob::CELLRecord, Ob::LANDRecord, Ob::LTEXRecord> *ewo = new 
+	  ExtractWWorldOp<Ob::WRLDRecord, Ob::CELLRecord, Ob::LANDRecord, Ob::LTEXRecord>(file, sy, PARTITION_ROWS);
 	  for (SINT32 n = 0; n < num; ++n) {
 	    ModFile *mf = GetModIDByLoadOrder(col, n);
 
-	    mf->VisitRecords(REV32(WRLD), ewo);
+	    mf->VisitRecords(REV32(WRLD), *ewo);
 	  }
+
+	  delete ewo;
 	} break;
 	case eIsSkyrim: {
-	  ExtractWWorldOp<Sk::WRLDRecord, Sk::CELLRecord, Sk::LANDRecord, Sk::LTEXRecord> ewo(file, sy, PARTITION_ROWS);
+	  ExtractWWorldOp<Sk::WRLDRecord, Sk::CELLRecord, Sk::LANDRecord, Sk::LTEXRecord> *ewo = new 
+	  ExtractWWorldOp<Sk::WRLDRecord, Sk::CELLRecord, Sk::LANDRecord, Sk::LTEXRecord>(file, sy, PARTITION_ROWS);
 	  for (SINT32 n = 0; n < num; ++n) {
 	    ModFile *mf = GetModIDByLoadOrder(col, n);
 
-	    mf->VisitRecords(REV32(WRLD), ewo);
+	    mf->VisitRecords(REV32(WRLD), *ewo);
 	  }
+
+	  delete ewo;
 	} break;
       }
     }
@@ -1940,20 +2611,26 @@ void MExtract(SINT32 num) {
     try {
       switch (col->CollectionType) {
 	case eIsOblivion: {
-	  ExtractMWorldOp<Ob::WRLDRecord, Ob::CELLRecord, Ob::LANDRecord, Ob::LTEXRecord> ewo(mem, sy, PARTITION_ROWS);
+	  ExtractMWorldOp<Ob::WRLDRecord, Ob::CELLRecord, Ob::LANDRecord, Ob::LTEXRecord> *ewo = new 
+	  ExtractMWorldOp<Ob::WRLDRecord, Ob::CELLRecord, Ob::LANDRecord, Ob::LTEXRecord>(mem, sy, PARTITION_ROWS);
 	  for (SINT32 n = 0; n < num; ++n) {
 	    ModFile *mf = GetModIDByLoadOrder(col, n);
 
-	    mf->VisitRecords(REV32(WRLD), ewo);
+	    mf->VisitRecords(REV32(WRLD), *ewo);
 	  }
+
+	  delete ewo;
 	} break;
 	case eIsSkyrim: {
-	  ExtractMWorldOp<Sk::WRLDRecord, Sk::CELLRecord, Sk::LANDRecord, Sk::LTEXRecord> ewo(mem, sy, PARTITION_ROWS);
+	  ExtractMWorldOp<Sk::WRLDRecord, Sk::CELLRecord, Sk::LANDRecord, Sk::LTEXRecord> *ewo = new 
+	  ExtractMWorldOp<Sk::WRLDRecord, Sk::CELLRecord, Sk::LANDRecord, Sk::LTEXRecord>(mem, sy, PARTITION_ROWS);
 	  for (SINT32 n = 0; n < num; ++n) {
 	    ModFile *mf = GetModIDByLoadOrder(col, n);
 
-	    mf->VisitRecords(REV32(WRLD), ewo);
+	    mf->VisitRecords(REV32(WRLD), *ewo);
 	  }
+
+	  delete ewo;
 	} break;
       }
     }
@@ -2036,20 +2713,26 @@ void CExtract(SINT32 num) {
     try {
       switch (col->CollectionType) {
 	case eIsOblivion: {
-	  ExtractCWorldOp<Ob::WRLDRecord, Ob::CELLRecord, Ob::LANDRecord, Ob::LTEXRecord> ewo(mem, sy, PARTITION_ROWS);
+	  ExtractCWorldOp<Ob::WRLDRecord, Ob::CELLRecord, Ob::LANDRecord, Ob::LTEXRecord> *ewo = new 
+	  ExtractCWorldOp<Ob::WRLDRecord, Ob::CELLRecord, Ob::LANDRecord, Ob::LTEXRecord>(mem, sy, PARTITION_ROWS);
 	  for (SINT32 n = 0; n < num; ++n) {
 	    ModFile *mf = GetModIDByLoadOrder(col, n);
 
-	    mf->VisitRecords(REV32(WRLD), ewo);
+	    mf->VisitRecords(REV32(WRLD), *ewo);
 	  }
+
+	  delete ewo;
 	} break;
 	case eIsSkyrim: {
-	  ExtractCWorldOp<Sk::WRLDRecord, Sk::CELLRecord, Sk::LANDRecord, Sk::LTEXRecord> ewo(mem, sy, PARTITION_ROWS);
+	  ExtractCWorldOp<Sk::WRLDRecord, Sk::CELLRecord, Sk::LANDRecord, Sk::LTEXRecord> *ewo = new 
+	  ExtractCWorldOp<Sk::WRLDRecord, Sk::CELLRecord, Sk::LANDRecord, Sk::LTEXRecord>(mem, sy, PARTITION_ROWS);
 	  for (SINT32 n = 0; n < num; ++n) {
 	    ModFile *mf = GetModIDByLoadOrder(col, n);
 
-	    mf->VisitRecords(REV32(WRLD), ewo);
+	    mf->VisitRecords(REV32(WRLD), *ewo);
 	  }
+
+	  delete ewo;
 	} break;
       }
     }
@@ -2093,27 +2776,68 @@ DWORD __stdcall ExtractFromCollection(LPVOID lp) {
 
   switch (col->CollectionType) {
     case eIsOblivion: {
+      raisecontrast = 1.0f;
       upperbrightness = pow(255.0f / 255.0f, 2.2f);
 
-      ExtendsWorldOp<Ob::WRLDRecord, Ob::CELLRecord, Ob::LANDRecord, Ob::LTEXRecord> wo;
+      ExtendsWorldOp<Ob::WRLDRecord, Ob::CELLRecord, Ob::LANDRecord, Ob::LTEXRecord> *wo = new
+      ExtendsWorldOp<Ob::WRLDRecord, Ob::CELLRecord, Ob::LANDRecord, Ob::LTEXRecord>();
       for (SINT32 n = 0; n < num; ++n) {
 	ModFile *mf = GetModIDByLoadOrder(col, n);
 
-	mf->VisitRecords(REV32(WRLD), wo);
+	mf->VisitRecords(REV32(WRLD), *wo);
       }
+
+      delete wo;
     } break;
     case eIsSkyrim: {
-      upperbrightness = pow(155.0f / 255.0f, 2.2f);
+      raisecontrast = 1.25f;
+      upperbrightness = pow(124.0f / 255.0f, 2.2f);
 
-      ExtendsWorldOp<Sk::WRLDRecord, Sk::CELLRecord, Sk::LANDRecord, Sk::LTEXRecord> wo;
+      ExtendsWorldOp<Sk::WRLDRecord, Sk::CELLRecord, Sk::LANDRecord, Sk::LTEXRecord> *wo = new
+      ExtendsWorldOp<Sk::WRLDRecord, Sk::CELLRecord, Sk::LANDRecord, Sk::LTEXRecord>();
       for (SINT32 n = 0; n < num; ++n) {
 	ModFile *mf = GetModIDByLoadOrder(col, n);
 
-	mf->VisitRecords(REV32(WRLD), wo);
+	mf->VisitRecords(REV32(WRLD), *wo);
       }
+
+      delete wo;
     } break;
   }
 
+  /* align to multiples of 32 cells */
+  int tlmt, tsze, csze;
+
+  tlmt = 32;
+  tsze = 32;
+  csze = 32;
+
+  /* must include "0" (origin) */
+  wrghtx = max(0, wrghtx);
+  wleftx = min(0, wleftx);
+  wboty  = max(0, wboty );
+  wtopy  = min(0, wtopy );
+
+  int rx = wrghtx % tlmt; if (rx < 0) wrghtx -= tlmt + rx; else if (rx > 0) wrghtx += tlmt - rx; 
+  int ry = wboty  % tlmt; if (ry < 0) wboty  -= tlmt + ry; else if (ry > 0) wboty  += tlmt - ry; 
+
+      rx = wleftx % tlmt; if (rx < 0) wleftx -= tlmt + rx; else if (rx > 0) wleftx += tlmt - rx; 
+      ry = wtopy  % tlmt; if (ry < 0) wtopy  -= tlmt + ry; else if (ry > 0) wtopy  += tlmt - ry; 
+
+  /* make sure both extends are of the same magnitude (0 at center) */
+  if (wrghtx < (-wleftx - 0   )) wrghtx = -wleftx - 0;	  /* [-64,32] -> [-64,64] */
+  if (wboty  < (-wtopy  - 0   )) wboty  = -wtopy  - 0;	  /* [-32,64] -> [-32,64] */
+  if (wleftx > (-wrghtx + tlmt)) wleftx = -wrghtx + tlmt; /* [  0,64] -> [-32,64] */
+  if (wtopy  > (-wboty  + tlmt)) wtopy  = -wboty  + tlmt; /* [ 32,64] -> [-32,64] */
+
+  sizex = wrghtx - wleftx;
+  sizey = wboty  - wtopy;
+
+  /* get higher deviation from 0 */
+  offsx  = (tlmt * ((sizex / tlmt) >> 1));
+  offsy  = (tlmt * ((sizey / tlmt) >> 1));
+
+#if 0
   /* get higher deviation from 0 */
   offsx  = 0;
   offsy  = 0;
@@ -2140,8 +2864,9 @@ DWORD __stdcall ExtractFromCollection(LPVOID lp) {
 
 //sizex += 1;
 //sizey += 1;
+#endif
 
-  /* we always want multiple of 1024 */ 
+  /* we always want multiple of 1024 */
   sizex *= 32;
   sizey *= 32;
 
@@ -2158,6 +2883,7 @@ DWORD __stdcall ExtractFromCollection(LPVOID lp) {
   numpasses += calcm ? 1 : 0;
 
   InitProgress(cells * numpasses, 0.0); dells = 0;
+  srandom(cells * numpasses);
 
   if (calcn) NExtract(num);
   if (calch) HExtract(num);

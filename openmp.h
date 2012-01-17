@@ -33,68 +33,28 @@
  * version of this file under either the MPL or the LGPL License."
  */
 
-#ifndef	OSCAPE_H
-#define	OSCAPE_H
+#include <omp.h>
 
-#define	_CRT_SECURE_NO_WARNINGS
-#define	_CRT_NONSTDC_NO_DEPRECATE
+#ifdef	_OPENMP
 
-#include <string.h>
-#include <algorithm>
-#include <string>
-#include <sstream>
-#include <map>
-#include <set>
-#include <vector>
+#define	omp_init_cancellation()					\
+  bool cancelled = false; char cancelling[256];
 
-using namespace std;
+#define	omp_skip_cancellation()					\
+  if (cancelled) continue;
 
-#include <windows.h>
-#include <shlobj.h>
-#include <shlwapi.h>
-#include <knownfolders.h> // for KnownFolder APIs/datatypes/function headers
+#define	omp_catch_cancellation(x)				\
+  try { x; } catch (exception &e) {				\
+    strcpy(cancelling, e.what()); cancelled = true; continue; }
 
-// ----------------------------------------------------------------------------
+#define	omp_end_cancellation()					\
+  if (cancelled) throw runtime_error(cancelling);
 
-// For compilers that support precompilation, includes "wx/wx.h".
-//#include "wx/wxprec.h"
+#else
 
-#ifdef __BORLANDC__
-#pragma hdrstop
-#endif
-
-// for all others, include the necessary headers (this file is usually all you
-// need because it includes almost all "standard" wxWidgets headers)
-#ifndef WX_PRECOMP
-#include "wx/wx.h"
-#endif
-
-#include <msvc/wx/setup.h>
-
-#include <wx/propgrid/propgrid.h>
-#include <wx/filename.h>
-
-#pragma comment(lib,"Comctl32")
-#pragma comment(lib,"Rpcrt4")
-
-#include "Oscape_Window.h"
-
-// ----------------------------------------------------------------------------
-
-#include "globals.h"
-#include "io/data.hpp"
-#include "io/CBash.hpp"
-#include "io/geometry.hpp"
-#include "io/texture.hpp"
-#include "io/texture-dds.hpp"
-#include "generation/geometry.hpp"
-#include "generation/texture.hpp"
-#include "generation/recovery.hpp"
-#include "scape/scape.H"
-
-// ----------------------------------------------------------------------------
-
-#include "gui/Progress.hpp"
-#include "gui/GUI.hpp"
+#define	omp_init_cancellation()
+#define	omp_skip_cancellation()
+#define	omp_catch_cancellation(x)	x
+#define	omp_end_cancellation()
 
 #endif
