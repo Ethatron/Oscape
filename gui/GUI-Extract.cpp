@@ -684,10 +684,10 @@
       srfsample = 4;
 
     Collection *col = NULL;
-    if (OSGame->FindItem(wxID_OBLIVON)->IsChecked())
+    /**/ if (OSGame->FindItem(wxID_OBLIVON)->IsChecked())
       col = CreateCollection(IPath, eIsOblivion), weoffs = 0;
     else if (OSGame->FindItem(wxID_SKYRIM)->IsChecked())
-      col = CreateCollection(IPath, eIsSkyrim), weoffs = 18040 - 16000 + 1566;
+      col = CreateCollection(IPath, eIsSkyrim), weoffs = 18040 - 14000 + 1566 - 2000;
 
     int num = OSPluginList->GetCount();
     for (int n = 0; n < num; n++) {

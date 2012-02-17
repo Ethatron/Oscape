@@ -36,6 +36,7 @@
 #include "../globals.h"
 #include "../scape/simplfield.H"
 
+float readWaterLevel(const char *name);
 void readWaterFile(SimplField& ter, const char *name);
 
 /* ---------------------------------------------------- */

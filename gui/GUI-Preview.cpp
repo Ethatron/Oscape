@@ -383,6 +383,7 @@
     OSHeightfieldFirst1->Hide();
     OSHeightfieldFirst1->GetParent()->Layout();
 
+    float ol = readWaterLevel(snw.data());
     int tlmt = 0;
     int tsze = 0;
     int csze = 0;
@@ -487,10 +488,10 @@
     }
 
     wxPGId statProp =
-    OSHeightfieldInfos->AppendCategory("Stats");
-    OSHeightfieldInfos->Append(p = wxIntProperty("Minimum", wxPG_LABEL, -8192)); p->SetFlag(wxPG_PROP_READONLY);
-    OSHeightfieldInfos->Append(p = wxIntProperty("Seallevel", wxPG_LABEL, 0)); p->SetFlag(wxPG_PROP_READONLY);
-    OSHeightfieldInfos->Append(p = wxIntProperty("Maximum", wxPG_LABEL, 55600)); p->SetFlag(wxPG_PROP_READONLY);
+    OSHeightfieldInfos->AppendCategory("Config");
+//  OSHeightfieldInfos->Append(p = wxIntProperty("Minimum", wxPG_LABEL, -8192)); p->SetFlag(wxPG_PROP_READONLY);
+    OSHeightfieldInfos->Append(p = wxFloatProperty("Seallevel", wxPG_LABEL, ol)); fSealevel = p;
+//  OSHeightfieldInfos->Append(p = wxIntProperty("Maximum", wxPG_LABEL, 55600)); p->SetFlag(wxPG_PROP_READONLY);
 
 //  SetHeightfield(&hgt, _rt);
     RedrawH();
@@ -523,7 +524,9 @@
         (p == rHeight->GetId()))
       RedrawH();
 
-    if ((p == tLeft  ->GetId()) ||
+    if ((p == rWidth ->GetId()) ||
+	(p == rHeight->GetId()) ||
+	(p == tLeft  ->GetId()) ||
 	(p == tTop   ->GetId()) ||
 	(p == tRight ->GetId()) ||
 	(p == tBottom->GetId()))
@@ -632,5 +635,5 @@
       RegSetKeyValue(Settings, GetGameKey(), "Base directory Out", RRF_RT_REG_SZ, BO, (DWORD)strlen(BO) + 1);
     }
 
-    OSHeightfieldAccept->Enable(TRUE);
+    OSHeightfieldAccept->Enable(verified);
   }

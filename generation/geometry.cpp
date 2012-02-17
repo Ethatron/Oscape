@@ -770,12 +770,12 @@ void CalculateGeometryNormals() {
 /* ---------------------------------------------------- */
 
 #ifdef	SPLIT_ON_INJECTION
-std::set<class objWater *, struct W> SectorWaters[128][128];
-std::set<class objVertex *, struct V> SectorVertices[128][128];
-std::vector<class objFace *> SectorFaces[128][128];
+std::set<class objWater *, struct W> SectorWaters[TILEEXTENT][TILEEXTENT];
+std::set<class objVertex *, struct V> SectorVertices[TILEEXTENT][TILEEXTENT];
+std::vector<class objFace *> SectorFaces[TILEEXTENT][TILEEXTENT];
 
 #include "../openmp.h"
-omp_lock_t SectorLocks[128][128];
+omp_lock_t SectorLocks[TILEEXTENT][TILEEXTENT];
 
 void TileGeometry() {
     set<class objWater *, struct W>::const_iterator itw;
@@ -814,11 +814,13 @@ void TileGeometry() {
 	/* --------------------------------------------- */
 	set<class objWater *, struct W>::const_iterator i;
 
-	w = NULL; i = SectorWaters[sy][sx].find(&wo); if (i != SectorWaters[sy][sx].end()) w = *i;
+	w = NULL; i = SectorWaters[sy][sx].find(&wo);
+	if (i != SectorWaters[sy][sx].end()) w = *i;
 
 	if (!w) {
 	  w = new(&WPool) class objWater(); assert(w);
 	  w->wtx = wo.wtx;
+	  w->ocean = wo.ocean;
 
 	  w->x = wo.x - (sizescale * rasterx) * sx;
 	  w->y = wo.y - (sizescale * rastery) * sy;
@@ -1030,8 +1032,8 @@ void ExtrudeBorders() {
 void roptimize_faces() {
 }
 #else
-std::vector<class objVertex *> SectorVerticeO[128][128];
-std::vector<class objFace *> SectorFaceO[128][128];
+std::vector<class objVertex *> SectorVerticeO[TILEEXTENT][TILEEXTENT];
+std::vector<class objFace *> SectorFaceO[TILEEXTENT][TILEEXTENT];
 std::vector<unsigned int> SectorRemapO;
 
 #define _USE_MATH_DEFINES
@@ -1642,14 +1644,14 @@ void freeGeometry() {
   set<class objVertex *, struct V>::iterator itv;
   vector<class objFace *>::iterator itf;
 
-  for (itf = Faces.begin(); itf != Faces.end(); itf++)
+  for (itf = Faces   .begin(); itf != Faces   .end(); itf++)
     delete(&FPool) (*itf);
   for (itv = Vertices.begin(); itv != Vertices.end(); itv++)
     delete(&VPool) (*itv);
 
   for (int ty = minty; ty < numty; ty++) {
   for (int tx = mintx; tx < numtx; tx++) {
-    for (itf = SectorFaces[ty][tx].begin(); itf != SectorFaces[ty][tx].end(); itf++)
+    for (itf = SectorFaces   [ty][tx].begin(); itf != SectorFaces   [ty][tx].end(); itf++)
       delete (*itf);
     for (itv = SectorVertices[ty][tx].begin(); itv != SectorVertices[ty][tx].end(); itv++)
       delete (*itv);
@@ -1658,19 +1660,19 @@ void freeGeometry() {
 #endif
 
   /* raw containers */
-  Waters.clear();
-  Faces.clear();
+  Waters  .clear();
+  Faces   .clear();
   Vertices.clear();
 
   for (int ty = minty; ty < numty; ty++) {
   for (int tx = mintx; tx < numtx; tx++) {
     /* unoptimized containers */
-    SectorWaters[ty][tx].clear();
-    SectorFaces[ty][tx].clear();
+    SectorWaters  [ty][tx].clear();
+    SectorFaces   [ty][tx].clear();
     SectorVertices[ty][tx].clear();
 
     /* optimized containers */
-    SectorFaceO[ty][tx].clear();
+    SectorFaceO   [ty][tx].clear();
     SectorVerticeO[ty][tx].clear();
   }
   }
@@ -1706,6 +1708,10 @@ void TransferGeometry(SimplField &ter) {
 
 void TransferGeometry() {
 #ifdef	SPLIT_ON_INJECTION
+  if ((numty > TILEEXTENT) ||
+      (numtx > TILEEXTENT))
+    throw runtime_error("Extent of heightfield is too big to be tiled.");
+
   TileGeometry();
 //write_???s();
 #endif

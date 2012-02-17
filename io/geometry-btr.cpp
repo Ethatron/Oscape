@@ -463,12 +463,14 @@ void wrteBTR(SimplField& ter, const char *pattern) {
 
 	    /* collect all distinct levels */
 	    for (itw = SectorWaters[ty][tx].begin(); itw != SectorWaters[ty][tx].end(); itw++) {
-	      float zlevel = (float)(((*itw)->z - 14000) / lscale);
+	      const float relevel = ((*itw)->ocean ? oceanlevel : 0.0f);
 
-	      levels.insert(zlevel);
+	      levels.insert(
+		(float)(((*itw)->z + relevel) / lscale)
+	      );
 
-	      zmin = min(zmin, zlevel);
-	      zmax = max(zmax, zlevel);
+	      zmin = min(zmin, (float)((*itw)->z + relevel));
+	      zmax = max(zmax, (float)((*itw)->z + relevel));
 	    }
 
 	    /* create a bssts per level */
@@ -498,7 +500,8 @@ void wrteBTR(SimplField& ter, const char *pattern) {
 
 	      int idx = 0;
 	      for (itw = SectorWaters[ty][tx].begin(); itw != SectorWaters[ty][tx].end(); itw++) {
-		float zlevel = (float)(((*itw)->z - 14000) / lscale);
+		const float relevel = ((*itw)->ocean ? oceanlevel : 0.0f);
+		const float zlevel = (float)(((*itw)->z + relevel) / lscale);
 		if (zlevel == *itl) {
 		  int gridx = (int)floor((*itw)->x / 4096);
 		  int gridy = (int)floor((*itw)->y / 4096);
@@ -508,30 +511,30 @@ void wrteBTR(SimplField& ter, const char *pattern) {
 
 		  int idx1 = (int)passw.size();
 		  passw.push_back(Niflib::Vector3(
-		    (float)(((*itw)->x -     0) / lscale),
-		    (float)(((*itw)->y -     0) / lscale),
-		    (float)(((*itw)->z - 14000) / lscale))
+		    (float)(((*itw)->x +       0) / lscale),
+		    (float)(((*itw)->y +       0) / lscale),
+		    (float)(((*itw)->z + relevel) / lscale))
 		  );
 
 		  int idx2 = (int)passw.size();
 		  passw.push_back(Niflib::Vector3(
-		    (float)(((*itw)->x +  4096) / lscale),
-		    (float)(((*itw)->y +     0) / lscale),
-		    (float)(((*itw)->z - 14000) / lscale))
+		    (float)(((*itw)->x +    4096) / lscale),
+		    (float)(((*itw)->y +       0) / lscale),
+		    (float)(((*itw)->z + relevel) / lscale))
 		  );
 
 		  int idx3 = (int)passw.size();
 		  passw.push_back(Niflib::Vector3(
-		    (float)(((*itw)->x +     0) / lscale),
-		    (float)(((*itw)->y +  4096) / lscale),
-		    (float)(((*itw)->z - 14000) / lscale))
+		    (float)(((*itw)->x +       0) / lscale),
+		    (float)(((*itw)->y +    4096) / lscale),
+		    (float)(((*itw)->z + relevel) / lscale))
 		  );
 
 		  int idx4 = (int)passw.size();
 		  passw.push_back(Niflib::Vector3(
-		    (float)(((*itw)->x +  4096) / lscale),
-		    (float)(((*itw)->y +  4096) / lscale),
-		    (float)(((*itw)->z - 14000) / lscale))
+		    (float)(((*itw)->x +    4096) / lscale),
+		    (float)(((*itw)->y +    4096) / lscale),
+		    (float)(((*itw)->z + relevel) / lscale))
 		  );
 
 		  passq.push_back(Niflib::Triangle(
@@ -580,32 +583,34 @@ void wrteBTR(SimplField& ter, const char *pattern) {
 
 	    set<class objWater *, struct W>::iterator itw;
 	    for (itw = SectorWaters[ty][tx].begin(); itw != SectorWaters[ty][tx].end(); itw++) {
+	      const float relevel = ((*itw)->ocean ? oceanlevel : 0.0f);
+
 	      int idx1 = (int)passw.size();
 	      passw.push_back(Niflib::Vector3(
-		(float)(((*itw)->x -     0) / lscale),
-		(float)(((*itw)->y -     0) / lscale),
-		(float)(((*itw)->z - 14000) / lscale))
+		(float)(((*itw)->x +       0) / lscale),
+		(float)(((*itw)->y +       0) / lscale),
+		(float)(((*itw)->z + relevel) / lscale))
 	      );
 
 	      int idx2 = (int)passw.size();
 	      passw.push_back(Niflib::Vector3(
-		(float)(((*itw)->x +  4096) / lscale),
-		(float)(((*itw)->y +     0) / lscale),
-		(float)(((*itw)->z - 14000) / lscale))
+		(float)(((*itw)->x +    4096) / lscale),
+		(float)(((*itw)->y +       0) / lscale),
+		(float)(((*itw)->z + relevel) / lscale))
 	      );
 
 	      int idx3 = (int)passw.size();
 	      passw.push_back(Niflib::Vector3(
-		(float)(((*itw)->x +     0) / lscale),
-		(float)(((*itw)->y +  4096) / lscale),
-		(float)(((*itw)->z - 14000) / lscale))
+		(float)(((*itw)->x +       0) / lscale),
+		(float)(((*itw)->y +    4096) / lscale),
+		(float)(((*itw)->z + relevel) / lscale))
 	      );
 
 	      int idx4 = (int)passw.size();
 	      passw.push_back(Niflib::Vector3(
-		(float)(((*itw)->x +  4096) / lscale),
-		(float)(((*itw)->y +  4096) / lscale),
-		(float)(((*itw)->z - 14000) / lscale))
+		(float)(((*itw)->x +    4096) / lscale),
+		(float)(((*itw)->y +    4096) / lscale),
+		(float)(((*itw)->z + relevel) / lscale))
 	      );
 
 	      passq.push_back(Niflib::Triangle(
@@ -620,8 +625,8 @@ void wrteBTR(SimplField& ter, const char *pattern) {
 		idx2
 	      ));
 
-	      zmin = min(zmin, (float)((*itw)->z - 14000));
-	      zmax = max(zmax, (float)((*itw)->z - 14000));
+	      zmin = min(zmin, (float)((*itw)->z + relevel));
+	      zmax = max(zmax, (float)((*itw)->z + relevel));
 	    }
 
 	    wdta->SetVertices(passw);

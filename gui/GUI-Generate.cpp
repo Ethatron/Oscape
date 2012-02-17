@@ -158,7 +158,7 @@
      */
     VerifyHeightfieldOut();
 
-    OSHeightfieldGenerate->Enable(TRUE);
+    OSHeightfieldGenerate->Enable(verified);
   }
 
   /* ---------------------------------------------------------------------------- */
@@ -183,11 +183,11 @@
       int height = rHeight->GetValueAsVariant().GetInteger();
 
       LONGLONG
-	rlen = atr.nFileSizeHigh;
+      rlen  = atr.nFileSizeHigh;
       rlen <<= 32;
       rlen += atr.nFileSizeLow;
       LONGLONG
-	plen = width;
+      plen  = width;
       plen *= height;
       plen *= 4;
 
@@ -209,14 +209,29 @@
   }
 
   void OscapeGUI::MaxTarget(int &_maxp, int &_maxx, int &_ntls) {
-    int rasterx = tSize->GetValueAsVariant().GetInteger() * cSize->GetValueAsVariant().GetInteger();
-    int rastery = tSize->GetValueAsVariant().GetInteger() * cSize->GetValueAsVariant().GetInteger();
+    /* if we don't do the base calculation in 32x32 space we
+     * end up with the wrong rounded origin
+     */
+    int factorx = 32 / tSize->GetValueAsVariant().GetInteger();
+    int factory = 32 / tSize->GetValueAsVariant().GetInteger();
 
-    int dotilex = tLeft->GetValueAsVariant().GetInteger() / tSize->GetValueAsVariant().GetInteger();
-    int dotiley = tTop ->GetValueAsVariant().GetInteger() / tSize->GetValueAsVariant().GetInteger();
+    int rasterx = 32 * cSize->GetValueAsVariant().GetInteger();
+    int rastery = 32 * cSize->GetValueAsVariant().GetInteger();
 
-    int nmtilex = tRight ->GetValueAsVariant().GetInteger() / tSize->GetValueAsVariant().GetInteger() - dotilex + 1;
-    int nmtiley = tBottom->GetValueAsVariant().GetInteger() / tSize->GetValueAsVariant().GetInteger() - dotiley + 1;
+    int dotilex = tLeft->GetValueAsVariant().GetInteger() / 32;
+    int dotiley = tTop ->GetValueAsVariant().GetInteger() / 32;
+
+    int nmtilex = tRight ->GetValueAsVariant().GetInteger() / 32 - dotilex + 1;
+    int nmtiley = tBottom->GetValueAsVariant().GetInteger() / 32 - dotiley + 1;
+
+    rasterx /= factorx;
+    rastery /= factory;
+
+    dotilex *= factorx;
+    dotiley *= factory;
+
+    nmtilex *= factorx;
+    nmtiley *= factory;
 
     /* maximum number of triangles on a grid */
     int maxt = ((rastery + 1) - 1) * ((rasterx + 1) - 1) * 2;
@@ -236,10 +251,22 @@
   }
 
   void OscapeGUI::VerifyHeightfieldIn() {
+    int width  = rWidth ->GetValueAsVariant().GetInteger();
+    int height = rHeight->GetValueAsVariant().GetInteger();
+
+    verified = !((width | height) % 1024);
+    if (!verified) {
+      wxMessageDialog d(prog, "Heightfield is not multiple of 1024!", "Oscape warning");
+      d.ShowModal();
+
+      OSHeightfieldAccept  ->Enable(FALSE);
+      OSHeightfieldGenerate->Enable(FALSE);
+    }
+
     /* detect super-sampled sizes */
     int ss = MaxSuperSampling(
-      rWidth ->GetValueAsVariant().GetInteger(),
-      rHeight->GetValueAsVariant().GetInteger()
+      width,
+      height
     );
 
     OSColorLow    ->Enable(ss > 0);
@@ -659,26 +686,50 @@
   }
 
   void OscapeGUI::DefineDimensions(int tsze, int csze) {
-    rasterx = tsze * csze;
-    rastery = tsze * csze;
+    /* if we don't do the base calculation in 32x32 space we
+     * end up with the wrong rounded origin
+     */
+    int factorx = 32 / tsze;
+    int factory = 32 / tsze;
 
-    rwsizex = rWidth ->GetValueAsVariant().GetInteger();
-    rwsizey = rHeight->GetValueAsVariant().GetInteger();
+    /* base caclulation is for multiple of 1024 */
+    {
+      rasterx = 32 * csze;
+      rastery = 32 * csze;
 
-    width   = rwsizex;
-    height  = rwsizey;
+      rwsizex = rWidth ->GetValueAsVariant().GetInteger();
+      rwsizey = rHeight->GetValueAsVariant().GetInteger();
 
-    tilesx  = width  / rasterx;
-    tilesy  = height / rastery;
+      width   = rwsizex;
+      height  = rwsizey;
 
-    dotilex = tLeft->GetValueAsVariant().GetInteger() / tsze;
-    dotiley = tTop ->GetValueAsVariant().GetInteger() / tsze;
+      tilesx  = width  / rasterx;
+      tilesy  = height / rastery;
 
-    nmtilex = tRight ->GetValueAsVariant().GetInteger() / tsze - dotilex + 1;
-    nmtiley = tBottom->GetValueAsVariant().GetInteger() / tsze - dotiley + 1;
+      dotilex = tLeft->GetValueAsVariant().GetInteger() / 32;
+      dotiley = tTop ->GetValueAsVariant().GetInteger() / 32;
 
-    dotilex = dotilex + (tilesx >> 1);
-    dotiley = dotiley + (tilesy >> 1);
+      nmtilex = tRight ->GetValueAsVariant().GetInteger() / 32 - dotilex + 1;
+      nmtiley = tBottom->GetValueAsVariant().GetInteger() / 32 - dotiley + 1;
+
+      dotilex = dotilex + (tilesx >> 1);
+      dotiley = dotiley + (tilesy >> 1);
+    }
+
+    /* local calculation is for multiple of sub-resolution */
+    {
+      rasterx /= factorx;
+      rastery /= factory;
+
+      tilesx  *= factorx;
+      tilesy  *= factory;
+
+      nmtilex *= factorx;
+      nmtiley *= factory;
+
+      dotilex *= factorx;
+      dotiley *= factory;
+    }
   }
 
   void OscapeGUI::HeightfieldGenerate() {
@@ -693,6 +744,9 @@
 #define BASINSHIFT_OBLIVION	(8192 - 0 -  512) / (2 * 4)
 #define BASINSHIFT_SKYRIM	(8192 + 0 -  512) / (2 * 4)
 
+#define OCEANLEVEL_OBLIVION	(0.0f)
+#define OCEANLEVEL_SKYRIM	(-14000.0f)
+
 #define HEIGHTSHIFT_OBLIVION	(8192.0f -     0.0f)
 #define HEIGHTSHIFT_SKYRIM	(8192.0f + 14848.0f)  // 18040 + 5000 (why?)
 
@@ -702,13 +756,15 @@
       wpattern = "%02d.%02d.%02d.%02d",
       wchgame = 0,
       basinshift = BASINSHIFT_OBLIVION,
-      heightshift = HEIGHTSHIFT_OBLIVION;
+      heightshift = HEIGHTSHIFT_OBLIVION,
+      oceanlevel = OCEANLEVEL_OBLIVION;
     else if (OSGame->FindItem(wxID_SKYRIM)->IsChecked())
       sprintf(wdsname, "%s", wspacef[wdspace]->data()),
       wpattern = "%s.%d.%d.%d",
       wchgame = 1,
       basinshift = BASINSHIFT_SKYRIM,
-      heightshift = HEIGHTSHIFT_SKYRIM;
+      heightshift = HEIGHTSHIFT_SKYRIM,
+      oceanlevel = OCEANLEVEL_SKYRIM;
 
     /* -------------------------------------------------------------------- */
     long l = 0; double r = 0.0;
@@ -717,6 +773,7 @@
     tlmt = (OSGame->FindItem(wxID_SKYRIM)->IsChecked() ? 8 : 1);
     tsze = tSize->GetValueAsVariant().GetInteger();
     csze = cSize->GetValueAsVariant().GetInteger();
+    oceanlevel = fSealevel->GetValueAsVariant().GetDouble();
 
     optimizemesh = OSMeshOpt->GetValue();
     nobasin = !OSMeshBasin->GetValue();
@@ -970,7 +1027,8 @@ public:
 		for (int ww = w; ww <= (w + 32); ww += 1) {
 		  /* damit, the heightfield is [0,width), not inclusive */
 		  Real z = H.getZ(min(ww, width - 1), min(hh, height - 1));
-		  z = z * heightscale - heightshift;
+		  /* calculate relative to ocean-plane (default is at 0 units) */
+		  z = z * heightscale - heightshift + (14000 + oceanlevel);
 
 		  /* must cross (means smaller than 0.0) */
 		  if (z < 0.0) {

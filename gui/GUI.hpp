@@ -198,6 +198,7 @@ private:
   wxPGProperty *tRight;
   wxPGProperty *tTop;
   wxPGProperty *tBottom;
+  wxPGProperty *fSealevel;
 
   void ChangePreview(wxCommandEvent& event);
   void ChangeOrientation(wxCommandEvent& event);
@@ -232,6 +233,8 @@ private:
   void ChangeBaseDirOut2(wxString ph);
 
   /* **************************************************************************** */
+  bool verified;
+
   wxString GetTarget(wxString val);
   wxString GetTarget();
 

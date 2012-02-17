@@ -67,7 +67,7 @@ typedef	std::vector<class objFace   *, MemAllocator<class objFace   *> >	fvector
 
 class objWater : public MemQueueable {
 public:
-  objWater() { }
+  objWater() { ocean = false; }
 
   /* the set's key, can change to whatever */
   Point2d wtx;
@@ -167,14 +167,18 @@ struct V {
 
 /* ---------------------------------------------------- */
 
+/* negative tilerange + positive tilerange (which can be one full 32x tile bigger) */
+#define	TILERANGE	128
+#define	TILEEXTENT	((TILERANGE + 0) + (TILERANGE + 32/4))
+
 extern std::set<class objWater *, struct W> Waters;
 extern std::set<class objVertex *, struct V> Vertices;
 extern std::vector<class objFace *> Faces;
 
 #ifdef	SPLIT_ON_INJECTION
-extern std::set<class objWater *, struct W> SectorWaters[128][128];
-extern std::set<class objVertex *, struct V> SectorVertices[128][128];
-extern std::vector<class objFace *> SectorFaces[128][128];
+extern std::set<class objWater *, struct W> SectorWaters[TILEEXTENT][TILEEXTENT];
+extern std::set<class objVertex *, struct V> SectorVertices[TILEEXTENT][TILEEXTENT];
+extern std::vector<class objFace *> SectorFaces[TILEEXTENT][TILEEXTENT];
 #endif
 
 #if 0
@@ -184,8 +188,8 @@ extern std::vector<class objFace *> SectorFaces[128][128];
 typedef std::set<class objVertex *, struct V>::iterator viterator;
 typedef std::vector<class objFace *>::iterator fiterator;
 #else
-extern std::vector<class objVertex *> SectorVerticeO[128][128];
-extern std::vector<class objFace *> SectorFaceO[128][128];
+extern std::vector<class objVertex *> SectorVerticeO[TILEEXTENT][TILEEXTENT];
+extern std::vector<class objFace *> SectorFaceO[TILEEXTENT][TILEEXTENT];
 extern std::vector<unsigned int> SectorRemapO;
 
 typedef std::vector<class objWater *>::iterator witerator;

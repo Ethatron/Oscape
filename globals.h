@@ -84,6 +84,7 @@ extern int wchgame;
 extern char *wpattern;
 
 extern unsigned short basinshift;
+extern Real oceanlevel;
 extern Real heightscale;
 extern Real heightshift;
 extern Real heightadjust1;

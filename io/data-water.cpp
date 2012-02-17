@@ -37,14 +37,36 @@
 #include "../scape/simplfield.H"
 #include "../generation/geometry.hpp"
 
+float readWaterLevel(const char *name) {
+  FILE *pts = fopen(name, "rb");
+  if (!pts)
+    return 0.0f;
+  char buf[512];
+
+  /* can we also interprete it? ocean water level */
+  int x, y, bv = 0, cnt = 0; long l; float f;
+  if (fgets(buf, 256, pts) != NULL) {
+    /**/ if (sscanf(buf, "%4d %4d 0x%08x %f\n", &x, &y, &l, &f) == 4)
+      ;
+    else if (sscanf(buf, "%f\n", &f) == 1)
+      f = f;
+  }
+
+  fclose(pts);
+
+  return f;
+}
+
 void readWaterFile(SimplField& ter, const char *name) {
   FILE *pts = fopen(name, "rb");
   if (!pts)
     return;
 
-  // round down, negative side would be smaller than positive side
-  int ox = (tilesx / 2) * (int)(rasterx / 32);
-  int oy = (tilesy / 2) * (int)(rastery / 32);
+  // round down (in 32-space), negative side would be smaller than positive side
+  int fx = 1024 / rasterx;
+  int fy = 1024 / rastery;
+  int ox = ((tilesx / fx) / 2) * fx * (int)(rasterx / 32);
+  int oy = ((tilesy / fy) / 2) * fy * (int)(rastery / 32);
   int gw = ter.getHField()->getWidth();
   int gh = ter.getHField()->getHeight();
 
@@ -68,7 +90,7 @@ void readWaterFile(SimplField& ter, const char *name) {
 	(buf[0] != ';') &&
 	(buf[0] != '[') &&
 	(buf[0] != '#')) {
-      /* can we also interprete it? */
+      /* can we also interprete it? tile water levels */
       if (sscanf(buf, "%4d %4d 0x%08x %f\n", &x, &y, &l, &f) == 4) {
 	/* from world-space to heightfield-space */
 	Point2d p(
@@ -80,7 +102,11 @@ void readWaterFile(SimplField& ter, const char *name) {
 	if ((l != 0x7F7FFFFF) &&
 	    (l != 0x4F7FFFC9) &&
 	    (l != 0xCF000000))
-	  RegisterWater(p, f + 14000, false);
+	  RegisterWater(p, f, false);
+      }
+      /* can we also interprete it? ocean water level */
+      else if (sscanf(buf, "%f\n", &f) == 1) {
+//	oceanlevel = f;
       }
     }
 

@@ -43,9 +43,11 @@ void readPointsFile(SimplField& ter, const char *name) {
   if (!pts)
     return;
 
-  // round down, negative side would be smaller than positive side
-  int ox = (tilesx / 2) * (int)(sizescale * rasterx);
-  int oy = (tilesy / 2) * (int)(sizescale * rastery);
+  // round down (in 32-space), negative side would be smaller than positive side
+  int fx = 1024 / rasterx;
+  int fy = 1024 / rastery;
+  int ox = ((tilesx / fx) / 2) * fx * (int)(sizescale * rasterx);
+  int oy = ((tilesy / fy) / 2) * fy * (int)(sizescale * rastery);
   int gw = ter.getHField()->getWidth();
   int gh = ter.getHField()->getHeight();
 
@@ -61,7 +63,7 @@ void readPointsFile(SimplField& ter, const char *name) {
     InitProgress(lines, ter.getCurrentError());
 
   /* read in every point in the file and update progress */
-  int x, y, bv = 0, cnt = 0; Real fx, fy;
+  int x, y, bv = 0, cnt = 0;
   while (fgets(buf, 256, pts) != NULL) {
 //while (fscanf(pts, "%d %d\n", &x, &y) == 2) {
     /* comments / sections allowed */
@@ -88,8 +90,11 @@ void readPointsFile(SimplField& ter, const char *name) {
 	  y = min(y, gh - 1);
 
 	  logrf("%d/%d: ", bv, cnt);
-//	  bv += ter.select_new_point(x, y) ? 1 : 0;
-	  bv += ter.select_fix_point(x, y) ? 1 : 0;
+
+	  if ((x >= 0) && (y >= 0)) {
+//	    bv += ter.select_new_point(x, y) ? 1 : 0;
+	    bv += ter.select_fix_point(x, y) ? 1 : 0;
+	  }
 	}
 
 	/* TODO: add fractional support (requires identification if it's a custom point file) */
@@ -112,13 +117,19 @@ void wrtePointsFile(SimplField& ter, const char *name) {
   if (!pts)
     return;
 
-  // round down, negative side would be smaller than positive side
-  int ox = (tilesx / 2) * (int)(sizescale * rasterx);
-  int oy = (tilesy / 2) * (int)(sizescale * rastery);
-  int gw = ter.getHField()->getWidth();
-  int gh = ter.getHField()->getHeight();
+  // round down (in 32-space), negative side would be smaller than positive side
+  int fx = 1024 / rasterx;
+  int fy = 1024 / rastery;
+  int ox = ((tilesx / fx) / 2) * fx * (int)(sizescale * rasterx);
+  int oy = ((tilesy / fy) / 2) * fy * (int)(sizescale * rastery);
+  int gw = ter.getHField()->getWidth () * sizescale;
+  int gh = ter.getHField()->getHeight() * sizescale;
   int bv = 0;
 
+  /* Vertices contains non-sizescaled "vtx" (pixels)
+   * SectorVertices contains sizescaled "vtx" (coordinates)
+   * both contain sizescaled x/y
+   */
   set<class objVertex *, struct V>::const_iterator itv;
   for (itv = Vertices.begin(); itv != Vertices.end(); itv++) {
     class objVertex *vo = (*itv);
@@ -135,7 +146,12 @@ void wrtePointsFile(SimplField& ter, const char *name) {
       bv++;
 
       /* world-space coordinates */
-      fprintf(pts, "%d %d\n", (int)(vo->x - ox), (int)(vo->y - oy));
+      if (1) {
+	int x = (int)(vo->x - ox);  // (int)((vo->vtx.x * sizescale) - ox);
+	int y = (int)(vo->y - oy);  // (int)((vo->vtx.y * sizescale) - oy);
+
+	fprintf(pts, "%d %d\n", x, y);
+      }
     }
   }
 

@@ -52,6 +52,7 @@ int wchgame = 0;
 char *wpattern = "%02d.%02d.%02d.%02d";
 
 unsigned short basinshift  = (8192 - 512) / (2 * 4);
+Real oceanlevel  =           0.0f; /*Oblivion*/
 Real heightscale =    2.0f * 4.0f; /*Annwyn*/
 Real heightshift = 8192.0f - 0.0f; /*Annwyn*/
 Real heightadjust1 = 4.0f / (4.0f); /*Oblivion*/

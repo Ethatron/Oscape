@@ -1508,40 +1508,44 @@
 	    D3DSURFACE_DESC based;
 	    base->GetLevelDesc(0, &based);
 
-	    if ((ret = D3DXCreateTexture(
-	      pD3DDevice,
-	      w, h, 0,
-	      0, based.Format, D3DPOOL_SYSTEMMEM, &trns
-	    )) != D3D_OK)
-	      goto terminal_error;
+	    /* any resolution smaller than the target can simply be passed */
+	    if (based.Width > (UINT)w) {
+	      /* for higher resolution we have to copy out the trimmed mip-chain */
+	      if ((ret = D3DXCreateTexture(
+		pD3DDevice,
+		w, h, 0,
+		0, based.Format, D3DPOOL_SYSTEMMEM, &trns
+	      )) != D3D_OK)
+		goto terminal_error;
 
-	    int baselvl = 0;
-	    int trnslvl = 0;
-	    while (based.Width > (UINT)w) {
-	      based.Width = (based.Width + 1) >> 1;
-	      baselvl++;
+	      int baselvl = 0;
+	      int trnslvl = 0;
+	      while (based.Width > (UINT)w) {
+		based.Width = (based.Width + 1) >> 1;
+		baselvl++;
+	      }
+
+	      while (trnslvl < levels) {
+		LPDIRECT3DSURFACE9 stex, srep;
+
+		if (base->GetSurfaceLevel(baselvl, &stex) != D3D_OK)
+		  goto terminal_error;
+		if (trns->GetSurfaceLevel(trnslvl, &srep) != D3D_OK)
+		  goto terminal_error;
+
+		if (D3DXLoadSurfaceFromSurface(srep, NULL, NULL, stex, NULL, NULL, D3DX_FILTER_NONE, 0) != D3D_OK)
+		  goto terminal_error;
+
+		stex->Release();
+		srep->Release();
+
+		baselvl++;
+		trnslvl++;
+	      }
+
+	      base->Release();
+	      base = trns;
 	    }
-
-	    while (trnslvl < levels) {
-	      LPDIRECT3DSURFACE9 stex, srep;
-
-	      if (base->GetSurfaceLevel(baselvl, &stex) != D3D_OK)
-		goto terminal_error;
-	      if (trns->GetSurfaceLevel(trnslvl, &srep) != D3D_OK)
-		goto terminal_error;
-
-	      if (D3DXLoadSurfaceFromSurface(srep, NULL, NULL, stex, NULL, NULL, D3DX_FILTER_NONE, 0) != D3D_OK)
-		goto terminal_error;
-
-	      stex->Release();
-	      srep->Release();
-
-	      baselvl++;
-	      trnslvl++;
-	    }
-
-	    base->Release();
-	    base = trns;
 	  }
 	  /* do the recalculation */
 	  else if (stristr(walk->first.data(), ".ppm") ||

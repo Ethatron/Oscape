@@ -1171,6 +1171,7 @@ static bool TextureConvertRAW(int minlevel, LPDIRECT3DTEXTURE9 *tex, bool optimi
       if (histo[3][h]) histn[3]++;
     }
 
+#if 0
     if ((histn[0] == 1) &&
 	(histn[1] == 1) &&
 	(histn[2] == 1) &&
@@ -1179,6 +1180,7 @@ static bool TextureConvertRAW(int minlevel, LPDIRECT3DTEXTURE9 *tex, bool optimi
 
       return TextureCollapse(tex, D3DFMT_A8R8G8B8, TCOMPRESS_SWIZZL(format));
     }
+#endif
 
     bool white = ((histn[0] == 1) && histo[0][0xFF]                  );
     bool black = ((histn[0] == 1) &&                   histo[0][0x00]);
@@ -1826,6 +1828,7 @@ static bool TextureCompressDXT(int minlevel, LPDIRECT3DTEXTURE9 *tex, bool optim
       if (histo[3][h]) histn[3]++;
     }
 
+#if 0
     if ((histn[0] == 1) &&
 	(histn[1] == 1) &&
 	(histn[2] == 1) &&
@@ -1834,6 +1837,7 @@ static bool TextureCompressDXT(int minlevel, LPDIRECT3DTEXTURE9 *tex, bool optim
 
       return TextureCollapse(tex, D3DFMT_A8R8G8B8, TCOMPRESS_SWIZZL(format));
     }
+#endif
 
     bool white = ((histn[0] == 1) && histo[0][0xFF]                  );
     bool black = ((histn[0] == 1) &&                   histo[0][0x00]);

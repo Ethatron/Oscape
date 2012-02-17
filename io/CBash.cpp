@@ -1048,6 +1048,19 @@ public:
     LANDRecord *land;
 
     if (!stricmp(wrld->EDID.value, wename.data())) {
+      float
+
+      /* static */
+      olevel = -14000.0f;
+      /* default custom */
+      olevel = wrld->DNAM.value.defaultWaterHeight;
+      /* default custom LOD */
+      if (wrld->NAM4.value)
+	olevel = *(wrld->NAM4.value);
+
+      /* ocean water levels */
+      fprintf(wf, "%f\n", olevel);
+
       std::vector<Record *>::iterator walk = wrld->CELLS.begin();
       while (walk != wrld->CELLS.end()) {
 	cell = (CELLRecord *)(*walk);
